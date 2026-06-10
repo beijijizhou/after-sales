@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import streamlit as st
 from supabase import create_client
 
@@ -40,12 +43,18 @@ if st.button("Search"):
         st.dataframe(response.data)
     else:
         st.warning("No matching records found")
-
+target_date = (
+    datetime.now(
+        ZoneInfo("America/New_York")
+    )
+    .date()
+    .isoformat()
+)
 response = (
     supabase
     .rpc(
         "get_active_users_by_date",
-        {"target_date": "2026-06-08"}
+        {"target_date": target_date}
     )
     .execute()
 )
