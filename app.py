@@ -1,6 +1,6 @@
 import streamlit as st
 from supabase import create_client
-import os
+
 
 
 url = st.secrets["SUPABASE_URL"]
