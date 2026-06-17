@@ -27,6 +27,47 @@ if st.button("Search"):
     if not barcodes:
         st.warning("No input found")
         st.stop()
-
-
+    with st.spinner("Searching barcodes..."):
+        response = (
+            supabase
+            .table("barcode_scans")
+            .select("*")
+            .in_("barcode", barcodes)
+            .execute()
+        )
+    
+    if response.data:
+        st.success(f"Found {len(response.data)} records")
+    
+        st.dataframe(response.data)
+    
+        found_barcodes = {
+            row["barcode"]
+            for row in response.data
+        }
+    
+        missing_barcodes = [
+            barcode
+            for barcode in barcodes
+            if barcode not in found_barcodes
+        ]
+    
+        if missing_barcodes:
+            st.warning(
+                f"{len(missing_barcodes)} barcode(s) not found"
+            )
+    
+            st.text_area(
+                "Missing Barcodes",
+                "\n".join(missing_barcodes),
+                height=200
+            )
+    else:
+        st.warning("No matching records found")
+    
+        st.text_area(
+            "Missing Barcodes",
+            "\n".join(barcodes),
+            height=200
+        )
 
