@@ -3,6 +3,8 @@ from zoneinfo import ZoneInfo
 from supabase import create_client
 import streamlit as st
 import supabase
+import pandas as pd
+
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 
@@ -24,4 +26,11 @@ response = (
     .execute()
 )
 
-st.dataframe(response.data)
+df = pd.DataFrame(response.data)
+
+st.metric(
+    "Total Scan Count",
+    df["scan_count"].sum()
+)
+
+st.dataframe(df)
