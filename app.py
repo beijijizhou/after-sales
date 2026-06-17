@@ -1,5 +1,3 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import streamlit as st
 from supabase import create_client
@@ -30,33 +28,5 @@ if st.button("Search"):
         st.warning("No input found")
         st.stop()
 
-    response = (
-        supabase
-        .table("barcode_scans")
-        .select("*")
-        .in_("barcode", barcodes)
-        .execute()
-    )
 
-    if response.data:
-        st.success(f"Found {len(response.data)} records")
-        st.dataframe(response.data)
-    else:
-        st.warning("No matching records found")
-target_date = (
-    datetime.now(
-        ZoneInfo("America/New_York")
-    )
-    .date()
-    .isoformat()
-)
-response = (
-    supabase
-    .rpc(
-        "get_active_users_by_date",
-        {"target_date": target_date}
-    )
-    .execute()
-)
 
-st.dataframe(response.data)
