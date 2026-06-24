@@ -1,8 +1,6 @@
-
 import streamlit as st
 from supabase import create_client
-
-
+import pandas as pd
 
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
@@ -16,8 +14,13 @@ input_text = st.text_area(
     height=200
 )
 
-if st.button("Search"):
-    # split by newline and clean empty lines
+col1, col2 = st.columns(2)
+
+exact_search = col1.button("精准匹配")
+like_search = col2.button("模糊匹配")
+
+if exact_search or like_search:
+
     barcodes = [
         x.strip()
         for x in input_text.split("\n")
@@ -27,47 +30,74 @@ if st.button("Search"):
     if not barcodes:
         st.warning("No input found")
         st.stop()
-    with st.spinner("Searching barcodes..."):
-        response = (
-            supabase
-            .table("barcode_scans")
-            .select("*")
-            .in_("barcode", barcodes)
-            .execute()
-        )
-    
-    if response.data:
-        st.success(f"Found {len(response.data)} records")
-    
-        st.dataframe(response.data)
-    
-        found_barcodes = {
-            row["barcode"]
-            for row in response.data
-        }
-    
-        missing_barcodes = [
-            barcode
-            for barcode in barcodes
-            if barcode not in found_barcodes
-        ]
-    
+
+    results = []
+    found_inputs = set()
+
+    with st.spinner("Searching..."):
+
+        if exact_search:
+            response = (
+                supabase
+                .table("barcode_scans")
+                .select("*")
+                .in_("barcode", barcodes)
+                .execute()
+            )
+
+            results = response.data
+
+            found_inputs = {
+                row["barcode"]
+                for row in response.data
+            }
+
+        else:  # Like Match
+
+            for barcode in barcodes:
+                response = (
+                    supabase
+                    .table("barcode_scans")
+                    .select("*")
+                    .ilike("barcode", f"%{barcode}%")
+                    .execute()
+                )
+
+                if response.data:
+                    found_inputs.add(barcode)
+                    results.extend(response.data)
+
+    if results:
+
+        st.success(f"Found {len(results)} records")
+
+        df = pd.DataFrame(results)
+
+        st.dataframe(df)
+
+        if exact_search:
+            missing_barcodes = [
+                barcode
+                for barcode in barcodes
+                if barcode not in found_inputs
+            ]
+        else:
+            missing_barcodes = [
+                barcode
+                for barcode in barcodes
+                if barcode not in found_inputs
+            ]
+
         if missing_barcodes:
             st.warning(
                 f"{len(missing_barcodes)} barcode(s) not found"
             )
-    
+
             st.text_area(
                 "Missing Barcodes",
                 "\n".join(missing_barcodes),
                 height=200
             )
+
     else:
         st.warning("No matching records found")
-    
-        st.text_area(
-            "Missing Barcodes",
-            "\n".join(barcodes),
-            height=200
-        )
-
