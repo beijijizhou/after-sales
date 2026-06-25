@@ -1,15 +1,18 @@
-import streamlit as st
 from supabase import create_client
+import streamlit as st
+
 import pandas as pd
 
+from after_sales_table import sales_table
 from db.after_sale import save_after_sales_batch
+from ui.after_sales_ui import render_after_sales_section
 
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 
 supabase = create_client(url, key)
 
-st.title("Batch Barcode Search")
+st.title("批量生产订单/条码售后数据查询")
 
 input_text = st.text_area(
     "Paste PO / Barcode list (one per line)",
@@ -115,24 +118,9 @@ if exact_search or like_search:
         )
 
 
-st.divider()
-st.subheader("After Sales")
+render_after_sales_section()
 
-if "search_df" in st.session_state:
+sales_table()
 
-    df = st.session_state["search_df"]
-
-    reason = st.text_area("Reason (optional)")
-
-    if st.button("Save All To After Sales"):
-
-        save_after_sales_batch(
-            df,
-            reason=reason
-        )
-
-        st.success(f"Saved {len(df)} barcodes")
-
-else:
-    st.info("Run a search first before saving after sales data.")
+   
     
