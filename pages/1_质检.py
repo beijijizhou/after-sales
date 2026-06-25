@@ -33,7 +33,9 @@ try:
     )
 
     df = pd.DataFrame(response.data)
-
+    if df.empty:
+        st.warning("No data found")
+        st.stop()
     st.metric(
         "Total Scan Count",
         df["scan_count"].sum()
