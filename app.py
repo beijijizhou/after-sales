@@ -4,7 +4,6 @@ import streamlit as st
 import pandas as pd
 
 from after_sales_table import sales_table
-from db.after_sale import save_after_sales_batch
 from ui.after_sales_ui import render_after_sales_section
 
 url = st.secrets["SUPABASE_URL"]
@@ -121,6 +120,3 @@ if exact_search or like_search:
 render_after_sales_section()
 
 sales_table()
-
-   
-    
