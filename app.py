@@ -14,7 +14,7 @@ supabase = create_client(url, key)
 st.title("批量生产订单/条码售后数据查询")
 
 input_text = st.text_area(
-    "Paste PO / Barcode list (one per line)",
+    "粘贴生产订单 / 条码列表（每行一个）",
     height=200
 )
 
@@ -32,13 +32,13 @@ if exact_search or like_search:
     })
 
     if not barcodes:
-        st.warning("No input found")
+        st.warning("未输入任何内容")
         st.stop()
 
     results = []
     found_inputs = set()
 
-    with st.spinner("Searching..."):
+    with st.spinner("正在查询..."):
 
         if exact_search:
 
@@ -81,7 +81,7 @@ if exact_search or like_search:
         # remove duplicate rows
         df = df.drop_duplicates()
 
-        st.success(f"Found {len(df)} records")
+        st.success(f"找到 {len(df)} 条记录")
 
         st.dataframe(
             df,
@@ -97,21 +97,21 @@ if exact_search or like_search:
         if missing_barcodes:
 
             st.warning(
-                f"{len(missing_barcodes)} barcode(s) not found"
+                f"{len(missing_barcodes)} 个条码未找到"
             )
 
             st.text_area(
-                "Missing Barcodes",
+                "未找到的条码",
                 "\n".join(missing_barcodes),
                 height=200
             )
 
     else:
 
-        st.warning("No matching records found")
+        st.warning("未找到匹配记录")
 
         st.text_area(
-            "Missing Barcodes",
+            "未找到的条码",
             "\n".join(barcodes),
             height=200
         )

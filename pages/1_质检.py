@@ -34,10 +34,10 @@ try:
 
     df = pd.DataFrame(response.data)
     if df.empty:
-        st.warning("No data found")
+        st.warning("未找到数据")
         st.stop()
     st.metric(
-        "Total Scan Count",
+        "总扫描数量",
         df["scan_count"].sum()
     )
 
@@ -45,6 +45,5 @@ try:
 
 except Exception as e:
     st.error(
-        f"Failed to load data: {e}"
+        f"数据加载失败：{e}"
     )
-

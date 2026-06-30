@@ -5,7 +5,7 @@ import streamlit as st
 
 def get_selected_date():
     return st.date_input(
-        "Select Date",
+        "选择日期",
         value=datetime.now(
             ZoneInfo("America/New_York")
         ).date(),

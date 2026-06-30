@@ -6,7 +6,6 @@ def sales_table():
     st.title("售后数据")
     st.write("质检人员售后数据展示")
     response = supabase.rpc("get_after_sales_rate").execute()
-    print(response.data)
     df = pd.DataFrame(response.data)
 
     st.dataframe(df)

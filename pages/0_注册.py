@@ -27,7 +27,7 @@ password = st.text_input(
     disabled=not is_qa
 )
 
-if st.button("Register"):
+if st.button("注册"):
 
     data = {
         "name": name,
@@ -48,4 +48,4 @@ if st.button("Register"):
         .execute()
     )
 
-    st.success("User created")
+    st.success("用户创建成功")
