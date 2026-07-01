@@ -2,6 +2,7 @@ from supabase import create_client
 import streamlit as st
 
 import pandas as pd
+import re
 
 from after_sales_table import sales_table
 from ui.after_sales_ui import render_after_sales_section
@@ -12,6 +13,51 @@ key = st.secrets["SUPABASE_KEY"]
 supabase = create_client(url, key)
 
 st.title("批量生产订单/条码售后数据查询")
+
+
+def is_fixed_barcode_pattern(value):
+    return re.fullmatch(r"B[A-Z0-9]{6}-\d", value.strip().upper()) is not None
+
+
+def build_fixed_barcode_candidates(value):
+    value = value.strip().upper()
+
+    if not value:
+        return []
+
+    if value.startswith("SCGD-"):
+        base = value
+    else:
+        base = f"SCGD-{value}"
+
+    if base.endswith("-A") or base.endswith("-B"):
+        return [base]
+
+    return [
+        f"{base}-A",
+        f"{base}-B",
+    ]
+
+
+def build_exact_search_candidates(values):
+    candidate_to_input = {}
+
+    for value in values:
+        normalized_value = value.strip().upper()
+        candidates = [normalized_value]
+
+        if is_fixed_barcode_pattern(value):
+            candidates = build_fixed_barcode_candidates(value)
+
+        for candidate in candidates:
+            candidate_to_input[candidate] = value
+
+    return candidate_to_input
+
+
+def chunk_list(values, size):
+    for index in range(0, len(values), size):
+        yield values[index:index + size]
 
 input_text = st.text_area(
     "粘贴生产订单 / 条码列表（每行一个）",
@@ -42,24 +88,60 @@ if exact_search or like_search:
 
         if exact_search:
 
-            response = (
-                supabase
-                .table("barcode_scans")
-                .select("barcode,scanned_by,scanned_at")
-                .in_("barcode", barcodes)
-                .execute()
-            )
+            candidate_to_input = build_exact_search_candidates(barcodes)
 
-            results = response.data
+            for candidate_group in chunk_list(list(candidate_to_input.keys()), 100):
+
+                response = (
+                    supabase
+                    .table("barcode_scans")
+                    .select("barcode,scanned_by,scanned_at")
+                    .in_("barcode", candidate_group)
+                    .execute()
+                )
+
+                results.extend(response.data)
 
             found_inputs = {
-                row["barcode"]
-                for row in response.data
+                candidate_to_input[row["barcode"].upper()]
+                for row in results
+                if row["barcode"].upper() in candidate_to_input
             }
 
         else:
 
-            for barcode in barcodes:
+            fixed_barcodes = [
+                barcode
+                for barcode in barcodes
+                if is_fixed_barcode_pattern(barcode)
+            ]
+            global_search_barcodes = [
+                barcode
+                for barcode in barcodes
+                if not is_fixed_barcode_pattern(barcode)
+            ]
+
+            candidate_to_input = build_exact_search_candidates(fixed_barcodes)
+            candidates = list(candidate_to_input.keys())
+
+            for candidate_group in chunk_list(candidates, 100):
+
+                response = (
+                    supabase
+                    .table("barcode_scans")
+                    .select("barcode,scanned_by,scanned_at")
+                    .in_("barcode", candidate_group)
+                    .execute()
+                )
+
+                results.extend(response.data)
+
+            for row in results:
+                barcode = row["barcode"].upper()
+                if barcode in candidate_to_input:
+                    found_inputs.add(candidate_to_input[barcode])
+
+            for barcode in global_search_barcodes:
 
                 response = (
                     supabase
