@@ -27,14 +27,9 @@ barcodes = search_ui.parse_barcodes(input_text)
 
 if barcodes:
     with preview_col:
-        preview_rows = (
-            search_ui.build_search_preview(barcodes)
-            if hasattr(search_ui, "build_search_preview")
-            else search_ui.build_exact_preview(barcodes) + search_ui.build_fuzzy_preview(barcodes)
-        )
         search_ui.render_search_preview(
             "查询预览",
-            preview_rows
+            search_ui.build_search_preview(barcodes)
         )
 
 col1, col2 = st.columns(2)

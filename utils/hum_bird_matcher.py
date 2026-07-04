@@ -2,7 +2,7 @@ import re
 
 
 def matches(value):
-    return re.fullmatch(r"B[A-Z0-9]{6}-\d", value.strip().upper()) is not None
+    return re.fullmatch(r"B[A-Z0-9]{6}(-\d)?", value.strip().upper()) is not None
 
 
 def build_candidates(value):

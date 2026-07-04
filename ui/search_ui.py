@@ -88,22 +88,12 @@ def build_search_preview(barcodes):
         else:
             fuzzy_values = [f"%{barcode}%"]
 
-        rows.extend([
-            {
-                INPUT_COLUMN: barcode,
-                "匹配方式": "精准匹配",
-                QUERY_COLUMN: value,
-            }
-            for value in exact_values
-        ])
-        rows.extend([
-            {
-                INPUT_COLUMN: barcode,
-                "匹配方式": "模糊匹配",
-                QUERY_COLUMN: value,
-            }
-            for value in fuzzy_values
-        ])
+        row_count = max(len(exact_values), len(fuzzy_values))
+        for index in range(row_count):
+            rows.append({
+                "精准匹配": exact_values[index] if index < len(exact_values) else "",
+                "模糊匹配": fuzzy_values[index] if index < len(fuzzy_values) else "",
+            })
 
     return rows
 
