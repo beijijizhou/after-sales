@@ -82,11 +82,7 @@ def build_search_preview(barcodes):
     for barcode in barcodes:
         exact_candidate_to_input = build_candidate_to_input([barcode])
         exact_values = list(exact_candidate_to_input.keys())
-
-        if is_exact_expansion_pattern(barcode):
-            fuzzy_values = exact_values
-        else:
-            fuzzy_values = [f"%{barcode}%"]
+        fuzzy_values = [f"%{barcode}%"]
 
         row_count = max(len(exact_values), len(fuzzy_values))
         for index in range(row_count):
