@@ -2,10 +2,11 @@ from supabase import create_client
 import streamlit as st
 
 import pandas as pd
-import re
 
 from after_sales_table import sales_table
 from ui.after_sales_ui import render_after_sales_section
+from ui import search_ui
+from utils import exact_match, fuzzy_match
 
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
@@ -14,55 +15,27 @@ supabase = create_client(url, key)
 
 st.title("批量生产订单/条码售后数据查询")
 
+input_col, preview_col = st.columns([1, 2])
 
-def is_fixed_barcode_pattern(value):
-    return re.fullmatch(r"B[A-Z0-9]{6}-\d", value.strip().upper()) is not None
+with input_col:
+    input_text = st.text_area(
+        search_ui.INPUT_COLUMN,
+        height=260
+    )
 
+barcodes = search_ui.parse_barcodes(input_text)
 
-def build_fixed_barcode_candidates(value):
-    value = value.strip().upper()
-
-    if not value:
-        return []
-
-    if value.startswith("SCGD-"):
-        base = value
-    else:
-        base = f"SCGD-{value}"
-
-    if base.endswith("-A") or base.endswith("-B"):
-        return [base]
-
-    return [
-        f"{base}-A",
-        f"{base}-B",
-    ]
-
-
-def build_exact_search_candidates(values):
-    candidate_to_input = {}
-
-    for value in values:
-        normalized_value = value.strip().upper()
-        candidates = [normalized_value]
-
-        if is_fixed_barcode_pattern(value):
-            candidates = build_fixed_barcode_candidates(value)
-
-        for candidate in candidates:
-            candidate_to_input[candidate] = value
-
-    return candidate_to_input
-
-
-def chunk_list(values, size):
-    for index in range(0, len(values), size):
-        yield values[index:index + size]
-
-input_text = st.text_area(
-    "粘贴生产订单 / 条码列表（每行一个）",
-    height=200
-)
+if barcodes:
+    with preview_col:
+        preview_rows = (
+            search_ui.build_search_preview(barcodes)
+            if hasattr(search_ui, "build_search_preview")
+            else search_ui.build_exact_preview(barcodes) + search_ui.build_fuzzy_preview(barcodes)
+        )
+        search_ui.render_search_preview(
+            "查询预览",
+            preview_rows
+        )
 
 col1, col2 = st.columns(2)
 
@@ -70,12 +43,6 @@ exact_search = col1.button("精准匹配")
 like_search = col2.button("模糊匹配")
 
 if exact_search or like_search:
-
-    barcodes = list({
-        x.strip()
-        for x in input_text.split("\n")
-        if x.strip()
-    })
 
     if not barcodes:
         st.warning("未输入任何内容")
@@ -87,74 +54,20 @@ if exact_search or like_search:
     with st.spinner("正在查询..."):
 
         if exact_search:
-
-            candidate_to_input = build_exact_search_candidates(barcodes)
-
-            for candidate_group in chunk_list(list(candidate_to_input.keys()), 100):
-
-                response = (
-                    supabase
-                    .table("barcode_scans")
-                    .select("barcode,scanned_by,scanned_at")
-                    .in_("barcode", candidate_group)
-                    .execute()
+            results, found_inputs, _ = search_ui.normalize_search_response(
+                exact_match.search(
+                    supabase,
+                    barcodes
                 )
-
-                results.extend(response.data)
-
-            found_inputs = {
-                candidate_to_input[row["barcode"].upper()]
-                for row in results
-                if row["barcode"].upper() in candidate_to_input
-            }
+            )
 
         else:
-
-            fixed_barcodes = [
-                barcode
-                for barcode in barcodes
-                if is_fixed_barcode_pattern(barcode)
-            ]
-            global_search_barcodes = [
-                barcode
-                for barcode in barcodes
-                if not is_fixed_barcode_pattern(barcode)
-            ]
-
-            candidate_to_input = build_exact_search_candidates(fixed_barcodes)
-            candidates = list(candidate_to_input.keys())
-
-            for candidate_group in chunk_list(candidates, 100):
-
-                response = (
-                    supabase
-                    .table("barcode_scans")
-                    .select("barcode,scanned_by,scanned_at")
-                    .in_("barcode", candidate_group)
-                    .execute()
+            results, found_inputs, _ = search_ui.normalize_search_response(
+                fuzzy_match.search(
+                    supabase,
+                    barcodes
                 )
-
-                results.extend(response.data)
-
-            for row in results:
-                barcode = row["barcode"].upper()
-                if barcode in candidate_to_input:
-                    found_inputs.add(candidate_to_input[barcode])
-
-            for barcode in global_search_barcodes:
-
-                response = (
-                    supabase
-                    .table("barcode_scans")
-                    .select("barcode,scanned_by,scanned_at")
-                    .ilike("barcode", f"%{barcode}%")
-                    .limit(20)
-                    .execute()
-                )
-
-                if response.data:
-                    found_inputs.add(barcode)
-                    results.extend(response.data)
+            )
 
     if results:
 
