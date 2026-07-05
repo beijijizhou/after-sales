@@ -32,7 +32,7 @@ def load_daily_production_rows(supabase, selected_date, user_column):
         response = (
             supabase
             .table("barcode_scans")
-            .select(f"barcode,{user_column},scanned_at")
+            .select(f"barcode,{user_column},scanned_at,platform")
             .gte("scanned_at", start_at)
             .lte("scanned_at", end_at)
             .range(offset, offset + page_size - 1)
@@ -49,24 +49,17 @@ def load_daily_production_rows(supabase, selected_date, user_column):
     return pd.DataFrame(rows)
 
 
-def get_client(barcode):
-    barcode = str(barcode).strip().upper()
-    order_id = barcode
+def get_client(platform):
+    platform = str(platform).strip().lower()
 
-    if barcode.startswith("SCGD-"):
-        order_id = barcode.removeprefix("SCGD-").rsplit("-", 1)[0]
-
-    if "-" in order_id:
-        order_id = order_id.rsplit("-", 1)[0]
-
-    if len(order_id) == 7 and order_id.startswith("B"):
+    if platform == "haloo":
         return "Haloo"
 
     return "小平台"
 
 
 def prepare_production_df(df, user_column):
-    if df.empty or user_column not in df.columns:
+    if df.empty or user_column not in df.columns or "platform" not in df.columns:
         return pd.DataFrame()
 
     df = (
@@ -74,7 +67,7 @@ def prepare_production_df(df, user_column):
         .dropna(subset=[user_column])
         .assign(**{
             user_column: lambda data: data[user_column].astype(str).str.strip(),
-            "client": lambda data: data["barcode"].apply(get_client),
+            "client": lambda data: data["platform"].apply(get_client),
         })
     )
     df = df[df[user_column] != ""]
@@ -181,7 +174,6 @@ def summarize_by_hour(df, selected_date):
     hourly_df["haloo_percentage"] = (
         hourly_df["haloo_count"] / hourly_df["scan_count"] * 100
     ).fillna(0)
-    hourly_df["running_total"] = hourly_df["scan_count"].cumsum()
 
     return hourly_df
 
@@ -295,13 +287,11 @@ def render_hourly_production(hourly_summary):
         [[
             "小时",
             "scan_count",
-            "running_total",
             "haloo_count",
             "haloo_percentage",
         ]]
         .rename(columns={
             "scan_count": "产量",
-            "running_total": "累计产量",
             "haloo_count": "Haloo 数量",
             "haloo_percentage": "Haloo 占比",
         })
