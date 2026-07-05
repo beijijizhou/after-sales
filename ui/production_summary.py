@@ -24,11 +24,10 @@ def render_kpis(user_summary, working_hours):
         else 0
     )
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     col1.metric("总生产数量", total_count)
     col2.metric("参与人数", active_people)
-    col3.metric("工作小时", f"{working_hours:.1f}")
-    col4.metric(
+    col3.metric(
         "人均小时产量",
         f"{hourly_per_person:.1f}",
         delta=f"按 {average_people} 人计算",
