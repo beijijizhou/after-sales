@@ -4,17 +4,19 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
+NY_TIMEZONE = ZoneInfo("America/New_York")
+
 
 def get_date_range(selected_date):
     start_at = datetime.combine(
         selected_date,
         time.min,
-        tzinfo=ZoneInfo("America/New_York")
+        tzinfo=NY_TIMEZONE
     ).isoformat()
     end_at = datetime.combine(
         selected_date,
         time.max,
-        tzinfo=ZoneInfo("America/New_York")
+        tzinfo=NY_TIMEZONE
     ).isoformat()
 
     return start_at, end_at
@@ -30,7 +32,7 @@ def load_daily_production_rows(supabase, selected_date, user_column):
         response = (
             supabase
             .table("barcode_scans")
-            .select(f"barcode,{user_column}")
+            .select(f"barcode,{user_column},scanned_at")
             .gte("scanned_at", start_at)
             .lte("scanned_at", end_at)
             .range(offset, offset + page_size - 1)
@@ -80,6 +82,21 @@ def prepare_production_df(df, user_column):
     return df
 
 
+def add_ny_hour(df):
+    if df.empty or "scanned_at" not in df.columns:
+        return pd.DataFrame()
+
+    df = df.copy()
+    df["scanned_at_ny"] = (
+        pd.to_datetime(df["scanned_at"], errors="coerce", utc=True)
+        .dt.tz_convert(NY_TIMEZONE)
+    )
+    df = df.dropna(subset=["scanned_at_ny"])
+    df["hour"] = df["scanned_at_ny"].dt.floor("h")
+
+    return df
+
+
 def summarize_by_user(df, user_column):
     return (
         df
@@ -117,6 +134,56 @@ def summarize_by_user_and_client(df, user_column):
         .sort_values(["name", "scan_count"], ascending=[True, False])
         .reset_index(drop=True)
     )
+
+
+def summarize_by_hour(df, selected_date):
+    df = add_ny_hour(df)
+    if df.empty:
+        return pd.DataFrame()
+
+    first_hour = df["hour"].min()
+    today = datetime.now(NY_TIMEZONE).date()
+
+    if selected_date == today:
+        last_hour = datetime.now(NY_TIMEZONE).replace(
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+    else:
+        last_hour = df["hour"].max()
+
+    hourly_df = (
+        df
+        .groupby("hour", as_index=False)
+        .agg(
+            scan_count=("barcode", "size"),
+            haloo_count=("client", lambda values: (values == "Haloo").sum())
+        )
+    )
+
+    hour_range = pd.date_range(
+        start=first_hour,
+        end=last_hour,
+        freq="h",
+        tz=NY_TIMEZONE
+    )
+    hourly_df = (
+        pd.DataFrame({"hour": hour_range})
+        .merge(hourly_df, on="hour", how="left")
+        .fillna({
+            "scan_count": 0,
+            "haloo_count": 0,
+        })
+    )
+    hourly_df["scan_count"] = hourly_df["scan_count"].astype(int)
+    hourly_df["haloo_count"] = hourly_df["haloo_count"].astype(int)
+    hourly_df["haloo_percentage"] = (
+        hourly_df["haloo_count"] / hourly_df["scan_count"] * 100
+    ).fillna(0)
+    hourly_df["running_total"] = hourly_df["scan_count"].cumsum()
+
+    return hourly_df
 
 
 def render_kpis(user_summary):
@@ -169,8 +236,8 @@ def build_user_client_pivot(user_client_summary):
     return pivot_df, client_columns
 
 
-def render_user_client_table(user_client_summary):
-    st.subheader("质检人员平台明细")
+def render_user_client_table(user_client_summary, title):
+    st.subheader(f"{title}人员平台明细")
 
     pivot_df, _ = build_user_client_pivot(user_client_summary)
     summary_df = (
@@ -208,6 +275,54 @@ def render_user_client_table(user_client_summary):
     )
 
 
+def render_hourly_production(hourly_summary):
+    if hourly_summary.empty:
+        return
+
+    st.subheader("每小时产量")
+
+    chart_df = (
+        hourly_summary
+        .assign(小时=lambda data: data["hour"].dt.strftime("%H:00"))
+        .set_index("小时")[["scan_count"]]
+        .rename(columns={"scan_count": "产量"})
+    )
+    st.bar_chart(chart_df)
+
+    table_df = (
+        hourly_summary
+        .assign(小时=lambda data: data["hour"].dt.strftime("%H:00"))
+        [[
+            "小时",
+            "scan_count",
+            "running_total",
+            "haloo_count",
+            "haloo_percentage",
+        ]]
+        .rename(columns={
+            "scan_count": "产量",
+            "running_total": "累计产量",
+            "haloo_count": "Haloo 数量",
+            "haloo_percentage": "Haloo 占比",
+        })
+    )
+    table_df["Haloo 占比"] = table_df["Haloo 占比"].round(1)
+
+    st.dataframe(
+        table_df,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Haloo 占比": st.column_config.ProgressColumn(
+                "Haloo 占比",
+                format="%.1f%%",
+                min_value=0,
+                max_value=100,
+            )
+        }
+    )
+
+
 def render_production_summary(supabase, selected_date, title, user_column):
     st.title(title)
 
@@ -226,11 +341,13 @@ def render_production_summary(supabase, selected_date, title, user_column):
         user_summary = summarize_by_user(df, user_column)
         client_summary = summarize_by_client(df)
         user_client_summary = summarize_by_user_and_client(df, user_column)
+        hourly_summary = summarize_by_hour(df, selected_date)
 
         render_kpis(user_summary)
         render_client_kpis(client_summary)
 
-        render_user_client_table(user_client_summary)
+        render_user_client_table(user_client_summary, title)
+        render_hourly_production(hourly_summary)
 
     except Exception as e:
         st.error(
