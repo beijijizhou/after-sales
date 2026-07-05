@@ -10,6 +10,7 @@ from utils.utility import get_selected_date
 st.title("烫印")
 
 selected_date = get_selected_date()
+st.caption(f"统计日期：{selected_date.isoformat()}")
 
 start_at = datetime.combine(
     selected_date,
@@ -23,16 +24,29 @@ end_at = datetime.combine(
 ).isoformat()
 
 try:
-    response = (
-        supabase
-        .table("barcode_scans")
-        .select("hotstamp_by,scanned_at")
-        .gte("scanned_at", start_at)
-        .lte("scanned_at", end_at)
-        .execute()
-    )
+    rows = []
+    page_size = 1000
+    offset = 0
 
-    df = pd.DataFrame(response.data)
+    while True:
+        response = (
+            supabase
+            .table("barcode_scans")
+            .select("hotstamp_by,scanned_at")
+            .gte("scanned_at", start_at)
+            .lte("scanned_at", end_at)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+
+        rows.extend(response.data)
+
+        if len(response.data) < page_size:
+            break
+
+        offset += page_size
+
+    df = pd.DataFrame(rows)
     if df.empty or "hotstamp_by" not in df.columns:
         st.warning("未找到数据")
         st.stop()
