@@ -20,7 +20,7 @@ def get_date_range(selected_date):
     return start_at, end_at
 
 
-def load_daily_production_rows(supabase, selected_date):
+def load_daily_production_rows(supabase, selected_date, user_column):
     start_at, end_at = get_date_range(selected_date)
     rows = []
     page_size = 1000
@@ -30,7 +30,7 @@ def load_daily_production_rows(supabase, selected_date):
         response = (
             supabase
             .table("barcode_scans")
-            .select("barcode,scanned_by,hotstamp_by,scanned_at")
+            .select(f"barcode,{user_column}")
             .gte("scanned_at", start_at)
             .lte("scanned_at", end_at)
             .range(offset, offset + page_size - 1)
@@ -47,16 +47,20 @@ def load_daily_production_rows(supabase, selected_date):
     return pd.DataFrame(rows)
 
 
-def get_platform(barcode):
+def get_client(barcode):
     barcode = str(barcode).strip().upper()
+    order_id = barcode
 
     if barcode.startswith("SCGD-"):
-        return "Hum Bird"
+        order_id = barcode.removeprefix("SCGD-").rsplit("-", 1)[0]
 
-    if len(barcode.split("-")[0]) == 6:
-        return "S2B"
+    if "-" in order_id:
+        order_id = order_id.rsplit("-", 1)[0]
 
-    return "其他"
+    if len(order_id) == 7 and order_id.startswith("B"):
+        return "Haloo"
+
+    return "小平台"
 
 
 def prepare_production_df(df, user_column):
@@ -68,7 +72,7 @@ def prepare_production_df(df, user_column):
         .dropna(subset=[user_column])
         .assign(**{
             user_column: lambda data: data[user_column].astype(str).str.strip(),
-            "platform": lambda data: data["barcode"].apply(get_platform),
+            "client": lambda data: data["barcode"].apply(get_client),
         })
     )
     df = df[df[user_column] != ""]
@@ -90,10 +94,10 @@ def summarize_by_user(df, user_column):
     )
 
 
-def summarize_by_platform(df):
+def summarize_by_client(df):
     return (
         df
-        .groupby("platform", as_index=False)
+        .groupby("client", as_index=False)
         .size()
         .rename(columns={"size": "scan_count"})
         .sort_values("scan_count", ascending=False)
@@ -101,10 +105,10 @@ def summarize_by_platform(df):
     )
 
 
-def summarize_by_user_and_platform(df, user_column):
+def summarize_by_user_and_client(df, user_column):
     return (
         df
-        .groupby([user_column, "platform"], as_index=False)
+        .groupby([user_column, "client"], as_index=False)
         .size()
         .rename(columns={
             user_column: "name",
@@ -115,158 +119,118 @@ def summarize_by_user_and_platform(df, user_column):
     )
 
 
-def get_top_name(user_summary):
-    if user_summary.empty:
-        return "-"
-
-    return user_summary.iloc[0]["name"]
-
-
 def render_kpis(user_summary):
     total_count = int(user_summary["scan_count"].sum())
     active_people = len(user_summary)
-    top_name = get_top_name(user_summary)
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     col1.metric("总生产数量", total_count)
     col2.metric("参与人数", active_people)
-    col3.metric("最高产出人员", top_name)
 
 
-def render_platform_kpis(platform_summary):
-    if platform_summary.empty:
+def render_client_kpis(client_summary):
+    if client_summary.empty:
         return
 
-    platform_cols = st.columns(max(len(platform_summary), 1))
-    for index, row in platform_summary.iterrows():
-        platform_cols[index].metric(
-            row["platform"],
+    client_cols = st.columns(max(len(client_summary), 1))
+    for index, row in client_summary.iterrows():
+        client_cols[index].metric(
+            row["client"],
             int(row["scan_count"])
         )
 
 
-def render_people_ranking(user_summary):
-    st.subheader("人员产出排行")
-
-    max_count = int(user_summary["scan_count"].max())
-    for _, row in user_summary.head(10).iterrows():
-        count = int(row["scan_count"])
-        ratio = count / max_count if max_count else 0
-
-        left, right = st.columns([3, 1])
-        left.write(row["name"])
-        right.write(count)
-        st.progress(ratio)
-
-
-def build_user_platform_pivot(user_platform_summary):
+def build_user_client_pivot(user_client_summary):
     pivot_df = (
-        user_platform_summary
+        user_client_summary
         .pivot_table(
             index="name",
-            columns="platform",
+            columns="client",
             values="scan_count",
             fill_value=0,
             aggfunc="sum"
         )
         .reset_index()
     )
-    platform_columns = [
+    client_columns = [
         column
         for column in pivot_df.columns
         if column != "name"
     ]
-    pivot_df["total"] = pivot_df[platform_columns].sum(axis=1)
-    if "Hum Bird" not in pivot_df.columns:
-        pivot_df["Hum Bird"] = 0
+    pivot_df["total"] = pivot_df[client_columns].sum(axis=1)
+    if "Haloo" not in pivot_df.columns:
+        pivot_df["Haloo"] = 0
 
-    pivot_df["hum_bird_percentage"] = (
-        pivot_df["Hum Bird"] / pivot_df["total"] * 100
+    pivot_df["haloo_percentage"] = (
+        pivot_df["Haloo"] / pivot_df["total"] * 100
     ).fillna(0)
-    pivot_df["non_hum_bird_count"] = pivot_df["total"] - pivot_df["Hum Bird"]
     pivot_df = pivot_df.sort_values("total", ascending=False).reset_index(drop=True)
 
-    return pivot_df, platform_columns
+    return pivot_df, client_columns
 
 
-def render_hum_bird_ratio_ranking(user_platform_summary):
-    st.subheader("个人 Hum Bird 占比")
+def render_user_client_table(user_client_summary):
+    st.subheader("质检人员平台明细")
 
-    pivot_df, _ = build_user_platform_pivot(user_platform_summary)
-    ranking_df = pivot_df.sort_values(
-        ["hum_bird_percentage", "total"],
-        ascending=[False, False]
-    )
-
-    for _, row in ranking_df.iterrows():
-        left, middle, right = st.columns([3, 2, 2])
-        percentage = float(row["hum_bird_percentage"])
-
-        left.write(row["name"])
-        middle.progress(percentage / 100)
-        right.write(
-            f"{percentage:.1f}% | 非 Hum Bird: {int(row['non_hum_bird_count'])}"
-        )
-
-
-def render_user_platform_cards(user_platform_summary):
-    st.subheader("人员平台明细")
-
-    pivot_df, platform_columns = build_user_platform_pivot(user_platform_summary)
-
-    for start in range(0, len(pivot_df), 3):
-        columns = st.columns(3)
-        for column, (_, row) in zip(columns, pivot_df.iloc[start:start + 3].iterrows()):
-            column.metric(row["name"], int(row["total"]))
-            column.caption(
-                f"Hum Bird 占比: {float(row['hum_bird_percentage']):.1f}% | "
-                f"非 Hum Bird: {int(row['non_hum_bird_count'])}"
-            )
-            parts = [
-                f"{platform}: {int(row[platform])}"
-                for platform in platform_columns
-                if int(row[platform]) > 0
+    pivot_df, _ = build_user_client_pivot(user_client_summary)
+    summary_df = (
+        pivot_df[
+            [
+                "name",
+                "total",
+                "Haloo",
+                "haloo_percentage",
             ]
-            column.caption(" / ".join(parts))
+        ]
+        .rename(columns={
+            "name": "人员",
+            "total": "总生产数量",
+            "Haloo": "Haloo 数量",
+            "haloo_percentage": "Haloo 占比",
+        })
+        .sort_values("Haloo 占比", ascending=False)
+        .reset_index(drop=True)
+    )
+    summary_df["Haloo 占比"] = summary_df["Haloo 占比"].round(1)
 
-
-def render_detail_table(df, user_column):
-    detail_columns = [
-        "barcode",
-        user_column,
-        "platform",
-        "scanned_at",
-    ]
-
-    with st.expander("查看生产明细"):
-        st.dataframe(
-            df[detail_columns].sort_values("scanned_at", ascending=False),
-            use_container_width=True
-        )
+    st.dataframe(
+        summary_df,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Haloo 占比": st.column_config.ProgressColumn(
+                "Haloo 占比",
+                format="%.1f%%",
+                min_value=0,
+                max_value=100,
+            )
+        }
+    )
 
 
 def render_production_summary(supabase, selected_date, title, user_column):
     st.title(title)
 
     try:
-        raw_df = load_daily_production_rows(supabase, selected_date)
+        raw_df = load_daily_production_rows(supabase, selected_date, user_column)
+        if raw_df.empty:
+            st.warning(f"{selected_date.isoformat()} 没有生产数据")
+            st.stop()
+
         df = prepare_production_df(raw_df, user_column)
 
         if df.empty:
-            st.warning("未找到数据")
+            st.warning(f"{selected_date.isoformat()} 没有{title}人员数据")
             st.stop()
 
         user_summary = summarize_by_user(df, user_column)
-        platform_summary = summarize_by_platform(df)
-        user_platform_summary = summarize_by_user_and_platform(df, user_column)
+        client_summary = summarize_by_client(df)
+        user_client_summary = summarize_by_user_and_client(df, user_column)
 
         render_kpis(user_summary)
-        render_platform_kpis(platform_summary)
+        render_client_kpis(client_summary)
 
-        render_people_ranking(user_summary)
-        render_hum_bird_ratio_ranking(user_platform_summary)
-        render_user_platform_cards(user_platform_summary)
-        render_detail_table(df, user_column)
+        render_user_client_table(user_client_summary)
 
     except Exception as e:
         st.error(
