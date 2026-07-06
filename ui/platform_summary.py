@@ -16,7 +16,7 @@ def render_platform_summary(supabase, selected_date):
         raw_df = load_daily_platform_rows(
             supabase,
             selected_date,
-            columns="platform"
+            columns="platform,multiple_count"
         )
         if raw_df.empty:
             st.warning(f"{selected_date.isoformat()} 没有平台数据")
@@ -34,6 +34,8 @@ def render_platform_summary(supabase, selected_date):
             hide_index=True,
             use_container_width=True,
             column_config={
+                "总生产数量": st.column_config.NumberColumn("总生产数量"),
+                "多件订单数量": st.column_config.NumberColumn("多件订单数量"),
                 "占比": st.column_config.ProgressColumn(
                     "占比",
                     format="%.1f%%",

@@ -13,6 +13,7 @@ from utils.production_helpers import (
 
 def render_kpis(user_summary, working_hours):
     total_count = int(user_summary["scan_count"].sum())
+    multiple_order_count = int(user_summary["multiple_order_count"].sum())
     active_people = len(user_summary)
     average_df = user_summary[user_summary["scan_count"] >= 500]
     average_count = int(average_df["scan_count"].sum())
@@ -23,10 +24,11 @@ def render_kpis(user_summary, working_hours):
         else 0
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("总生产数量", total_count)
-    col2.metric("参与人数", active_people)
-    col3.metric(
+    col2.metric("多件订单数量", multiple_order_count)
+    col3.metric("参与人数", active_people)
+    col4.metric(
         "人均小时产量",
         f"{hourly_per_person:.1f}",
         delta=f"按 {average_people} 人计算",
@@ -40,7 +42,9 @@ def render_person_platform_table(person_platform_summary, title):
     platform_columns = [
         column
         for column in person_platform_summary.columns
-        if column not in {"人员", "总生产数量", "时产量", "Haloo 数量", "Haloo 占比"}
+        if column not in {
+            "人员", "总生产数量", "多件订单数量", "时产量", "Haloo 数量", "Haloo 占比"
+        }
     ]
     column_config = {
         "Haloo 占比": st.column_config.ProgressColumn(
@@ -54,6 +58,7 @@ def render_person_platform_table(person_platform_summary, title):
         "时产量",
         format="%.1f"
     )
+    column_config["多件订单数量"] = st.column_config.NumberColumn("多件订单数量")
     for column in platform_columns:
         column_config[column] = st.column_config.NumberColumn(column)
 

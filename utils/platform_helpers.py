@@ -57,7 +57,7 @@ def load_daily_single_platform_rows(supabase, selected_date, platform):
         response = (
             supabase
             .table("barcode_scans")
-            .select("barcode,platform,scanned_at")
+            .select("barcode,platform,scanned_at,multiple_count")
             .gte("scanned_at", start_at)
             .lt("scanned_at", end_at)
             .eq("platform", platform)
@@ -85,31 +85,50 @@ def prepare_platform_rows(df):
     if "barcode" in df.columns:
         df["barcode"] = df["barcode"].astype(str).str.strip()
         df = df[df["barcode"] != ""]
+    if "multiple_count" not in df.columns:
+        df["multiple_count"] = 1
+    df["multiple_count"] = (
+        pd.to_numeric(df["multiple_count"], errors="coerce")
+        .fillna(1)
+        .clip(lower=1)
+        .astype(int)
+    )
+    df["is_multiple_order"] = df["multiple_count"] > 1
 
     return df
 
 
 def summarize_platform_counts(df):
-    summary = df.groupby("platform", as_index=False).size()
+    summary = (
+        df
+        .groupby("platform", as_index=False)
+        .agg(
+            scan_count=("platform", "size"),
+            multiple_order_count=("is_multiple_order", "sum")
+        )
+    )
     summary = summary.rename(columns={
         "platform": "平台",
-        "size": "总数量",
+        "scan_count": "总生产数量",
+        "multiple_order_count": "多件订单数量",
     })
-    total_count = int(summary["总数量"].sum())
+    total_count = int(summary["总生产数量"].sum())
     summary["占比"] = (
-        summary["总数量"] / total_count * 100
+        summary["总生产数量"] / total_count * 100
     ).fillna(0).round(1)
 
-    return summary.sort_values("总数量", ascending=False).reset_index(drop=True)
+    return summary.sort_values("总生产数量", ascending=False).reset_index(drop=True)
 
 
 def build_platform_barcode_detail(df):
-    if df.empty or not {"platform", "barcode", "scanned_at"}.issubset(df.columns):
+    required_columns = {"platform", "barcode", "scanned_at", "multiple_count"}
+    if df.empty or not required_columns.issubset(df.columns):
         return pd.DataFrame()
 
-    detail_df = df[["platform", "barcode", "scanned_at"]].rename(columns={
+    detail_df = df[["platform", "barcode", "multiple_count", "scanned_at"]].rename(columns={
         "platform": "平台",
         "barcode": "条码",
+        "multiple_count": "multiple_count",
         "scanned_at": "扫描时间",
     })
 
