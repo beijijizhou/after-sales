@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -12,7 +12,11 @@ UNKNOWN_PLATFORM = "未标记平台"
 
 def get_date_range(selected_date):
     start_at = datetime.combine(selected_date, time.min, tzinfo=NY_TIMEZONE)
-    end_at = datetime.combine(selected_date, time.max, tzinfo=NY_TIMEZONE)
+    end_at = datetime.combine(
+        selected_date + timedelta(days=1),
+        time.min,
+        tzinfo=NY_TIMEZONE
+    )
 
     return start_at.isoformat(), end_at.isoformat()
 
@@ -29,7 +33,7 @@ def load_daily_production_rows(supabase, selected_date, user_column):
             .table("barcode_scans")
             .select(f"barcode,{user_column},scanned_at,platform")
             .gte("scanned_at", start_at)
-            .lte("scanned_at", end_at)
+            .lt("scanned_at", end_at)
             .range(offset, offset + page_size - 1)
             .execute()
         )
