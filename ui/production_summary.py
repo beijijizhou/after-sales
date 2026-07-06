@@ -7,7 +7,6 @@ from utils.production_helpers import (
     load_daily_production_rows,
     prepare_production_df,
     summarize_by_hour,
-    summarize_by_platform,
     summarize_by_user,
 )
 
@@ -35,43 +34,13 @@ def render_kpis(user_summary, working_hours):
     )
 
 
-def render_platform_table(platform_summary):
-    if platform_summary.empty:
-        return
-
-    st.subheader("平台产量汇总")
-
-    table_df = platform_summary.rename(columns={
-        "platform": "平台",
-        "scan_count": "总数量",
-    })
-    total_count = int(table_df["总数量"].sum())
-    table_df["占比"] = (
-        table_df["总数量"] / total_count * 100
-    ).fillna(0).round(1)
-
-    st.dataframe(
-        table_df,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "占比": st.column_config.ProgressColumn(
-                "占比",
-                format="%.1f%%",
-                min_value=0,
-                max_value=100,
-            )
-        }
-    )
-
-
 def render_person_platform_table(person_platform_summary, title):
     st.subheader(f"{title}人员平台明细")
 
     platform_columns = [
         column
         for column in person_platform_summary.columns
-        if column not in {"人员", "总生产数量", "Haloo 数量", "Haloo 占比"}
+        if column not in {"人员", "总生产数量", "时产量", "Haloo 数量", "Haloo 占比"}
     ]
     column_config = {
         "Haloo 占比": st.column_config.ProgressColumn(
@@ -81,6 +50,10 @@ def render_person_platform_table(person_platform_summary, title):
             max_value=100,
         )
     }
+    column_config["时产量"] = st.column_config.NumberColumn(
+        "时产量",
+        format="%.1f"
+    )
     for column in platform_columns:
         column_config[column] = st.column_config.NumberColumn(column)
 
@@ -166,13 +139,11 @@ def render_production_summary(supabase, selected_date, title, user_column):
             st.stop()
 
         user_summary = summarize_by_user(df, user_column)
-        platform_summary = summarize_by_platform(df)
         person_platform_summary = build_person_platform_summary(df, user_column)
         hourly_summary = summarize_by_hour(df, selected_date)
         working_hours = get_working_hours(df)
 
         render_kpis(user_summary, working_hours)
-        render_platform_table(platform_summary)
         render_person_platform_table(person_platform_summary, title)
         render_hourly_production(hourly_summary)
 

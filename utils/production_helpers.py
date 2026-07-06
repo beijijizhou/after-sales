@@ -115,15 +115,22 @@ def get_working_hours(df):
     return max(hours, 0)
 
 
+def get_person_working_hours(df, user_column):
+    df = add_ny_hour(df)
+    if df.empty:
+        return pd.DataFrame(columns=[user_column, "working_hours"])
+
+    summary = df.groupby(user_column)["scanned_at_ny"].agg(["min", "max"]).reset_index()
+    summary["working_hours"] = (
+        summary["max"] - summary["min"]
+    ).dt.total_seconds() / 3600
+
+    return summary[[user_column, "working_hours"]]
+
+
 def summarize_by_user(df, user_column):
     summary = df.groupby(user_column, as_index=False).size()
     summary = summary.rename(columns={user_column: "name", "size": "scan_count"})
-    return summary.sort_values("scan_count", ascending=False).reset_index(drop=True)
-
-
-def summarize_by_platform(df):
-    summary = df.groupby("platform", as_index=False).size()
-    summary = summary.rename(columns={"size": "scan_count"})
     return summary.sort_values("scan_count", ascending=False).reset_index(drop=True)
 
 
@@ -140,6 +147,13 @@ def build_person_platform_summary(df, user_column):
     platform_columns = [column for column in pivot_df.columns if column != "人员"]
 
     pivot_df["总生产数量"] = pivot_df[platform_columns].sum(axis=1)
+    working_hours = get_person_working_hours(df, user_column)
+    pivot_df = pivot_df.merge(
+        working_hours.rename(columns={user_column: "人员"}), on="人员", how="left"
+    )
+    pivot_df["时产量"] = (
+        pivot_df["总生产数量"] / pivot_df["working_hours"]
+    ).replace([float("inf"), -float("inf")], 0).fillna(0).round(1)
     if HALOO_PLATFORM not in pivot_df.columns:
         pivot_df[HALOO_PLATFORM] = 0
     pivot_df["Haloo 数量"] = pivot_df[HALOO_PLATFORM]
@@ -147,7 +161,10 @@ def build_person_platform_summary(df, user_column):
         pivot_df["Haloo 数量"] / pivot_df["总生产数量"] * 100
     ).fillna(0).round(1)
     detail_columns = [column for column in platform_columns if column != HALOO_PLATFORM]
-    ordered_columns = ["人员", "总生产数量", "Haloo 数量", "Haloo 占比", *detail_columns]
+    ordered_columns = [
+        "人员", "总生产数量", "时产量",
+        "Haloo 数量", "Haloo 占比", *detail_columns,
+    ]
 
     return (
         pivot_df[ordered_columns]
