@@ -6,8 +6,8 @@ from utils.production_helpers import (
     get_working_hours,
     load_daily_production_rows,
     prepare_production_df,
-    summarize_by_client,
     summarize_by_hour,
+    summarize_by_platform,
     summarize_by_user,
 )
 
@@ -35,16 +35,34 @@ def render_kpis(user_summary, working_hours):
     )
 
 
-def render_client_kpis(client_summary):
-    if client_summary.empty:
+def render_platform_table(platform_summary):
+    if platform_summary.empty:
         return
 
-    client_cols = st.columns(max(len(client_summary), 1))
-    for index, row in client_summary.iterrows():
-        client_cols[index].metric(
-            row["client"],
-            int(row["scan_count"])
-        )
+    st.subheader("平台产量汇总")
+
+    table_df = platform_summary.rename(columns={
+        "platform": "平台",
+        "scan_count": "总数量",
+    })
+    total_count = int(table_df["总数量"].sum())
+    table_df["占比"] = (
+        table_df["总数量"] / total_count * 100
+    ).fillna(0).round(1)
+
+    st.dataframe(
+        table_df,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "占比": st.column_config.ProgressColumn(
+                "占比",
+                format="%.1f%%",
+                min_value=0,
+                max_value=100,
+            )
+        }
+    )
 
 
 def render_person_platform_table(person_platform_summary, title):
@@ -148,13 +166,13 @@ def render_production_summary(supabase, selected_date, title, user_column):
             st.stop()
 
         user_summary = summarize_by_user(df, user_column)
-        client_summary = summarize_by_client(df)
+        platform_summary = summarize_by_platform(df)
         person_platform_summary = build_person_platform_summary(df, user_column)
         hourly_summary = summarize_by_hour(df, selected_date)
         working_hours = get_working_hours(df)
 
         render_kpis(user_summary, working_hours)
-        render_client_kpis(client_summary)
+        render_platform_table(platform_summary)
         render_person_platform_table(person_platform_summary, title)
         render_hourly_production(hourly_summary)
 

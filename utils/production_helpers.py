@@ -117,8 +117,8 @@ def summarize_by_user(df, user_column):
     return summary.sort_values("scan_count", ascending=False).reset_index(drop=True)
 
 
-def summarize_by_client(df):
-    summary = df.groupby("client", as_index=False).size()
+def summarize_by_platform(df):
+    summary = df.groupby("platform", as_index=False).size()
     summary = summary.rename(columns={"size": "scan_count"})
     return summary.sort_values("scan_count", ascending=False).reset_index(drop=True)
 
