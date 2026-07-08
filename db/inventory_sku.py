@@ -2,15 +2,15 @@ from datetime import date
 
 import pandas as pd
 
-from db.inventory import CATEGORY, SIZE_COLUMNS
+from db.inventory import DEFAULT_CATEGORY, SIZE_COLUMNS
 
 
-def load_sku_imports(supabase, limit=200):
+def load_sku_imports(supabase, category=DEFAULT_CATEGORY, limit=200):
     response = (
         supabase
         .table("inventory_sku_imports")
-        .select("材质,color,size,initial_quantity,import_date,created_at")
-        .eq("category", CATEGORY)
+        .select("品牌,材质,color,size,initial_quantity,成本,import_date,created_at")
+        .eq("category", category)
         .order("import_date", desc=True)
         .order("created_at", desc=True)
         .limit(limit)
@@ -19,46 +19,60 @@ def load_sku_imports(supabase, limit=200):
     return pd.DataFrame(response.data)
 
 
-def create_inventory_item(supabase, material, color, size, quantity=0, import_date=None):
+def create_inventory_item(supabase, category, brand, material, color, size, quantity=0, unit_cost=0, import_date=None):
+    brand = "" if pd.isna(brand) else str(brand).strip()
     material = str(material).strip()
     color = str(color).strip()
     size = str(size).strip().upper()
     quantity = int(quantity)
+    unit_cost = float(unit_cost or 0)
     import_date = import_date or date.today()
     response = (
         supabase
         .table("inventory_items")
         .upsert(
             {
-                "category": CATEGORY,
+                "category": category,
+                "品牌": brand,
                 "材质": material,
                 "color": color,
                 "size": size,
+                "成本": unit_cost,
                 "quantity": quantity,
             },
-            on_conflict="category,材质,color,size",
+            on_conflict="category,品牌,材质,color,size",
             ignore_duplicates=True,
         )
         .execute()
     )
     try:
         supabase.table("inventory_sku_imports").insert({
-            "category": CATEGORY,
+            "category": category,
+            "品牌": brand,
             "材质": material,
             "color": color,
             "size": size,
             "initial_quantity": quantity,
+            "成本": unit_cost,
             "import_date": import_date.isoformat(),
         }).execute()
     except Exception as e:
         if "inventory_sku_imports" in str(e):
-            raise RuntimeError("请先在 Supabase SQL Editor 运行 sql/add_inventory_sku_imports.sql") from e
+            raise RuntimeError("请先在 Supabase SQL Editor 运行库存 SQL 更新文件") from e
         raise
     return response.data
 
 
 def build_sku_template():
-    return pd.DataFrame(columns=["日期", "材质", "颜色", *SIZE_COLUMNS])
+    return pd.DataFrame(columns=["日期", "品牌", "材质", "颜色", "成本", *SIZE_COLUMNS])
+
+
+def group_sku_rows(df):
+    return (
+        df
+        .groupby(["日期", "品牌", "材质", "颜色", "尺码", "成本"], as_index=False)
+        .agg(初始库存=("初始库存", "sum"))
+    )
 
 
 def normalize_sku_rows(df):
@@ -70,34 +84,74 @@ def normalize_sku_rows(df):
     }
     if "日期" in df.columns:
         rename_map["日期"] = "日期"
+    if "品牌" in df.columns:
+        rename_map["品牌"] = "品牌"
     if "材质" in df.columns:
         rename_map["材质"] = "材质"
+    if "克重" in df.columns:
+        rename_map["克重"] = "材质"
     if "颜色" in df.columns:
         rename_map["颜色"] = "颜色"
+    if "成本" in df.columns:
+        rename_map["成本"] = "成本"
+    if "更新库存" in df.columns:
+        rename_map["更新库存"] = "更新库存"
     df = df.rename(columns=rename_map)
 
+    df = df.copy()
+    if {"尺码", "更新库存"}.issubset(df.columns):
+        if "日期" not in df.columns:
+            df["日期"] = date.today()
+        if "品牌" not in df.columns:
+            df["品牌"] = ""
+        if "成本" not in df.columns:
+            df["成本"] = 0
+        required_columns = {"日期", "材质", "颜色", "尺码", "更新库存"}
+        missing_columns = required_columns - set(df.columns)
+        if missing_columns:
+            raise ValueError(f"缺少列：{', '.join(sorted(missing_columns))}")
+        df["日期"] = pd.to_datetime(df["日期"], errors="coerce").dt.date
+        df["品牌"] = df["品牌"].fillna("").astype(str).str.strip()
+        df["材质"] = df["材质"].fillna("180g").astype(str).str.strip()
+        df["颜色"] = df["颜色"].astype(str).str.strip()
+        df["尺码"] = df["尺码"].astype(str).str.strip().str.upper()
+        df["成本"] = pd.to_numeric(df["成本"], errors="coerce").fillna(0)
+        quantity_values = df["更新库存"].astype(str).str.replace(",", "", regex=False)
+        df["初始库存"] = pd.to_numeric(quantity_values, errors="coerce").fillna(0).astype(int)
+        df = df.dropna(subset=["日期"])
+        df = df[(df["材质"] != "") & (df["颜色"] != "") & (df["尺码"].isin(SIZE_COLUMNS))]
+        df = df[df["初始库存"] >= 0]
+        return group_sku_rows(df[["日期", "品牌", "材质", "颜色", "尺码", "成本", "初始库存"]]).reset_index(drop=True)
+
+    if "日期" not in df.columns:
+        df["日期"] = date.today()
+    if "品牌" not in df.columns:
+        df["品牌"] = ""
+    if "成本" not in df.columns:
+        df["成本"] = 0
     required_columns = {"日期", "材质", "颜色", *SIZE_COLUMNS}
     missing_columns = required_columns - set(df.columns)
     if missing_columns:
         raise ValueError(f"缺少列：{', '.join(sorted(missing_columns))}")
 
-    df = df.copy()
     df["日期"] = pd.to_datetime(df["日期"], errors="coerce").dt.date
+    df["品牌"] = df["品牌"].fillna("").astype(str).str.strip()
     df["材质"] = df["材质"].fillna("180g").astype(str).str.strip()
     df["颜色"] = df["颜色"].astype(str).str.strip()
+    df["成本"] = pd.to_numeric(df["成本"], errors="coerce").fillna(0)
     for size in SIZE_COLUMNS:
         df[size] = pd.to_numeric(df[size], errors="coerce").fillna(0).astype(int)
 
     df = df.dropna(subset=["日期"])
     df = df[(df["材质"] != "") & (df["颜色"] != "")]
     sku_df = df.melt(
-        id_vars=["日期", "材质", "颜色"],
+        id_vars=["日期", "品牌", "材质", "颜色", "成本"],
         value_vars=SIZE_COLUMNS,
         var_name="尺码",
         value_name="初始库存",
     )
     sku_df = sku_df[sku_df["初始库存"] >= 0]
-    return sku_df[["日期", "材质", "颜色", "尺码", "初始库存"]].drop_duplicates().reset_index(drop=True)
+    return group_sku_rows(sku_df[["日期", "品牌", "材质", "颜色", "尺码", "成本", "初始库存"]]).reset_index(drop=True)
 
 
 def parse_sku_file(uploaded_file):
@@ -109,13 +163,16 @@ def parse_sku_file(uploaded_file):
     return normalize_sku_rows(df)
 
 
-def apply_sku_rows(supabase, df):
+def apply_sku_rows(supabase, category, df):
     for row in df.to_dict("records"):
         create_inventory_item(
             supabase=supabase,
+            category=category,
+            brand=row["品牌"],
             material=row["材质"],
             color=row["颜色"],
             size=row["尺码"],
             quantity=row["初始库存"],
+            unit_cost=row["成本"],
             import_date=row["日期"],
         )

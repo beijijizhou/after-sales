@@ -1,17 +1,20 @@
 create table if not exists public.inventory_items (
     id uuid primary key default gen_random_uuid(),
     category text not null,
+    品牌 text not null default '',
     材质 text not null default '180g',
     color text not null,
     size text not null,
+    成本 numeric(10, 2) not null default 0,
     quantity integer not null default 0 check (quantity >= 0),
     updated_at timestamptz not null default now(),
-    unique (category, 材质, color, size)
+    unique (category, 品牌, 材质, color, size)
 );
 
 create table if not exists public.inventory_movements (
     id uuid primary key default gen_random_uuid(),
     category text not null,
+    品牌 text not null default '',
     材质 text not null default '180g',
     color text not null,
     size text not null,
@@ -25,10 +28,12 @@ create table if not exists public.inventory_movements (
 create table if not exists public.inventory_sku_imports (
     id uuid primary key default gen_random_uuid(),
     category text not null,
+    品牌 text not null default '',
     材质 text not null default '180g',
     color text not null,
     size text not null,
     initial_quantity integer not null default 0 check (initial_quantity >= 0),
+    成本 numeric(10, 2) not null default 0,
     import_date date not null default current_date,
     created_at timestamptz not null default now()
 );
@@ -39,20 +44,41 @@ add column if not exists movement_date date not null default current_date;
 alter table public.inventory_items
 add column if not exists 材质 text not null default '180g';
 
+alter table public.inventory_items
+add column if not exists 品牌 text not null default '';
+
+alter table public.inventory_items
+add column if not exists 成本 numeric(10, 2) not null default 0;
+
 alter table public.inventory_movements
 add column if not exists 材质 text not null default '180g';
+
+alter table public.inventory_movements
+add column if not exists 品牌 text not null default '';
 
 alter table public.inventory_sku_imports
 add column if not exists 材质 text not null default '180g';
 
+alter table public.inventory_sku_imports
+add column if not exists 品牌 text not null default '';
+
+alter table public.inventory_sku_imports
+add column if not exists 成本 numeric(10, 2) not null default 0;
+
 alter table public.inventory_items
 drop constraint if exists inventory_items_category_color_size_key;
 
-create unique index if not exists inventory_items_category_material_color_size_key
-on public.inventory_items (category, 材质, color, size);
+alter table public.inventory_items
+drop constraint if exists "inventory_items_category_材质_color_size_key";
+
+drop index if exists public.inventory_items_category_material_color_size_key;
+
+create unique index if not exists inventory_items_category_brand_material_color_size_key
+on public.inventory_items (category, 品牌, 材质, color, size);
 
 create or replace function public.adjust_inventory_stock(
     p_category text,
+    p_brand text,
     p_material text,
     p_color text,
     p_size text,
@@ -68,14 +94,15 @@ as $$
 declare
     current_item public.inventory_items;
 begin
-    insert into public.inventory_items (category, 材质, color, size, quantity)
-    values (p_category, coalesce(nullif(p_material, ''), '180g'), p_color, p_size, 0)
-    on conflict (category, 材质, color, size) do nothing;
+    insert into public.inventory_items (category, 品牌, 材质, color, size, quantity)
+    values (p_category, coalesce(p_brand, ''), coalesce(nullif(p_material, ''), '180g'), p_color, p_size, 0)
+    on conflict (category, 品牌, 材质, color, size) do nothing;
 
     select *
     into current_item
     from public.inventory_items
     where category = p_category
+      and 品牌 = coalesce(p_brand, '')
       and 材质 = coalesce(nullif(p_material, ''), '180g')
       and color = p_color
       and size = p_size
@@ -95,6 +122,7 @@ begin
 
     insert into public.inventory_movements (
         category,
+        品牌,
         材质,
         color,
         size,
@@ -105,6 +133,7 @@ begin
     )
     values (
         p_category,
+        current_item.品牌,
         current_item.材质,
         p_color,
         p_size,
@@ -118,9 +147,9 @@ begin
 end;
 $$;
 
-grant execute on function public.adjust_inventory_stock(text, text, text, text, integer, text, date) to anon;
-grant execute on function public.adjust_inventory_stock(text, text, text, text, integer, text, date) to authenticated;
-grant execute on function public.adjust_inventory_stock(text, text, text, text, integer, text, date) to service_role;
+grant execute on function public.adjust_inventory_stock(text, text, text, text, text, integer, text, date) to anon;
+grant execute on function public.adjust_inventory_stock(text, text, text, text, text, integer, text, date) to authenticated;
+grant execute on function public.adjust_inventory_stock(text, text, text, text, text, integer, text, date) to service_role;
 
 grant select, insert, update on public.inventory_items to anon;
 grant select, insert, update on public.inventory_items to authenticated;
@@ -198,6 +227,10 @@ values
     ('彩色 T-shirt', '棕色', '3XL', 288),
     ('彩色 T-shirt', '棕色', '4XL', 288),
     ('彩色 T-shirt', '棕色', '5XL', 0)
-on conflict (category, 材质, color, size) do nothing;
+on conflict (category, 品牌, 材质, color, size) do nothing;
+
+update public.inventory_items
+set category = '彩色短袖'
+where category = '彩色 T-shirt';
 
 notify pgrst, 'reload schema';

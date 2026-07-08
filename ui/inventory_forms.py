@@ -19,10 +19,12 @@ from db.inventory_sku import (
 )
 
 
-def render_adjust_form(supabase, inventory_df):
+def render_adjust_form(supabase, category, inventory_df):
     st.subheader("手动库存调整")
 
-    materials = sorted(inventory_df["材质"].unique().tolist()) if not inventory_df.empty else []
+    brand_values = sorted(inventory_df["品牌"].unique().tolist()) if not inventory_df.empty else []
+    brands = list(dict.fromkeys(["", *brand_values]))
+    materials = sorted(inventory_df["材质"].unique().tolist()) if not inventory_df.empty else ["180g"]
     colors = sorted(inventory_df["颜色"].unique().tolist()) if not inventory_df.empty else []
     default_df = build_wide_adjustment_template()
     default_df.loc[0, "日期"] = datetime.now(ZoneInfo("America/New_York")).date()
@@ -30,6 +32,7 @@ def render_adjust_form(supabase, inventory_df):
     action = st.radio("操作", ["增加", "扣减"], horizontal=True)
     adjustment_columns = {
         "日期": st.column_config.DateColumn("日期", required=True),
+        "品牌": st.column_config.SelectboxColumn("品牌", options=brands, required=False),
         "材质": st.column_config.SelectboxColumn("材质", options=materials, required=True),
         "颜色": st.column_config.SelectboxColumn("颜色", options=colors, required=True),
     }
@@ -51,14 +54,14 @@ def render_adjust_form(supabase, inventory_df):
             if adjustment_df.empty:
                 st.warning("请先填写有效库存调整")
                 return
-            apply_adjustment_rows(supabase, adjustment_df)
+            apply_adjustment_rows(supabase, category, adjustment_df)
             st.success(f"已保存 {len(adjustment_df)} 条库存调整")
             st.rerun()
         except Exception as e:
             st.error(f"库存更新失败：{e}")
 
 
-def render_new_sku_form(supabase, inventory_df=None):
+def render_new_sku_form(supabase, category, inventory_df=None):
     st.subheader("新增 SKU")
     saved_message = st.session_state.pop("new_sku_saved_message", None)
     if saved_message:
@@ -85,8 +88,10 @@ def render_new_sku_form(supabase, inventory_df=None):
         default_df.loc[0, "日期"] = datetime.now(ZoneInfo("America/New_York")).date()
         default_df.loc[0, "材质"] = "180g"
         sku_columns = {"日期": st.column_config.DateColumn("日期", required=True)}
+        sku_columns["品牌"] = st.column_config.TextColumn("品牌")
         sku_columns["材质"] = st.column_config.TextColumn("材质", required=True)
         sku_columns["颜色"] = st.column_config.TextColumn("颜色", required=True)
+        sku_columns["成本"] = st.column_config.NumberColumn("成本", min_value=0, step=0.01)
         for size in SIZE_COLUMNS:
             sku_columns[size] = st.column_config.NumberColumn(size, min_value=0, step=1)
         sku_df = st.data_editor(
@@ -104,19 +109,19 @@ def render_new_sku_form(supabase, inventory_df=None):
                 st.warning("请先填写有效 SKU")
                 return
             if inventory_df is not None and not inventory_df.empty:
-                existing_keys = set(zip(inventory_df["材质"], inventory_df["颜色"]))
+                existing_keys = set(zip(inventory_df["品牌"], inventory_df["材质"], inventory_df["颜色"]))
                 original_count = len(cleaned_df)
                 cleaned_df = cleaned_df[
-                    ~cleaned_df.apply(lambda row: (row["材质"], row["颜色"]) in existing_keys, axis=1)
+                    ~cleaned_df.apply(lambda row: (row["品牌"], row["材质"], row["颜色"]) in existing_keys, axis=1)
                 ]
                 if cleaned_df.empty:
-                    st.warning("这些材质和颜色已经存在，请不要重复新增 SKU")
+                    st.warning("这些品牌、材质和颜色已经存在，请不要重复新增 SKU")
                     return
                 skipped_count = original_count - len(cleaned_df)
             else:
                 skipped_count = 0
 
-            apply_sku_rows(supabase, cleaned_df)
+            apply_sku_rows(supabase, category, cleaned_df)
             message = f"已保存 {len(cleaned_df)} 条新 SKU，库存明细已刷新"
             if skipped_count:
                 message += f"，已跳过 {skipped_count} 条已存在 SKU"
@@ -127,7 +132,7 @@ def render_new_sku_form(supabase, inventory_df=None):
             st.error(f"新增 SKU 失败：{e}")
 
 
-def render_excel_adjustment(supabase):
+def render_excel_adjustment(supabase, category):
     st.subheader("Excel 库存调整")
 
     st.download_button(
@@ -154,7 +159,7 @@ def render_excel_adjustment(supabase):
     st.dataframe(adjustment_df, hide_index=True, use_container_width=True)
     if st.button("确认导入库存调整", use_container_width=True):
         try:
-            apply_adjustment_rows(supabase, adjustment_df)
+            apply_adjustment_rows(supabase, category, adjustment_df)
             st.success(f"已导入 {len(adjustment_df)} 条库存调整")
             st.rerun()
         except Exception as e:
