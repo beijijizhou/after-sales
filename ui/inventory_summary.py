@@ -1,4 +1,6 @@
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 
@@ -33,6 +35,8 @@ def render_inventory_metrics(inventory_df):
 
 def render_inventory_table(inventory_df):
     st.subheader("彩色 T-shirt 库存明细")
+    current_date = datetime.now(ZoneInfo("America/New_York")).date()
+    st.info(f"当前日期：{current_date}")
     st.dataframe(
         inventory_df, hide_index=True, use_container_width=True,
         column_config={
@@ -59,7 +63,7 @@ def render_inventory_summary(supabase):
             render_adjust_form(supabase, inventory_df)
         with st.expander("新增 SKU"):
             render_new_sku_form(supabase, inventory_df)
-        if st.button("查看库存 / SKU 历史", use_container_width=True):
+        if st.button("按日期查看库存 / SKU 历史", use_container_width=True):
             st.session_state["show_inventory_history"] = True
         if st.session_state.get("show_inventory_history"):
             render_inventory_history(supabase)
