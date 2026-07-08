@@ -10,14 +10,16 @@ OTHER_CLIENT = "小平台"
 UNKNOWN_PLATFORM = "未标记平台"
 
 
-def get_date_range(selected_date):
+def get_date_range(selected_date, snapshot_at=None):
     start_at = datetime.combine(selected_date, time.min, tzinfo=NY_TIMEZONE)
     end_at = datetime.combine(selected_date + timedelta(days=1), time.min, tzinfo=NY_TIMEZONE)
+    if snapshot_at is not None and selected_date == snapshot_at.date():
+        end_at = min(end_at, snapshot_at)
     return start_at.isoformat(), end_at.isoformat()
 
 
-def load_daily_production_rows(supabase, selected_date, user_column):
-    start_at, end_at = get_date_range(selected_date)
+def load_daily_production_rows(supabase, selected_date, user_column, snapshot_at=None):
+    start_at, end_at = get_date_range(selected_date, snapshot_at)
     rows = []
     page_size = 1000
     offset = 0
@@ -25,8 +27,10 @@ def load_daily_production_rows(supabase, selected_date, user_column):
     while True:
         response = (
             supabase.table("barcode_scans")
-            .select(f"barcode,{user_column},scanned_at,platform,multiple_count")
+            .select(f"id,barcode,{user_column},scanned_at,platform,multiple_count")
             .gte("scanned_at", start_at).lt("scanned_at", end_at)
+            .order("scanned_at", desc=False)
+            .order("id", desc=False)
             .range(offset, offset + page_size - 1).execute()
         )
 
@@ -36,7 +40,33 @@ def load_daily_production_rows(supabase, selected_date, user_column):
             break
         offset += page_size
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    if "id" in df.columns:
+        df = df.drop_duplicates(subset=["id"])
+    return df
+
+
+def load_person_platform_summary_rows(supabase, selected_date, user_column, snapshot_at=None):
+    function_name_by_user_column = {
+        "scanned_by": "get_daily_qa_person_platform_summary",
+        "hotstamp_by": "get_daily_hotstamp_person_platform_summary",
+    }
+    function_name = function_name_by_user_column.get(user_column)
+    if function_name is None:
+        return pd.DataFrame()
+
+    response = (
+        supabase
+        .rpc(
+            function_name,
+            {
+                "target_date": selected_date.isoformat(),
+                "snapshot_at": snapshot_at.isoformat() if snapshot_at else None,
+            }
+        )
+        .execute()
+    )
+    return pd.DataFrame(response.data)
 
 
 def normalize_platform(platform):
@@ -165,6 +195,82 @@ def build_person_platform_summary(df, user_column):
         "Haloo 数量", "Haloo 占比", *detail_columns,
     ]
 
+    return (
+        pivot_df[ordered_columns]
+        .sort_values("Haloo 占比", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def build_person_platform_summary_from_rpc(df):
+    required_columns = {
+        "person", "platform", "scan_count", "multiple_order_count",
+        "first_scan_at", "last_scan_at",
+    }
+    if df.empty or not required_columns.issubset(df.columns):
+        return pd.DataFrame()
+
+    summary_df = df.copy()
+    summary_df["platform"] = summary_df["platform"].apply(normalize_platform)
+    summary_df["scan_count"] = pd.to_numeric(summary_df["scan_count"], errors="coerce").fillna(0).astype(int)
+    summary_df["multiple_order_count"] = (
+        pd.to_numeric(summary_df["multiple_order_count"], errors="coerce").fillna(0).astype(int)
+    )
+    pivot_df = (
+        summary_df
+        .pivot_table(
+            index="person",
+            columns="platform",
+            values="scan_count",
+            fill_value=0,
+            aggfunc="sum",
+        )
+        .reset_index()
+        .rename(columns={"person": "人员"})
+    )
+    platform_columns = [column for column in pivot_df.columns if column != "人员"]
+    pivot_df["总生产数量"] = pivot_df[platform_columns].sum(axis=1)
+
+    multiple_orders = (
+        summary_df
+        .groupby("person", as_index=False)["multiple_order_count"]
+        .sum()
+        .rename(columns={"person": "人员", "multiple_order_count": "多件订单数量"})
+    )
+    pivot_df = pivot_df.merge(multiple_orders, on="人员", how="left")
+
+    time_df = summary_df.copy()
+    time_df["first_scan_at"] = pd.to_datetime(time_df["first_scan_at"], errors="coerce", utc=True)
+    time_df["last_scan_at"] = pd.to_datetime(time_df["last_scan_at"], errors="coerce", utc=True)
+    working_hours = (
+        time_df
+        .groupby("person", as_index=False)
+        .agg(first_scan_at=("first_scan_at", "min"), last_scan_at=("last_scan_at", "max"))
+    )
+    working_hours["working_hours"] = (
+        working_hours["last_scan_at"] - working_hours["first_scan_at"]
+    ).dt.total_seconds() / 3600
+    pivot_df = pivot_df.merge(
+        working_hours.rename(columns={"person": "人员"})[["人员", "working_hours"]],
+        on="人员",
+        how="left",
+    )
+    pivot_df["时产量"] = (
+        pivot_df["总生产数量"] / pivot_df["working_hours"]
+    ).replace([float("inf"), -float("inf")], 0).fillna(0).round(1)
+
+    if HALOO_PLATFORM not in pivot_df.columns:
+        pivot_df[HALOO_PLATFORM] = 0
+    pivot_df["Haloo 数量"] = pivot_df[HALOO_PLATFORM]
+    pivot_df["Haloo 占比"] = (
+        pivot_df["Haloo 数量"] / pivot_df["总生产数量"] * 100
+    ).fillna(0).round(1)
+
+    detail_columns = [column for column in platform_columns if column != HALOO_PLATFORM]
+    ordered_columns = [
+        "人员", "总生产数量", "多件订单数量", "时产量",
+        "Haloo 数量", "Haloo 占比", *detail_columns,
+    ]
     return (
         pivot_df[ordered_columns]
         .sort_values("Haloo 占比", ascending=False)

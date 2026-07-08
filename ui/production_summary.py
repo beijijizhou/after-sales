@@ -1,10 +1,15 @@
+from datetime import datetime
+
 import altair as alt
 import streamlit as st
 
 from utils.production_helpers import (
+    NY_TIMEZONE,
     build_person_platform_summary,
+    build_person_platform_summary_from_rpc,
     get_working_hours,
     load_daily_production_rows,
+    load_person_platform_summary_rows,
     prepare_production_df,
     summarize_by_hour,
     summarize_by_user,
@@ -131,9 +136,13 @@ def render_hourly_production(hourly_summary):
 
 def render_production_summary(supabase, selected_date, title, user_column):
     st.title(title)
+    snapshot_at = None
+    if selected_date == datetime.now(NY_TIMEZONE).date():
+        snapshot_at = datetime.now(NY_TIMEZONE)
+        st.caption(f"统计截止时间：{snapshot_at.strftime('%Y-%m-%d %H:%M:%S')} NY")
 
     try:
-        raw_df = load_daily_production_rows(supabase, selected_date, user_column)
+        raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
         if raw_df.empty:
             st.warning(f"{selected_date.isoformat()} 没有生产数据")
             st.stop()
@@ -144,7 +153,15 @@ def render_production_summary(supabase, selected_date, title, user_column):
             st.stop()
 
         user_summary = summarize_by_user(df, user_column)
-        person_platform_summary = build_person_platform_summary(df, user_column)
+        try:
+            person_platform_summary = build_person_platform_summary_from_rpc(
+                load_person_platform_summary_rows(supabase, selected_date, user_column, snapshot_at)
+            )
+            if person_platform_summary.empty:
+                raise ValueError("empty database summary")
+        except Exception:
+            st.warning("人员平台明细正在使用旧算法。请在 Supabase SQL Editor 运行 sql/production_summary_functions.sql")
+            person_platform_summary = build_person_platform_summary(df, user_column)
         hourly_summary = summarize_by_hour(df, selected_date)
         working_hours = get_working_hours(df)
 

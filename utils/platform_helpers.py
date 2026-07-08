@@ -8,14 +8,20 @@ def load_daily_platform_rows(supabase, selected_date, columns="platform"):
     rows = []
     page_size = 1000
     offset = 0
+    selected_columns = columns
+    for stable_column in ["id", "scanned_at"]:
+        if stable_column not in selected_columns.split(","):
+            selected_columns = f"{stable_column},{selected_columns}"
 
     while True:
         query = (
             supabase
             .table("barcode_scans")
-            .select(columns)
+            .select(selected_columns)
             .gte("scanned_at", start_at)
             .lt("scanned_at", end_at)
+            .order("scanned_at", desc=False)
+            .order("id", desc=False)
             .range(offset, offset + page_size - 1)
         )
         response = query.execute()
@@ -57,10 +63,12 @@ def load_daily_single_platform_rows(supabase, selected_date, platform):
         response = (
             supabase
             .table("barcode_scans")
-            .select("barcode,platform,scanned_at,multiple_count")
+            .select("id,barcode,platform,scanned_at,multiple_count")
             .gte("scanned_at", start_at)
             .lt("scanned_at", end_at)
             .eq("platform", platform)
+            .order("scanned_at", desc=False)
+            .order("id", desc=False)
             .range(offset, offset + page_size - 1)
             .execute()
         )
