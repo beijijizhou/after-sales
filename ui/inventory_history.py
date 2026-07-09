@@ -26,7 +26,8 @@ def render_movement_table(movement_df):
         return
 
     display_df = format_date_columns(movement_df, ["movement_date", "created_at"]).rename(columns={
-        "材质": "材质",
+        "brand": "品牌",
+        "material": "材质",
         "color": "颜色",
         "size": "尺码",
         "quantity_change": "变动数量",
@@ -56,7 +57,7 @@ def render_sku_import_table(sku_import_df):
     display_df = (
         import_df
         .pivot_table(
-            index=["import_date", "品牌", "材质", "color", "成本"],
+            index=["import_date", "brand", "material", "color"],
             columns="size",
             values="initial_quantity",
             aggfunc="sum",
@@ -65,20 +66,21 @@ def render_sku_import_table(sku_import_df):
         .reset_index()
         .rename(columns={
             "import_date": "日期",
+            "brand": "品牌",
+            "material": "材质",
             "color": "颜色",
         })
     )
     for size in SIZE_COLUMNS:
         if size not in display_df.columns:
             display_df[size] = 0
-    display_df = display_df[["日期", "品牌", "材质", "颜色", "成本", *SIZE_COLUMNS]]
+    display_df = display_df[["日期", "品牌", "材质", "颜色", *SIZE_COLUMNS]]
     st.dataframe(
         display_df,
         hide_index=True,
         use_container_width=True,
         column_config={
             "日期": st.column_config.DateColumn("日期"),
-            "成本": st.column_config.NumberColumn("成本"),
             **{size: st.column_config.NumberColumn(size) for size in SIZE_COLUMNS},
         },
     )
@@ -114,9 +116,9 @@ def get_history_date(movement_df, sku_import_df):
     return st.date_input("选择历史日期", value=default_date, key="inventory_history_date")
 
 
-def render_inventory_history(supabase, category):
-    movement_df = load_inventory_movements(supabase, category, limit=500)
-    sku_import_df = load_sku_imports(supabase, category, limit=500)
+def render_inventory_history(supabase, department, category):
+    movement_df = load_inventory_movements(supabase, department, category, limit=500)
+    sku_import_df = load_sku_imports(supabase, department, category, limit=500)
     selected_date = get_history_date(movement_df, sku_import_df)
     dated_movement_df = format_date_columns(movement_df, ["movement_date"])
     dated_sku_import_df = format_date_columns(sku_import_df, ["import_date"])

@@ -2,15 +2,20 @@ from datetime import date
 
 import pandas as pd
 
-from db.inventory import DEFAULT_CATEGORY, SIZE_COLUMNS
+from db.inventory import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT, SIZE_COLUMNS
 
 
-def load_sku_imports(supabase, category=DEFAULT_CATEGORY, limit=200):
-    response = (
+def load_sku_imports(supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY, limit=200):
+    query = (
         supabase
         .table("inventory_sku_imports")
-        .select("品牌,材质,color,size,initial_quantity,成本,import_date,created_at")
-        .eq("category", category)
+        .select("department,category,brand,material,color,size,initial_quantity,unit_cost,import_date,created_at")
+        .eq("department", department)
+    )
+    if category:
+        query = query.eq("category", category)
+    response = (
+        query
         .order("import_date", desc=True)
         .order("created_at", desc=True)
         .limit(limit)
@@ -19,7 +24,9 @@ def load_sku_imports(supabase, category=DEFAULT_CATEGORY, limit=200):
     return pd.DataFrame(response.data)
 
 
-def create_inventory_item(supabase, category, brand, material, color, size, quantity=0, unit_cost=0, import_date=None):
+def create_inventory_item(supabase, department, category, brand, material, color, size, quantity=0, unit_cost=0, import_date=None):
+    department = str(department).strip()
+    category = None if pd.isna(category) or str(category).strip() == "" else str(category).strip()
     brand = "" if pd.isna(brand) else str(brand).strip()
     material = str(material).strip()
     color = str(color).strip()
@@ -30,29 +37,35 @@ def create_inventory_item(supabase, category, brand, material, color, size, quan
     response = (
         supabase
         .table("inventory_items")
-        .upsert(
+        .insert(
             {
+                "department": department,
                 "category": category,
-                "品牌": brand,
-                "材质": material,
+                "brand": brand,
+                "material": material,
                 "color": color,
                 "size": size,
-                "成本": unit_cost,
+                "unit_cost": unit_cost,
                 "quantity": quantity,
-            },
-            on_conflict="category,品牌,材质,color,size",
-            ignore_duplicates=True,
+                "品牌": brand,
+                "材质": material,
+                "成本": unit_cost,
+            }
         )
         .execute()
     )
     try:
         supabase.table("inventory_sku_imports").insert({
+            "department": department,
             "category": category,
-            "品牌": brand,
-            "材质": material,
+            "brand": brand,
+            "material": material,
             "color": color,
             "size": size,
             "initial_quantity": quantity,
+            "unit_cost": unit_cost,
+            "品牌": brand,
+            "材质": material,
             "成本": unit_cost,
             "import_date": import_date.isoformat(),
         }).execute()
@@ -163,10 +176,11 @@ def parse_sku_file(uploaded_file):
     return normalize_sku_rows(df)
 
 
-def apply_sku_rows(supabase, category, df):
+def apply_sku_rows(supabase, department, category, df):
     for row in df.to_dict("records"):
         create_inventory_item(
             supabase=supabase,
+            department=department,
             category=category,
             brand=row["品牌"],
             material=row["材质"],

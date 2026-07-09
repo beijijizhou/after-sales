@@ -19,7 +19,7 @@ from db.inventory_sku import (
 )
 
 
-def render_adjust_form(supabase, category, inventory_df):
+def render_adjust_form(supabase, department, category, inventory_df):
     st.subheader("手动库存调整")
 
     brand_values = sorted(inventory_df["品牌"].unique().tolist()) if not inventory_df.empty else []
@@ -54,22 +54,28 @@ def render_adjust_form(supabase, category, inventory_df):
             if adjustment_df.empty:
                 st.warning("请先填写有效库存调整")
                 return
-            apply_adjustment_rows(supabase, category, adjustment_df)
+            apply_adjustment_rows(supabase, department, category, adjustment_df)
             st.success(f"已保存 {len(adjustment_df)} 条库存调整")
             st.rerun()
         except Exception as e:
             st.error(f"库存更新失败：{e}")
 
 
-def render_new_sku_form(supabase, category, inventory_df=None):
+def render_new_sku_form(supabase, department, category, inventory_df=None):
     st.subheader("新增 SKU")
     saved_message = st.session_state.pop("new_sku_saved_message", None)
     if saved_message:
         st.success(saved_message)
     form_version = st.session_state.get("new_sku_editor_version", 0)
+    with st.expander("内部字段", expanded=False):
+        show_cost = st.checkbox("启用成本列", value=False, key="show_new_sku_cost")
+
+    template_df = build_sku_template()
+    if not show_cost:
+        template_df = template_df.drop(columns=["成本"])
 
     st.download_button(
-        "下载新增 SKU 模板", data=build_sku_template().to_csv(index=False).encode("utf-8-sig"),
+        "下载新增 SKU 模板", data=template_df.to_csv(index=False).encode("utf-8-sig"),
         file_name="新增SKU模板.csv", mime="text/csv", use_container_width=True,
     )
     uploaded_file = st.file_uploader(
@@ -87,11 +93,14 @@ def render_new_sku_form(supabase, category, inventory_df=None):
         default_df = build_sku_template()
         default_df.loc[0, "日期"] = datetime.now(ZoneInfo("America/New_York")).date()
         default_df.loc[0, "材质"] = "180g"
+        if not show_cost:
+            default_df = default_df.drop(columns=["成本"])
         sku_columns = {"日期": st.column_config.DateColumn("日期", required=True)}
         sku_columns["品牌"] = st.column_config.TextColumn("品牌")
         sku_columns["材质"] = st.column_config.TextColumn("材质", required=True)
         sku_columns["颜色"] = st.column_config.TextColumn("颜色", required=True)
-        sku_columns["成本"] = st.column_config.NumberColumn("成本", min_value=0, step=0.01)
+        if show_cost:
+            sku_columns["成本"] = st.column_config.NumberColumn("成本", min_value=0, step=0.01)
         for size in SIZE_COLUMNS:
             sku_columns[size] = st.column_config.NumberColumn(size, min_value=0, step=1)
         sku_df = st.data_editor(
@@ -101,7 +110,8 @@ def render_new_sku_form(supabase, category, inventory_df=None):
         )
 
     if uploaded_file is not None:
-        st.dataframe(sku_df, hide_index=True, use_container_width=True)
+        preview_df = sku_df if show_cost or "成本" not in sku_df.columns else sku_df.drop(columns=["成本"])
+        st.dataframe(preview_df, hide_index=True, use_container_width=True)
     if st.button("保存新增 SKU", use_container_width=True):
         try:
             cleaned_df = normalize_sku_rows(sku_df)
@@ -121,7 +131,7 @@ def render_new_sku_form(supabase, category, inventory_df=None):
             else:
                 skipped_count = 0
 
-            apply_sku_rows(supabase, category, cleaned_df)
+            apply_sku_rows(supabase, department, category, cleaned_df)
             message = f"已保存 {len(cleaned_df)} 条新 SKU，库存明细已刷新"
             if skipped_count:
                 message += f"，已跳过 {skipped_count} 条已存在 SKU"
@@ -132,7 +142,7 @@ def render_new_sku_form(supabase, category, inventory_df=None):
             st.error(f"新增 SKU 失败：{e}")
 
 
-def render_excel_adjustment(supabase, category):
+def render_excel_adjustment(supabase, department, category):
     st.subheader("Excel 库存调整")
 
     st.download_button(
@@ -159,7 +169,7 @@ def render_excel_adjustment(supabase, category):
     st.dataframe(adjustment_df, hide_index=True, use_container_width=True)
     if st.button("确认导入库存调整", use_container_width=True):
         try:
-            apply_adjustment_rows(supabase, category, adjustment_df)
+            apply_adjustment_rows(supabase, department, category, adjustment_df)
             st.success(f"已导入 {len(adjustment_df)} 条库存调整")
             st.rerun()
         except Exception as e:

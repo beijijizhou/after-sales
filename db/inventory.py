@@ -2,6 +2,7 @@ import pandas as pd
 
 
 DEFAULT_CATEGORY = "黑白短袖"
+DEFAULT_DEPARTMENT = "DTF"
 CATEGORY = DEFAULT_CATEGORY
 INVENTORY_CATEGORIES = ["彩色短袖", "黑白短袖", "卫衣"]
 SIZE_COLUMNS = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
@@ -9,23 +10,49 @@ BLACK_WHITE_MATERIAL_ORDER = {"180g": 0, "160g": 1, "CVC": 2}
 BLACK_WHITE_COLOR_ORDER = {"黑": 0, "白": 1}
 
 
-def load_inventory_items(supabase, category=DEFAULT_CATEGORY):
+def load_inventory_departments(supabase):
     response = (
         supabase
         .table("inventory_items")
-        .select("category,品牌,材质,color,size,成本,quantity,updated_at")
-        .eq("category", category)
+        .select("department")
         .execute()
     )
+    df = pd.DataFrame(response.data)
+    if df.empty or "department" not in df.columns:
+        return [DEFAULT_DEPARTMENT]
+
+    departments = sorted({
+        str(value).strip()
+        for value in df["department"].dropna()
+        if str(value).strip()
+    })
+    return departments or [DEFAULT_DEPARTMENT]
+
+
+def load_inventory_items(supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY):
+    query = (
+        supabase
+        .table("inventory_items")
+        .select("department,category,brand,material,color,size,unit_cost,quantity,updated_at")
+        .eq("department", department)
+    )
+    if category:
+        query = query.eq("category", category)
+    response = query.execute()
     return pd.DataFrame(response.data)
 
 
-def load_inventory_movements(supabase, category=DEFAULT_CATEGORY, limit=20):
-    response = (
+def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY, limit=20):
+    query = (
         supabase
         .table("inventory_movements")
-        .select("品牌,材质,color,size,quantity_change,quantity_after,movement_date,reason,created_at")
-        .eq("category", category)
+        .select("department,category,brand,material,color,size,quantity_change,quantity_after,movement_date,reason,created_at")
+        .eq("department", department)
+    )
+    if category:
+        query = query.eq("category", category)
+    response = (
+        query
         .order("movement_date", desc=True)
         .order("created_at", desc=True)
         .limit(limit)
@@ -34,12 +61,13 @@ def load_inventory_movements(supabase, category=DEFAULT_CATEGORY, limit=20):
     return pd.DataFrame(response.data)
 
 
-def adjust_inventory(supabase, category, brand, material, color, size, quantity_change, reason, movement_date):
+def adjust_inventory(supabase, department, category, brand, material, color, size, quantity_change, reason, movement_date):
     response = (
         supabase
         .rpc(
             "adjust_inventory_stock",
             {
+                "p_department": department,
                 "p_category": category,
                 "p_brand": brand,
                 "p_material": material,
@@ -135,11 +163,12 @@ def parse_adjustment_file(uploaded_file):
     return normalize_adjustment_rows(df)
 
 
-def apply_adjustment_rows(supabase, category, df):
+def apply_adjustment_rows(supabase, department, category, df):
     for row in df.to_dict("records"):
         quantity_change = int(row["数量"]) if row["操作"] == "增加" else -int(row["数量"])
         adjust_inventory(
             supabase=supabase,
+            department=department,
             category=category,
             brand=row["品牌"],
             material=row["材质"],
@@ -159,7 +188,7 @@ def sort_inventory_table(df, category):
     sorted_df["_material_order"] = sorted_df["材质"].map(BLACK_WHITE_MATERIAL_ORDER).fillna(99)
     sorted_df["_color_order"] = sorted_df["颜色"].map(BLACK_WHITE_COLOR_ORDER).fillna(99)
     sorted_df = sorted_df.sort_values(
-        ["_material_order", "_color_order", "品牌", "成本"],
+        ["_material_order", "_color_order", "品牌"],
         kind="stable",
     )
     return sorted_df.drop(columns=["_material_order", "_color_order"])
@@ -167,20 +196,28 @@ def sort_inventory_table(df, category):
 
 def build_inventory_table(df, category=DEFAULT_CATEGORY):
     if df.empty:
-        return pd.DataFrame(columns=["品牌", "材质", "颜色", "成本", *SIZE_COLUMNS, "总库存"])
+        return pd.DataFrame(columns=["品类", "品牌", "材质", "颜色", *SIZE_COLUMNS, "总库存"])
 
     inventory_df = df.copy()
-    if "成本" not in inventory_df.columns:
-        inventory_df["成本"] = 0
-    if "品牌" not in inventory_df.columns:
-        inventory_df["品牌"] = ""
-    inventory_df["品牌"] = inventory_df["品牌"].fillna("").astype(str)
-    inventory_df["成本"] = pd.to_numeric(inventory_df["成本"], errors="coerce").fillna(0)
+    if "category" not in inventory_df.columns:
+        inventory_df["category"] = ""
+    if "brand" not in inventory_df.columns:
+        inventory_df["brand"] = ""
+    if "material" not in inventory_df.columns:
+        inventory_df["material"] = ""
+    inventory_df["brand"] = inventory_df["brand"].fillna("").astype(str)
+    inventory_df["material"] = inventory_df["material"].fillna("").astype(str)
+    inventory_df["category"] = inventory_df["category"].fillna("").astype(str)
     pivot_df = (
         inventory_df
-        .pivot_table(index=["品牌", "材质", "color", "成本"], columns="size", values="quantity", fill_value=0)
+        .pivot_table(index=["category", "brand", "material", "color"], columns="size", values="quantity", fill_value=0)
         .reset_index()
-        .rename(columns={"color": "颜色"})
+        .rename(columns={
+            "category": "品类",
+            "brand": "品牌",
+            "material": "材质",
+            "color": "颜色",
+        })
     )
     for size in SIZE_COLUMNS:
         if size not in pivot_df.columns:
@@ -188,7 +225,7 @@ def build_inventory_table(df, category=DEFAULT_CATEGORY):
         pivot_df[size] = pd.to_numeric(pivot_df[size], errors="coerce").fillna(0).astype(int)
 
     pivot_df["总库存"] = pivot_df[SIZE_COLUMNS].sum(axis=1)
-    display_df = pivot_df[["品牌", "材质", "颜色", "成本", *SIZE_COLUMNS, "总库存"]]
+    display_df = pivot_df[["品类", "品牌", "材质", "颜色", *SIZE_COLUMNS, "总库存"]]
     return sort_inventory_table(display_df, category).reset_index(drop=True)
 
 
