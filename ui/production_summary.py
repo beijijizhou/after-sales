@@ -3,6 +3,7 @@ from datetime import datetime
 import altair as alt
 import streamlit as st
 
+from utils.multiple_count_helpers import refresh_multiple_counts
 from utils.production_helpers import (
     NY_TIMEZONE,
     build_person_platform_summary,
@@ -14,6 +15,21 @@ from utils.production_helpers import (
     summarize_by_hour,
     summarize_by_user,
 )
+
+
+def render_refresh_multiple_counts_button(supabase, selected_date):
+    if st.button("刷新当前日期多件订单", use_container_width=True):
+        try:
+            with st.spinner(f"正在刷新 {selected_date.isoformat()} 多件订单..."):
+                refresh_multiple_counts(supabase, selected_date)
+            st.success("多件订单已刷新")
+            st.rerun()
+        except Exception as e:
+            st.error(f"多件订单刷新失败：{e}")
+            if "statement timeout" in str(e):
+                st.info("数据库刷新超时。请在 Supabase SQL Editor 重新运行最新版 sql/refresh_barcode_multiple_counts.sql 后再试。")
+            else:
+                st.info("请先在 Supabase SQL Editor 运行 sql/refresh_barcode_multiple_counts.sql")
 
 
 def render_kpis(user_summary, working_hours):
@@ -136,6 +152,7 @@ def render_hourly_production(hourly_summary):
 
 def render_production_summary(supabase, selected_date, title, user_column):
     st.title(title)
+    render_refresh_multiple_counts_button(supabase, selected_date)
     snapshot_at = None
     if selected_date == datetime.now(NY_TIMEZONE).date():
         snapshot_at = datetime.now(NY_TIMEZONE)
