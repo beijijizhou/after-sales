@@ -124,10 +124,11 @@ def create_inventory_containers(supabase, df):
     return response.data
 
 
-def build_container_display(df):
+def build_container_display(df, include_cost=False):
     if df.empty:
+        cost_columns = ["成本"] if include_cost else []
         return pd.DataFrame(columns=[
-            "批次标识", "预计到货日期", "货柜号", "部门", "品类", "品牌", "材质", "颜色",
+            "批次标识", "预计到货日期", "货柜号", "部门", "品类", "品牌", "材质", "颜色", *cost_columns,
             *SIZE_COLUMNS, "总件数", "状态", "备注",
         ])
 
@@ -146,7 +147,7 @@ def build_container_display(df):
         .pivot_table(
             index=[
                 "expected_arrival_date", "container_no", "department", "category", "brand",
-                "material", "color", "status", "note",
+                "material", "color", *(["unit_cost"] if include_cost else []), "status", "note",
             ],
             columns="size",
             values="quantity",
@@ -169,6 +170,7 @@ def build_container_display(df):
         "brand": "品牌",
         "material": "材质",
         "color": "颜色",
+        "unit_cost": "成本",
         "status": "状态",
         "note": "备注",
     })
@@ -178,7 +180,8 @@ def build_container_display(df):
         lambda row: row["货柜号"] or f"{row['预计到货日期']}-{row['总件数']}",
         axis=1,
     )
+    cost_columns = ["成本"] if include_cost else []
     return pivot_df[[
         "批次标识", "预计到货日期", "货柜号", "部门", "品类", "品牌", "材质", "颜色",
-        *SIZE_COLUMNS, "总件数", "状态", "备注",
+        *cost_columns, *SIZE_COLUMNS, "总件数", "状态", "备注",
     ]]

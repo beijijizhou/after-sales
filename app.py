@@ -6,7 +6,15 @@ import pandas as pd
 from after_sales_table import sales_table
 from ui.after_sales_ui import render_after_sales_section
 from ui import search_ui
+from utils.auth import can_access_page, render_navigation
 from utils import exact_match, fuzzy_match
+
+render_navigation()
+
+if not can_access_page("app"):
+    st.title("生产数据")
+    st.info("请从左侧选择可以查看的页面。售后查询仅限售后和管理员账号使用。")
+    st.stop()
 
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]

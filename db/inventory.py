@@ -187,18 +187,21 @@ def sort_inventory_table(df, category):
     sorted_df = df.copy()
     sorted_df["_material_order"] = sorted_df["材质"].map(BLACK_WHITE_MATERIAL_ORDER).fillna(99)
     sorted_df["_color_order"] = sorted_df["颜色"].map(BLACK_WHITE_COLOR_ORDER).fillna(99)
-    sorted_df = sorted_df.sort_values(
-        ["_material_order", "_color_order", "品牌"],
-        kind="stable",
-    )
+    sort_columns = ["_material_order", "_color_order", "品牌"]
+    if "成本" in sorted_df.columns:
+        sort_columns.append("成本")
+    sorted_df = sorted_df.sort_values(sort_columns, kind="stable")
     return sorted_df.drop(columns=["_material_order", "_color_order"])
 
 
-def build_inventory_table(df, category=DEFAULT_CATEGORY):
+def build_inventory_table(df, category=DEFAULT_CATEGORY, include_cost=False):
     if df.empty:
-        return pd.DataFrame(columns=["品类", "品牌", "材质", "颜色", *SIZE_COLUMNS, "总库存"])
+        cost_columns = ["成本"] if include_cost else []
+        return pd.DataFrame(columns=["品类", "品牌", "材质", "颜色", *cost_columns, *SIZE_COLUMNS, "总库存"])
 
     inventory_df = df.copy()
+    if include_cost and "unit_cost" not in inventory_df.columns:
+        inventory_df["unit_cost"] = 0
     if "category" not in inventory_df.columns:
         inventory_df["category"] = ""
     if "brand" not in inventory_df.columns:
@@ -208,15 +211,21 @@ def build_inventory_table(df, category=DEFAULT_CATEGORY):
     inventory_df["brand"] = inventory_df["brand"].fillna("").astype(str)
     inventory_df["material"] = inventory_df["material"].fillna("").astype(str)
     inventory_df["category"] = inventory_df["category"].fillna("").astype(str)
+    if include_cost:
+        inventory_df["unit_cost"] = pd.to_numeric(inventory_df["unit_cost"], errors="coerce").fillna(0)
+    index_columns = ["category", "brand", "material", "color"]
+    if include_cost:
+        index_columns.append("unit_cost")
     pivot_df = (
         inventory_df
-        .pivot_table(index=["category", "brand", "material", "color"], columns="size", values="quantity", fill_value=0)
+        .pivot_table(index=index_columns, columns="size", values="quantity", fill_value=0)
         .reset_index()
         .rename(columns={
             "category": "品类",
             "brand": "品牌",
             "material": "材质",
             "color": "颜色",
+            "unit_cost": "成本",
         })
     )
     for size in SIZE_COLUMNS:
@@ -225,7 +234,8 @@ def build_inventory_table(df, category=DEFAULT_CATEGORY):
         pivot_df[size] = pd.to_numeric(pivot_df[size], errors="coerce").fillna(0).astype(int)
 
     pivot_df["总库存"] = pivot_df[SIZE_COLUMNS].sum(axis=1)
-    display_df = pivot_df[["品类", "品牌", "材质", "颜色", *SIZE_COLUMNS, "总库存"]]
+    cost_columns = ["成本"] if include_cost else []
+    display_df = pivot_df[["品类", "品牌", "材质", "颜色", *cost_columns, *SIZE_COLUMNS, "总库存"]]
     return sort_inventory_table(display_df, category).reset_index(drop=True)
 
 

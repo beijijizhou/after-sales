@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from db.after_sale import save_after_sales_batch
+from utils.auth import has_permission
 
 
 
@@ -13,6 +14,10 @@ def render_after_sales_section():
 
     if df is None:
         st.info("请先查询数据，再保存售后记录。")
+        return
+
+    if not has_permission("can_input_after_sales"):
+        st.info("当前账号只能查看售后数据，不能保存售后记录")
         return
 
     reason = st.text_area("原因（选填）")

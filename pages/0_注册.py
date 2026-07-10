@@ -1,8 +1,14 @@
 import streamlit as st
 
 from db.supabase_client import supabase
+from utils.auth import has_permission, require_page_access
+
+require_page_access("register")
 
 st.title("注册新员工")
+can_register = has_permission("can_register")
+if not can_register:
+    st.info("当前账号只能查看，不能新增或修改员工资料")
 
 name = st.text_input("人名")
 
@@ -27,7 +33,7 @@ password = st.text_input(
     disabled=not is_qa
 )
 
-if st.button("注册"):
+if st.button("注册", disabled=not can_register):
 
     data = {
         "name": name,

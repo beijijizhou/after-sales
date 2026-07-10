@@ -6,6 +6,7 @@ import streamlit as st
 
 from db.inventory import SIZE_COLUMNS, build_daily_movement_summary, load_inventory_movements
 from db.inventory_sku import load_sku_imports
+from utils.auth import has_permission
 
 
 def format_date_columns(df, date_columns):
@@ -54,10 +55,14 @@ def render_sku_import_table(sku_import_df):
         return
 
     import_df = format_date_columns(sku_import_df, ["import_date"])
+    include_cost = has_permission("can_view_cost")
+    index_columns = ["import_date", "brand", "material", "color"]
+    if include_cost:
+        index_columns.append("unit_cost")
     display_df = (
         import_df
         .pivot_table(
-            index=["import_date", "brand", "material", "color"],
+            index=index_columns,
             columns="size",
             values="initial_quantity",
             aggfunc="sum",
@@ -69,20 +74,26 @@ def render_sku_import_table(sku_import_df):
             "brand": "品牌",
             "material": "材质",
             "color": "颜色",
+            "unit_cost": "成本",
         })
     )
     for size in SIZE_COLUMNS:
         if size not in display_df.columns:
             display_df[size] = 0
-    display_df = display_df[["日期", "品牌", "材质", "颜色", *SIZE_COLUMNS]]
+    cost_columns = ["成本"] if include_cost else []
+    display_df = display_df[["日期", "品牌", "材质", "颜色", *cost_columns, *SIZE_COLUMNS]]
+    column_config = {
+        "日期": st.column_config.DateColumn("日期"),
+        **{size: st.column_config.NumberColumn(size) for size in SIZE_COLUMNS},
+    }
+    if "成本" in display_df.columns:
+        column_config["成本"] = st.column_config.NumberColumn("成本", format="%.2f")
+
     st.dataframe(
         display_df,
         hide_index=True,
         use_container_width=True,
-        column_config={
-            "日期": st.column_config.DateColumn("日期"),
-            **{size: st.column_config.NumberColumn(size) for size in SIZE_COLUMNS},
-        },
+        column_config=column_config,
     )
 
 

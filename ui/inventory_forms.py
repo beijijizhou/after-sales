@@ -17,6 +17,7 @@ from db.inventory_sku import (
     normalize_sku_rows,
     parse_sku_file,
 )
+from utils.auth import has_permission
 
 
 def render_adjust_form(supabase, department, category, inventory_df):
@@ -67,8 +68,11 @@ def render_new_sku_form(supabase, department, category, inventory_df=None):
     if saved_message:
         st.success(saved_message)
     form_version = st.session_state.get("new_sku_editor_version", 0)
-    with st.expander("内部字段", expanded=False):
-        show_cost = st.checkbox("启用成本列", value=False, key="show_new_sku_cost")
+    can_view_cost = has_permission("can_view_cost")
+    show_cost = False
+    if can_view_cost:
+        with st.expander("内部字段", expanded=False):
+            show_cost = st.checkbox("启用成本列", value=True, key="show_new_sku_cost")
 
     template_df = build_sku_template()
     if not show_cost:

@@ -25,6 +25,7 @@ from ui.inventory_consumption import (
     render_reorder_forecast,
 )
 from ui.inventory_history import render_inventory_history
+from utils.auth import has_permission
 
 
 def render_setup_help():
@@ -69,13 +70,14 @@ def render_inventory_table(category, inventory_df):
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
     st.info(f"当前日期：{current_date}")
 
-    st.dataframe(
-        inventory_df, hide_index=True, use_container_width=True,
-        column_config={
-            "总库存": st.column_config.NumberColumn("总库存", format="%d"),
-            **{size: st.column_config.NumberColumn(size, format="%d") for size in SIZE_COLUMNS},
-        },
-    )
+    column_config = {
+        "总库存": st.column_config.NumberColumn("总库存", format="%d"),
+        **{size: st.column_config.NumberColumn(size, format="%d") for size in SIZE_COLUMNS},
+    }
+    if "成本" in inventory_df.columns:
+        column_config["成本"] = st.column_config.NumberColumn("成本", format="%.2f")
+
+    st.dataframe(inventory_df, hide_index=True, use_container_width=True, column_config=column_config)
 
 
 def render_inventory_summary(supabase):
@@ -86,7 +88,7 @@ def render_inventory_summary(supabase):
 
     try:
         raw_df = load_inventory_items(supabase, department, category)
-        inventory_df = build_inventory_table(raw_df, category)
+        inventory_df = build_inventory_table(raw_df, category, include_cost=has_permission("can_view_cost"))
         if inventory_df.empty:
             st.warning("暂无库存数据")
 
@@ -96,11 +98,14 @@ def render_inventory_summary(supabase):
         order_quantity, arrival_date, buffer_days = render_consumption_planning_inputs(category)
         render_consumption_model(supabase, category, order_quantity)
         render_reorder_forecast(supabase, category, inventory_df, order_quantity, arrival_date, buffer_days)
-        render_excel_adjustment(supabase, department, category)
-        with st.expander("少量手动调整"):
-            render_adjust_form(supabase, department, category, inventory_df)
-        with st.expander("新增 SKU"):
-            render_new_sku_form(supabase, department, category, inventory_df)
+        if has_permission("can_edit_inventory"):
+            render_excel_adjustment(supabase, department, category)
+            with st.expander("少量手动调整"):
+                render_adjust_form(supabase, department, category, inventory_df)
+            with st.expander("新增 SKU"):
+                render_new_sku_form(supabase, department, category, inventory_df)
+        else:
+            st.info("当前账号只能查看库存，不能修改库存")
         if st.button("按日期查看库存 / SKU 历史", use_container_width=True):
             st.session_state["show_inventory_history"] = True
         if st.session_state.get("show_inventory_history"):
