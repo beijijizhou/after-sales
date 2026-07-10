@@ -1,19 +1,25 @@
 from datetime import datetime
 
 import altair as alt
+import pandas as pd
 import streamlit as st
 
 from utils.multiple_count_helpers import refresh_multiple_counts
 from utils.production_helpers import (
     NY_TIMEZONE,
+    build_person_switch_table,
     build_person_platform_summary,
     build_person_platform_summary_from_rpc,
     get_working_hours,
+    load_hourly_summary_rows,
+    load_hourly_person_client_rows,
     load_daily_production_rows,
     load_person_platform_summary_rows,
     prepare_production_df,
+    summarize_hourly_from_rpc,
     summarize_by_hour,
     summarize_by_user,
+    summarize_by_user_from_rpc,
 )
 
 
@@ -55,6 +61,18 @@ def render_kpis(user_summary, working_hours):
         delta=f"按 {average_people} 人计算",
         delta_color="off"
     )
+
+
+def get_working_hours_from_user_summary(user_summary):
+    if user_summary.empty or "working_hours" not in user_summary.columns:
+        return 0
+
+    valid_hours = (
+        user_summary["working_hours"]
+        .replace([float("inf"), -float("inf")], 0)
+        .fillna(0)
+    )
+    return float(valid_hours.max()) if not valid_hours.empty else 0
 
 
 def render_person_platform_table(person_platform_summary, title):
@@ -150,6 +168,22 @@ def render_hourly_production(hourly_summary):
     st.altair_chart((total_bar + haloo_bar).properties(height=360), use_container_width=True)
 
 
+def render_person_switch_table(person_switch_df):
+    if person_switch_df.empty:
+        return
+
+    st.subheader("人员平台切换分析")
+    st.dataframe(
+        person_switch_df,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "切换次数": st.column_config.NumberColumn("切换次数", format="%d"),
+            "切换路径": st.column_config.TextColumn("切换路径", width="large"),
+        },
+    )
+
+
 def render_production_summary(supabase, selected_date, title, user_column):
     st.title(title)
     render_refresh_multiple_counts_button(supabase, selected_date)
@@ -159,32 +193,56 @@ def render_production_summary(supabase, selected_date, title, user_column):
         st.caption(f"统计截止时间：{snapshot_at.strftime('%Y-%m-%d %H:%M:%S')} NY")
 
     try:
-        raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
-        if raw_df.empty:
-            st.warning(f"{selected_date.isoformat()} 没有生产数据")
-            st.stop()
-
-        df = prepare_production_df(raw_df, user_column)
-        if df.empty:
-            st.warning(f"{selected_date.isoformat()} 没有{title}人员数据")
-            st.stop()
-
-        user_summary = summarize_by_user(df, user_column)
         try:
-            person_platform_summary = build_person_platform_summary_from_rpc(
-                load_person_platform_summary_rows(supabase, selected_date, user_column, snapshot_at)
+            rpc_summary_rows = load_person_platform_summary_rows(
+                supabase, selected_date, user_column, snapshot_at
             )
+            person_platform_summary = build_person_platform_summary_from_rpc(
+                rpc_summary_rows
+            )
+            user_summary = summarize_by_user_from_rpc(rpc_summary_rows)
+            hourly_summary = summarize_hourly_from_rpc(
+                load_hourly_summary_rows(supabase, selected_date, user_column, snapshot_at),
+                selected_date,
+            )
+            hourly_person_rows = load_hourly_person_client_rows(
+                supabase, selected_date, user_column, snapshot_at
+            )
+            person_switch_df = build_person_switch_table(hourly_person_rows)
             if person_platform_summary.empty:
                 raise ValueError("empty database summary")
+            if user_summary.empty:
+                raise ValueError("empty user summary")
         except Exception:
-            st.warning("人员平台明细正在使用旧算法。请在 Supabase SQL Editor 运行 sql/production_summary_functions.sql")
+            st.warning("生产统计正在使用旧算法。请在 Supabase SQL Editor 运行最新版 sql/production_summary_functions.sql")
+            raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
+            if raw_df.empty:
+                st.warning(f"{selected_date.isoformat()} 没有生产数据")
+                st.stop()
+
+            df = prepare_production_df(raw_df, user_column)
+            if df.empty:
+                st.warning(f"{selected_date.isoformat()} 没有{title}人员数据")
+                st.stop()
+
+            user_summary = summarize_by_user(df, user_column)
             person_platform_summary = build_person_platform_summary(df, user_column)
-        hourly_summary = summarize_by_hour(df, selected_date)
-        working_hours = get_working_hours(df)
+            hourly_summary = summarize_by_hour(df, selected_date)
+            person_switch_df = pd.DataFrame()
+            working_hours = get_working_hours(df)
+        else:
+            working_hours = get_working_hours_from_user_summary(user_summary)
+            if hourly_summary.empty:
+                st.warning("每小时产量正在使用旧算法。请在 Supabase SQL Editor 运行最新版 sql/production_summary_functions.sql")
+                raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
+                df = prepare_production_df(raw_df, user_column)
+                hourly_summary = summarize_by_hour(df, selected_date)
+                person_switch_df = pd.DataFrame()
 
         render_kpis(user_summary, working_hours)
         render_person_platform_table(person_platform_summary, title)
         render_hourly_production(hourly_summary)
+        render_person_switch_table(person_switch_df)
 
     except Exception as e:
         st.error(f"数据加载失败：{e}")

@@ -69,6 +69,52 @@ def load_person_platform_summary_rows(supabase, selected_date, user_column, snap
     return pd.DataFrame(response.data)
 
 
+def load_hourly_summary_rows(supabase, selected_date, user_column, snapshot_at=None):
+    function_name_by_user_column = {
+        "scanned_by": "get_daily_qa_hourly_summary",
+        "hotstamp_by": "get_daily_hotstamp_hourly_summary",
+    }
+    function_name = function_name_by_user_column.get(user_column)
+    if function_name is None:
+        return pd.DataFrame()
+
+    response = (
+        supabase
+        .rpc(
+            function_name,
+            {
+                "target_date": selected_date.isoformat(),
+                "snapshot_at": snapshot_at.isoformat() if snapshot_at else None,
+            }
+        )
+        .execute()
+    )
+    return pd.DataFrame(response.data)
+
+
+def load_hourly_person_client_rows(supabase, selected_date, user_column, snapshot_at=None):
+    function_name_by_user_column = {
+        "scanned_by": "get_daily_qa_hourly_person_client_summary",
+        "hotstamp_by": "get_daily_hotstamp_hourly_person_client_summary",
+    }
+    function_name = function_name_by_user_column.get(user_column)
+    if function_name is None:
+        return pd.DataFrame()
+
+    response = (
+        supabase
+        .rpc(
+            function_name,
+            {
+                "target_date": selected_date.isoformat(),
+                "snapshot_at": snapshot_at.isoformat() if snapshot_at else None,
+            }
+        )
+        .execute()
+    )
+    return pd.DataFrame(response.data)
+
+
 def normalize_platform(platform):
     platform = str(platform).strip()
     if not platform or platform.lower() in {"nan", "none", "null"}:
@@ -274,6 +320,204 @@ def build_person_platform_summary_from_rpc(df):
     return (
         pivot_df[ordered_columns]
         .sort_values("Haloo 占比", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def summarize_by_user_from_rpc(df):
+    required_columns = {
+        "person", "scan_count", "multiple_order_count",
+        "first_scan_at", "last_scan_at",
+    }
+    if df.empty or not required_columns.issubset(df.columns):
+        return pd.DataFrame()
+
+    summary_df = df.copy()
+    summary_df["scan_count"] = pd.to_numeric(summary_df["scan_count"], errors="coerce").fillna(0).astype(int)
+    summary_df["multiple_order_count"] = (
+        pd.to_numeric(summary_df["multiple_order_count"], errors="coerce").fillna(0).astype(int)
+    )
+    user_df = (
+        summary_df
+        .groupby("person", as_index=False)
+        .agg(
+            scan_count=("scan_count", "sum"),
+            multiple_order_count=("multiple_order_count", "sum"),
+            first_scan_at=("first_scan_at", "min"),
+            last_scan_at=("last_scan_at", "max"),
+        )
+        .rename(columns={"person": "name"})
+    )
+    user_df["first_scan_at"] = pd.to_datetime(user_df["first_scan_at"], errors="coerce", utc=True)
+    user_df["last_scan_at"] = pd.to_datetime(user_df["last_scan_at"], errors="coerce", utc=True)
+    user_df["working_hours"] = (
+        user_df["last_scan_at"] - user_df["first_scan_at"]
+    ).dt.total_seconds() / 3600
+    return user_df.sort_values("scan_count", ascending=False).reset_index(drop=True)
+
+
+def summarize_hourly_from_rpc(df, selected_date):
+    required_columns = {"hour_start_at", "scan_count", "haloo_count"}
+    if df.empty or not required_columns.issubset(df.columns):
+        return pd.DataFrame()
+
+    hourly_df = df.copy()
+    hourly_df["hour"] = pd.to_datetime(hourly_df["hour_start_at"], errors="coerce", utc=True).dt.tz_convert(NY_TIMEZONE)
+    hourly_df = hourly_df.dropna(subset=["hour"])
+    hourly_df["scan_count"] = pd.to_numeric(hourly_df["scan_count"], errors="coerce").fillna(0).astype(int)
+    hourly_df["haloo_count"] = pd.to_numeric(hourly_df["haloo_count"], errors="coerce").fillna(0).astype(int)
+    hourly_df = hourly_df[["hour", "scan_count", "haloo_count"]]
+    if hourly_df.empty:
+        return pd.DataFrame()
+
+    hourly_df = (
+        pd.DataFrame({"hour": get_hour_range(hourly_df, selected_date)})
+        .merge(hourly_df, on="hour", how="left")
+        .fillna({"scan_count": 0, "haloo_count": 0})
+    )
+    hourly_df["scan_count"] = hourly_df["scan_count"].astype(int)
+    hourly_df["haloo_count"] = hourly_df["haloo_count"].astype(int)
+    hourly_df["haloo_percentage"] = (
+        hourly_df["haloo_count"] / hourly_df["scan_count"] * 100
+    ).fillna(0)
+    return hourly_df
+
+
+def build_hourly_person_client_table(df):
+    required_columns = {"hour_start_at", "person", "haloo_count", "other_count", "total_count"}
+    if df.empty or not required_columns.issubset(df.columns):
+        return pd.DataFrame()
+
+    display_df = df.copy()
+    display_df["hour"] = pd.to_datetime(
+        display_df["hour_start_at"], errors="coerce", utc=True
+    ).dt.tz_convert(NY_TIMEZONE)
+    display_df = display_df.dropna(subset=["hour"])
+    display_df["小时"] = display_df["hour"].dt.strftime("%H:00")
+    display_df["Haloo"] = pd.to_numeric(display_df["haloo_count"], errors="coerce").fillna(0).astype(int)
+    display_df["小平台"] = pd.to_numeric(display_df["other_count"], errors="coerce").fillna(0).astype(int)
+    display_df["总产量"] = pd.to_numeric(display_df["total_count"], errors="coerce").fillna(0).astype(int)
+    display_df["Haloo 占比"] = (
+        display_df["Haloo"] / display_df["总产量"] * 100
+    ).fillna(0).round(1)
+    display_df["主要工作"] = display_df.apply(
+        lambda row: HALOO_PLATFORM if row["Haloo"] >= row["小平台"] else OTHER_CLIENT,
+        axis=1,
+    )
+
+    def format_people(rows, count_column):
+        rows = rows.sort_values(count_column, ascending=False)
+        return "\n".join(
+            f"{row['person']} {int(row[count_column])}"
+            for _, row in rows.iterrows()
+            if int(row[count_column]) > 0
+        )
+
+    hourly_rows = []
+    for hour, hour_df in display_df.groupby("小时", sort=True):
+        haloo_df = hour_df[hour_df["Haloo"] > 0]
+        other_df = hour_df[hour_df["小平台"] > 0]
+        haloo_count = int(hour_df["Haloo"].sum())
+        other_count = int(hour_df["小平台"].sum())
+        total_count = int(hour_df["总产量"].sum())
+        hourly_rows.append({
+            "小时": hour,
+            "Haloo 人员": format_people(haloo_df, "Haloo"),
+            "小平台人员": format_people(other_df, "小平台"),
+            "Haloo": haloo_count,
+            "小平台": other_count,
+            "总产量": total_count,
+            "Haloo 占比": round(haloo_count / total_count * 100, 1) if total_count else 0,
+        })
+
+    return pd.DataFrame(hourly_rows)
+
+
+def build_person_switch_table(df):
+    required_columns = {"hour_start_at", "person", "haloo_count", "other_count", "total_count"}
+    if df.empty or not required_columns.issubset(df.columns):
+        return pd.DataFrame()
+
+    switch_df = df.copy()
+    switch_df["hour"] = pd.to_datetime(
+        switch_df["hour_start_at"], errors="coerce", utc=True
+    ).dt.tz_convert(NY_TIMEZONE)
+    switch_df = switch_df.dropna(subset=["hour"])
+    switch_df["Haloo"] = pd.to_numeric(switch_df["haloo_count"], errors="coerce").fillna(0).astype(int)
+    switch_df["小平台"] = pd.to_numeric(switch_df["other_count"], errors="coerce").fillna(0).astype(int)
+    switch_df["总产量"] = pd.to_numeric(switch_df["total_count"], errors="coerce").fillna(0).astype(int)
+    switch_df = switch_df[switch_df["总产量"] > 0]
+    if switch_df.empty:
+        return pd.DataFrame()
+
+    switch_df["主要工作"] = switch_df.apply(
+        lambda row: HALOO_PLATFORM if row["Haloo"] >= row["小平台"] else OTHER_CLIENT,
+        axis=1,
+    )
+    switch_rows = []
+    for person, person_df in switch_df.sort_values("hour").groupby("person", sort=False):
+        work_path = person_df["主要工作"].tolist()
+        compressed_path = []
+        for work in work_path:
+            if not compressed_path or compressed_path[-1] != work:
+                compressed_path.append(work)
+
+        period_rows = []
+        current_work = None
+        period_count = 0
+
+        for _, row in person_df.sort_values("hour").iterrows():
+            row_work = row["主要工作"]
+            if current_work is None:
+                current_work = row_work
+            elif row_work != current_work:
+                period_rows.append({
+                    "work": current_work,
+                    "count": period_count,
+                })
+                current_work = row_work
+                period_count = 0
+
+            if row_work == HALOO_PLATFORM:
+                period_count += int(row["Haloo"])
+            else:
+                period_count += int(row["小平台"])
+
+        if current_work is not None:
+            period_rows.append({
+                "work": current_work,
+                "count": period_count,
+            })
+
+        period_detail = " -> ".join(
+            f"{row['work']}（{row['count']}）"
+            for row in period_rows
+        )
+
+        switch_count = max(len(compressed_path) - 1, 0)
+        haloo_count = int(person_df["Haloo"].sum())
+        other_count = int(person_df["小平台"].sum())
+        sort_count = haloo_count + other_count
+        if switch_count <= 2:
+            risk = "正常"
+        elif switch_count <= 4:
+            risk = "注意"
+        else:
+            risk = "频繁切换"
+
+        switch_rows.append({
+            "人员": person,
+            "切换次数": switch_count,
+            "切换路径": period_detail,
+            "风险": risk,
+            "_sort_count": sort_count,
+        })
+
+    result_df = pd.DataFrame(switch_rows)
+    return (
+        result_df
+        .sort_values(["切换次数", "_sort_count"], ascending=[False, False])
+        .drop(columns=["_sort_count"])
         .reset_index(drop=True)
     )
 
