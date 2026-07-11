@@ -2,7 +2,12 @@ from datetime import date
 
 import pandas as pd
 
-from db.inventory import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT, SIZE_COLUMNS
+from db.inventory import (
+    DEFAULT_CATEGORY,
+    DEFAULT_DEPARTMENT,
+    SIZE_COLUMNS,
+    create_inventory_snapshot,
+)
 
 
 def load_sku_imports(supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY, limit=200):
@@ -190,3 +195,5 @@ def apply_sku_rows(supabase, department, category, df):
             unit_cost=row["成本"],
             import_date=row["日期"],
         )
+    for import_date in sorted(df["日期"].dropna().unique()):
+        create_inventory_snapshot(supabase, department, category, import_date)
