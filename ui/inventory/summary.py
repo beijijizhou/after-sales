@@ -16,19 +16,19 @@ from db.inventory import (
     load_inventory_movements,
     load_inventory_snapshot,
 )
-from db.inventory_sku import load_sku_imports
-from ui.inventory_forms import (
+from db.inventory.sku import load_sku_imports
+from ui.inventory.forms import (
     render_adjust_form,
     render_excel_adjustment,
     render_new_sku_form,
 )
-from ui.inventory_consumption import (
+from ui.inventory.consumption import (
     render_black_white_color_summary,
     render_consumption_model,
     render_consumption_planning_inputs,
     render_reorder_forecast,
 )
-from ui.inventory_history import render_inventory_history
+from ui.inventory.history import render_inventory_history
 from utils.auth import has_permission
 
 

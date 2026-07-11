@@ -11,7 +11,7 @@ from db.inventory import (
     normalize_adjustment_rows,
     parse_adjustment_file,
 )
-from db.inventory_sku import (
+from db.inventory.sku import (
     apply_sku_rows,
     build_sku_template,
     normalize_sku_rows,

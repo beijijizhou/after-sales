@@ -4,13 +4,13 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS, build_color_inventory_table
-from db.inventory_consumption import (
+from db.inventory.consumption import (
     DEFAULT_ORDER_QUANTITY,
     build_consumption_model_table,
-    build_inventory_consumption_alerts,
     load_consumption_model,
     scale_consumption_model,
 )
+from db.inventory.consumption_alerts import build_inventory_consumption_alerts
 
 
 def render_consumption_planning_inputs(category):

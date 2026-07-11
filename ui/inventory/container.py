@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from db.inventory import DEFAULT_DEPARTMENT, INVENTORY_CATEGORIES, SIZE_COLUMNS
-from db.inventory_container import (
+from db.inventory.container import (
     CONTAINER_STATUSES,
     build_container_display,
     build_container_template,
