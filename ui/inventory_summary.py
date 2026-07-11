@@ -10,6 +10,7 @@ from db.inventory import (
     INVENTORY_CATEGORIES,
     SIZE_COLUMNS,
     build_inventory_table,
+    get_inventory_last_updated,
     load_inventory_departments,
     load_inventory_items,
 )
@@ -65,10 +66,15 @@ def render_inventory_metrics(inventory_df):
     col2.metric("当前表颜色数", color_count)
 
 
-def render_inventory_table(category, inventory_df):
-    st.subheader(f"{category} 库存明细")
+def render_inventory_table(category, inventory_df, last_updated):
+    title_category = category or "全部品类"
+    st.subheader(f"{title_category} 库存明细")
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
-    st.info(f"当前日期：{current_date}")
+    updated_text = last_updated.isoformat() if last_updated else "暂无更新记录"
+
+    col1, col2 = st.columns(2)
+    col1.metric("当前日期", current_date.isoformat())
+    col2.metric("当前表上次更新", updated_text)
 
     column_config = {
         "总库存": st.column_config.NumberColumn("总库存", format="%d"),
@@ -77,11 +83,21 @@ def render_inventory_table(category, inventory_df):
     if "成本" in inventory_df.columns:
         column_config["成本"] = st.column_config.NumberColumn("成本", format="%.2f")
 
-    st.dataframe(inventory_df, hide_index=True, use_container_width=True, column_config=column_config)
+    table_height = min(max((len(inventory_df) + 1) * 35 + 8, 220), 900)
+    st.dataframe(
+        inventory_df,
+        hide_index=True,
+        use_container_width=True,
+        column_config=column_config,
+        height=table_height,
+    )
 
 
 def render_inventory_summary(supabase):
     st.title("库存")
+    saved_message = st.session_state.pop("inventory_saved_message", None)
+    if saved_message:
+        st.success(saved_message)
     department = render_department_selector(supabase)
     category = render_category_selector(department)
     st.session_state["inventory_today"] = datetime.now(ZoneInfo("America/New_York")).date()
@@ -89,10 +105,11 @@ def render_inventory_summary(supabase):
     try:
         raw_df = load_inventory_items(supabase, department, category)
         inventory_df = build_inventory_table(raw_df, category, include_cost=has_permission("can_view_cost"))
+        last_updated = get_inventory_last_updated(raw_df)
         if inventory_df.empty:
             st.warning("暂无库存数据")
 
-        render_inventory_table(category, inventory_df)
+        render_inventory_table(category, inventory_df, last_updated)
         render_inventory_metrics(inventory_df)
         render_black_white_color_summary(category, inventory_df)
         order_quantity, arrival_date, buffer_days = render_consumption_planning_inputs(category)
@@ -106,10 +123,7 @@ def render_inventory_summary(supabase):
                 render_new_sku_form(supabase, department, category, inventory_df)
         else:
             st.info("当前账号只能查看库存，不能修改库存")
-        if st.button("按日期查看库存 / SKU 历史", use_container_width=True):
-            st.session_state["show_inventory_history"] = True
-        if st.session_state.get("show_inventory_history"):
-            render_inventory_history(supabase, department, category)
+        render_inventory_history(supabase, department, category)
 
     except Exception as e:
         st.error(f"库存数据加载失败：{e}")

@@ -23,13 +23,18 @@ from utils.auth import has_permission
 def render_adjust_form(supabase, department, category, inventory_df):
     st.subheader("手动库存调整")
 
+    current_date = datetime.now(ZoneInfo("America/New_York")).date()
+    form_version = st.session_state.get("manual_adjustment_editor_version", 0)
     brand_values = sorted(inventory_df["品牌"].unique().tolist()) if not inventory_df.empty else []
     brands = list(dict.fromkeys(["", *brand_values]))
     materials = sorted(inventory_df["材质"].unique().tolist()) if not inventory_df.empty else ["180g"]
     colors = sorted(inventory_df["颜色"].unique().tolist()) if not inventory_df.empty else []
     default_df = build_wide_adjustment_template()
-    default_df.loc[0, "日期"] = datetime.now(ZoneInfo("America/New_York")).date()
+    default_df.loc[0, "日期"] = current_date
     default_df.loc[0, "材质"] = "180g"
+    show_cost = has_permission("can_view_cost")
+    if show_cost:
+        default_df.insert(4, "成本", None)
     action = st.radio("操作", ["增加", "扣减"], horizontal=True)
     adjustment_columns = {
         "日期": st.column_config.DateColumn("日期", required=True),
@@ -37,6 +42,8 @@ def render_adjust_form(supabase, department, category, inventory_df):
         "材质": st.column_config.SelectboxColumn("材质", options=materials, required=True),
         "颜色": st.column_config.SelectboxColumn("颜色", options=colors, required=True),
     }
+    if show_cost:
+        adjustment_columns["成本"] = st.column_config.NumberColumn("成本", min_value=0, step=0.01)
     for size in SIZE_COLUMNS:
         adjustment_columns[size] = st.column_config.NumberColumn(size, min_value=0, step=1)
     adjustment_columns["备注"] = st.column_config.TextColumn("备注")
@@ -46,7 +53,7 @@ def render_adjust_form(supabase, department, category, inventory_df):
         num_rows="dynamic",
         use_container_width=True,
         column_config=adjustment_columns,
-        key="manual_inventory_adjustments",
+        key=f"manual_inventory_adjustments_{current_date.isoformat()}_{form_version}",
     )
     if st.button("保存手动库存调整", use_container_width=True):
         try:
@@ -55,8 +62,14 @@ def render_adjust_form(supabase, department, category, inventory_df):
             if adjustment_df.empty:
                 st.warning("请先填写有效库存调整")
                 return
+            if not show_cost and "成本" in adjustment_df.columns:
+                adjustment_df = adjustment_df.drop(columns=["成本"])
             apply_adjustment_rows(supabase, department, category, adjustment_df)
-            st.success(f"已保存 {len(adjustment_df)} 条库存调整")
+            st.session_state["inventory_saved_message"] = (
+                f"已保存 {len(adjustment_df)} 条库存调整，库存明细已刷新"
+            )
+            st.session_state["manual_adjustment_editor_version"] = form_version + 1
+            st.session_state.pop("inventory_history_date", None)
             st.rerun()
         except Exception as e:
             st.error(f"库存更新失败：{e}")

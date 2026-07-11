@@ -1,4 +1,5 @@
 import pandas as pd
+from zoneinfo import ZoneInfo
 
 
 DEFAULT_CATEGORY = "黑白短袖"
@@ -61,25 +62,47 @@ def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=D
     return pd.DataFrame(response.data)
 
 
-def adjust_inventory(supabase, department, category, brand, material, color, size, quantity_change, reason, movement_date):
-    response = (
-        supabase
-        .rpc(
-            "adjust_inventory_stock",
-            {
-                "p_department": department,
-                "p_category": category,
-                "p_brand": brand,
-                "p_material": material,
-                "p_color": color,
-                "p_size": size,
-                "p_quantity_change": quantity_change,
-                "p_reason": reason,
-                "p_movement_date": movement_date.isoformat(),
-            }
-        )
-        .execute()
-    )
+def get_inventory_last_updated(df):
+    if df.empty or "updated_at" not in df.columns:
+        return None
+
+    updated_at = pd.to_datetime(df["updated_at"], errors="coerce", utc=True).dropna()
+    if updated_at.empty:
+        return None
+
+    return updated_at.max().tz_convert(ZoneInfo("America/New_York")).date()
+
+
+def adjust_inventory(
+    supabase,
+    department,
+    category,
+    brand,
+    material,
+    color,
+    size,
+    quantity_change,
+    reason,
+    movement_date,
+    unit_cost=None,
+):
+    params = {
+        "p_department": department,
+        "p_category": category,
+        "p_brand": brand,
+        "p_material": material,
+        "p_color": color,
+        "p_size": size,
+        "p_quantity_change": quantity_change,
+        "p_reason": reason,
+        "p_movement_date": movement_date.isoformat(),
+    }
+    function_name = "adjust_inventory_stock"
+    if unit_cost is not None:
+        function_name = "adjust_inventory_stock_with_cost"
+        params["p_unit_cost"] = float(unit_cost)
+
+    response = supabase.rpc(function_name, params).execute()
     return response.data
 
 
@@ -108,19 +131,22 @@ def normalize_wide_adjustment_rows(df):
     if "备注" not in df.columns:
         df["备注"] = ""
     df["备注"] = df["备注"].fillna("").astype(str).str.strip()
+    if "成本" not in df.columns:
+        df["成本"] = pd.NA
+    df["成本"] = pd.to_numeric(df["成本"], errors="coerce")
     for size in SIZE_COLUMNS:
         df[size] = pd.to_numeric(df[size], errors="coerce").fillna(0).astype(int)
 
     df = df.dropna(subset=["日期"])
     df = df[(df["材质"] != "") & (df["颜色"] != "") & (df["操作"].isin(["增加", "扣减"]))]
     adjustment_df = df.melt(
-        id_vars=["日期", "操作", "品牌", "材质", "颜色", "备注"],
+        id_vars=["日期", "操作", "品牌", "材质", "颜色", "成本", "备注"],
         value_vars=SIZE_COLUMNS,
         var_name="尺码",
         value_name="数量",
     )
     adjustment_df = adjustment_df[adjustment_df["数量"] > 0]
-    return adjustment_df[["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "备注"]].reset_index(drop=True)
+    return adjustment_df[["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "成本", "备注"]].reset_index(drop=True)
 
 
 def normalize_adjustment_rows(df):
@@ -145,13 +171,16 @@ def normalize_adjustment_rows(df):
     if "备注" not in df.columns:
         df["备注"] = ""
     df["备注"] = df["备注"].fillna("").astype(str).str.strip()
+    if "成本" not in df.columns:
+        df["成本"] = pd.NA
+    df["成本"] = pd.to_numeric(df["成本"], errors="coerce")
 
     df = df.dropna(subset=["日期"])
     df = df[df["数量"] > 0]
     df = df[df["操作"].isin(["增加", "扣减"])]
     df = df[df["材质"] != ""]
     df = df[df["尺码"].isin(SIZE_COLUMNS)]
-    return df[["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "备注"]].reset_index(drop=True)
+    return df[["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "成本", "备注"]].reset_index(drop=True)
 
 
 def parse_adjustment_file(uploaded_file):
@@ -177,6 +206,7 @@ def apply_adjustment_rows(supabase, department, category, df):
             quantity_change=quantity_change,
             reason=row["备注"],
             movement_date=row["日期"],
+            unit_cost=None if pd.isna(row.get("成本")) else row.get("成本"),
         )
 
 
@@ -262,14 +292,23 @@ def build_color_inventory_table(inventory_df):
 
 def build_daily_movement_summary(df):
     if df.empty or "movement_date" not in df.columns:
-        return pd.DataFrame(columns=["日期", "入库", "消耗", "净变动"])
+        return pd.DataFrame(columns=["日期", "部门", "品类", "入库", "消耗", "净变动"])
 
     movement_df = df.copy()
+    if "department" not in movement_df.columns:
+        movement_df["department"] = ""
+    if "category" not in movement_df.columns:
+        movement_df["category"] = ""
+    movement_df["department"] = movement_df["department"].fillna("").astype(str)
+    movement_df["category"] = movement_df["category"].fillna("").astype(str)
+    movement_df["quantity_change"] = pd.to_numeric(
+        movement_df["quantity_change"], errors="coerce"
+    ).fillna(0).astype(int)
     movement_df["inbound"] = movement_df["quantity_change"].clip(lower=0)
     movement_df["outbound"] = movement_df["quantity_change"].clip(upper=0).abs()
     summary = (
         movement_df
-        .groupby("movement_date", as_index=False)
+        .groupby(["movement_date", "department", "category"], as_index=False)
         .agg(
             inbound=("inbound", "sum"),
             outbound=("outbound", "sum"),
@@ -277,6 +316,8 @@ def build_daily_movement_summary(df):
         )
         .rename(columns={
             "movement_date": "日期",
+            "department": "部门",
+            "category": "品类",
             "inbound": "入库",
             "outbound": "消耗",
             "net_change": "净变动",

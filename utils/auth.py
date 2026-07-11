@@ -50,6 +50,9 @@ NAV_ITEMS = [
 ]
 
 
+AUTH_QUERY_KEY = "auth"
+
+
 def hash_password(password):
     salt = base64.urlsafe_b64encode(os.urandom(16)).decode("utf-8").rstrip("=")
     iterations = 260000
@@ -85,6 +88,8 @@ def verify_password(password, stored_hash):
 
 
 def get_current_user():
+    restore_user_from_query()
+    ensure_persistent_login_query()
     return st.session_state.get("current_user")
 
 
@@ -124,11 +129,7 @@ def load_user(username):
     return response.data[0]
 
 
-def login_user(username, password):
-    user = load_user(username.strip())
-    if not user or not verify_password(password, user.get("password_hash")):
-        return False
-
+def set_current_user(user):
     role = user.get("role") or ROLE_VISITOR
     st.session_state["current_user"] = {
         "username": user["username"],
@@ -147,6 +148,100 @@ def login_user(username, password):
         "can_input_after_sales": bool(user.get("can_input_after_sales")),
         "can_view_cost": bool(user.get("can_view_cost")),
     }
+
+
+def get_auth_secret():
+    return str(st.secrets.get("AUTH_TOKEN_SECRET") or st.secrets.get("SUPABASE_KEY") or "after-sales")
+
+
+def build_auth_token(username):
+    username = str(username).strip()
+    signature = hmac.new(
+        get_auth_secret().encode("utf-8"),
+        username.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    payload = f"{username}:{signature}".encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("=")
+
+
+def parse_auth_token(token):
+    try:
+        padded_token = token + "=" * (-len(token) % 4)
+        payload = base64.urlsafe_b64decode(padded_token.encode("utf-8")).decode("utf-8")
+        username, signature = payload.rsplit(":", 1)
+        expected_signature = hmac.new(
+            get_auth_secret().encode("utf-8"),
+            username.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected_signature):
+            return None
+        return username
+    except Exception:
+        return None
+
+
+def get_query_value(key):
+    value = st.query_params.get(key)
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def persist_login(username):
+    st.query_params[AUTH_QUERY_KEY] = build_auth_token(username)
+    st.session_state["persistent_login_enabled"] = True
+
+
+def clear_persistent_login():
+    st.session_state.pop("persistent_login_enabled", None)
+    if AUTH_QUERY_KEY in st.query_params:
+        del st.query_params[AUTH_QUERY_KEY]
+
+
+def ensure_persistent_login_query():
+    user = st.session_state.get("current_user")
+    if not user or not st.session_state.get("persistent_login_enabled"):
+        return
+    if get_query_value(AUTH_QUERY_KEY):
+        return
+
+    persist_login(user["username"])
+
+
+def restore_user_from_query():
+    if st.session_state.get("current_user"):
+        return
+
+    token = get_query_value(AUTH_QUERY_KEY)
+    if not token:
+        return
+
+    username = parse_auth_token(token)
+    if not username:
+        clear_persistent_login()
+        return
+
+    user = load_user(username)
+    if not user:
+        clear_persistent_login()
+        return
+
+    set_current_user(user)
+    st.session_state["persistent_login_enabled"] = True
+
+
+def login_user(username, password, remember=False):
+    user = load_user(username.strip())
+    if not user or not verify_password(password, user.get("password_hash")):
+        return False
+
+    set_current_user(user)
+    if remember:
+        persist_login(user["username"])
+    else:
+        clear_persistent_login()
     return True
 
 
@@ -184,7 +279,7 @@ def render_login():
     )
     if st.button("登录", use_container_width=True):
         try:
-            if login_user(username, password):
+            if login_user(username, password, remember):
                 update_remembered_credentials(username, password, remember)
                 st.rerun()
             else:
@@ -221,7 +316,7 @@ def render_sidebar_login():
         )
         if st.button("登录", use_container_width=True, key="sidebar_login_button"):
             try:
-                if login_user(username, password):
+                if login_user(username, password, remember):
                     update_remembered_credentials(username, password, remember)
                     st.rerun()
                 else:
@@ -240,6 +335,7 @@ def render_user_badge():
         st.caption(f"{user['display_name']} · {user['role_label']}")
         if st.button("退出登录", use_container_width=True):
             st.session_state.pop("current_user", None)
+            clear_persistent_login()
             st.rerun()
 
 
