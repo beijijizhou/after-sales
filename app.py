@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 
 from after_sales_table import sales_table
+from db.after_sale import enrich_after_sales_status
 from ui.after_sales_ui import render_after_sales_section
 from ui import search_ui
 from utils.auth import can_access_page, render_navigation
@@ -78,9 +79,10 @@ if exact_search or like_search:
     if results:
 
         df = pd.DataFrame(results)
-        st.session_state["search_df"] = df
         # remove duplicate rows
         df = df.drop_duplicates()
+        df = enrich_after_sales_status(df)
+        st.session_state["search_df"] = df
 
         st.success(f"找到 {len(df)} 条记录")
 
