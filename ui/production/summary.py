@@ -45,19 +45,26 @@ def render_refresh_multiple_counts_button(supabase, selected_date):
 
 
 def load_rpc_summary(supabase, selected_date, user_column, snapshot_at):
-    rpc_summary_rows = load_person_platform_summary_rows(supabase, selected_date, user_column, snapshot_at)
-    person_platform_summary = build_person_platform_summary_from_rpc(rpc_summary_rows)
-    user_summary = summarize_by_user_from_rpc(rpc_summary_rows)
-    hourly_summary = summarize_hourly_from_rpc(
-        load_hourly_summary_rows(supabase, selected_date, user_column, snapshot_at),
-        selected_date,
+    rpc_summary_rows = load_person_platform_summary_rows(
+        supabase, selected_date, user_column, snapshot_at
     )
-    hourly_person_rows = load_hourly_person_client_rows(supabase, selected_date, user_column, snapshot_at)
-    person_switch_df = build_person_switch_table(hourly_person_rows)
+    if rpc_summary_rows.empty:
+        raise ValueError("人员平台汇总 RPC 返回空数据")
+
+    person_platform_summary = build_person_platform_summary_from_rpc(rpc_summary_rows)
     if person_platform_summary.empty:
-        raise ValueError("empty database summary")
+        raise ValueError(f"人员平台汇总字段不匹配：{list(rpc_summary_rows.columns)}")
+
+    user_summary = summarize_by_user_from_rpc(rpc_summary_rows)
     if user_summary.empty:
-        raise ValueError("empty user summary")
+        raise ValueError(f"人员汇总字段不匹配：{list(rpc_summary_rows.columns)}")
+
+    hourly_rows = load_hourly_summary_rows(supabase, selected_date, user_column, snapshot_at)
+    hourly_summary = summarize_hourly_from_rpc(hourly_rows, selected_date)
+    hourly_person_rows = load_hourly_person_client_rows(
+        supabase, selected_date, user_column, snapshot_at
+    )
+    person_switch_df = build_person_switch_table(hourly_person_rows)
     return user_summary, person_platform_summary, hourly_summary, person_switch_df
 
 
@@ -86,8 +93,11 @@ def resolve_production_summary(supabase, selected_date, title, user_column, snap
         user_summary, person_platform_summary, hourly_summary, person_switch_df = load_rpc_summary(
             supabase, selected_date, user_column, snapshot_at
         )
-    except Exception:
-        st.warning("生产统计正在使用旧算法。请在 Supabase SQL Editor 运行最新版 sql/production_summary_functions.sql")
+    except Exception as e:
+        if "RPC 返回空数据" in str(e):
+            return load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at)
+        st.warning("数据库汇总函数暂时不可用，当前使用明细数据计算。")
+        st.caption(f"RPC 详情：{e}")
         return load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at)
 
     working_hours = get_working_hours_from_user_summary(user_summary)

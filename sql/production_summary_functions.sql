@@ -1,3 +1,16 @@
+drop function if exists public.get_daily_qa_person_platform_summary(date, timestamptz);
+drop function if exists public.get_daily_qa_person_platform_summary(date);
+drop function if exists public.get_daily_hotstamp_person_platform_summary(date, timestamptz);
+drop function if exists public.get_daily_hotstamp_person_platform_summary(date);
+drop function if exists public.get_daily_qa_hourly_summary(date, timestamptz);
+drop function if exists public.get_daily_qa_hourly_summary(date);
+drop function if exists public.get_daily_hotstamp_hourly_summary(date, timestamptz);
+drop function if exists public.get_daily_hotstamp_hourly_summary(date);
+drop function if exists public.get_daily_qa_hourly_person_client_summary(date, timestamptz);
+drop function if exists public.get_daily_qa_hourly_person_client_summary(date);
+drop function if exists public.get_daily_hotstamp_hourly_person_client_summary(date, timestamptz);
+drop function if exists public.get_daily_hotstamp_hourly_person_client_summary(date);
+
 create or replace function public.get_daily_qa_person_platform_summary(
     target_date date,
     snapshot_at timestamptz default null

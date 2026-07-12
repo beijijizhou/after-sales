@@ -41,17 +41,10 @@ def load_daily_production_rows(supabase, selected_date, user_column, snapshot_at
 
 
 def load_summary_rpc(supabase, function_name, selected_date, snapshot_at=None):
-    response = (
-        supabase
-        .rpc(
-            function_name,
-            {
-                "target_date": selected_date.isoformat(),
-                "snapshot_at": snapshot_at.isoformat() if snapshot_at else None,
-            }
-        )
-        .execute()
-    )
+    params = {"target_date": selected_date.isoformat()}
+    if snapshot_at:
+        params["snapshot_at"] = snapshot_at.isoformat()
+    response = supabase.rpc(function_name, params).execute()
     return pd.DataFrame(response.data)
 
 
