@@ -18,7 +18,7 @@ def render_platform_summary(supabase, selected_date):
         raw_df = load_daily_platform_rows(
             supabase,
             selected_date,
-            columns="platform,barcode,multiple_count"
+            columns="platform,barcode,scanned_by,multiple_count"
         )
         if raw_df.empty:
             st.warning(f"{selected_date.isoformat()} 没有平台数据")

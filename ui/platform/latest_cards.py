@@ -1,8 +1,4 @@
-import json
-from html import escape
-
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 def render_latest_platform_cards(latest_df, columns_per_row=3):
@@ -22,102 +18,67 @@ def render_latest_platform_cards(latest_df, columns_per_row=3):
 
 def render_platform_card(platform, platform_df):
     last_time = platform_df.iloc[0]["扫描时间"] if not platform_df.empty else ""
-    rows_html = "\n".join(
-        build_barcode_row(row["扫描时间"], row["条码"])
-        for row in platform_df.to_dict("records")
-    )
-    components.html(
+    st.markdown(
         f"""
-        <div class="platform-card">
-            <div class="platform-card-header">
-                <span class="platform-card-title">{escape(str(platform))}</span>
-                <span class="platform-card-time">最后 {escape(str(last_time))}</span>
-            </div>
-            {rows_html}
+        <div class="platform-card-title-row">
+            <strong>{platform}</strong>
+            <span>最后 {last_time}</span>
         </div>
-        {CARD_STYLE}
         """,
-        height=330,
+        unsafe_allow_html=True,
+    )
+    display_df = build_display_df(platform_df)
+    st.dataframe(
+        display_df,
+        hide_index=True,
+        use_container_width=True,
+        height=318,
+        column_config={
+            "扫描时间": st.column_config.TextColumn("时间", width="small"),
+            "质检人员": st.column_config.TextColumn("质检", width="small"),
+            "条码": st.column_config.TextColumn("条码", width="large"),
+        },
     )
 
 
-def build_barcode_row(scan_time, barcode):
-    barcode_text = str(barcode)
-    button_payload = json.dumps(barcode_text)
-    return f"""
-    <div class="platform-barcode-row">
-        <span class="platform-barcode-time">{escape(str(scan_time))}</span>
-        <span class="platform-barcode-value">{escape(barcode_text)}</span>
-        <button class="copy-button" onclick='navigator.clipboard.writeText({button_payload}); this.innerText="已复制"; setTimeout(() => this.innerText="复制", 900);'>
-            复制
-        </button>
-    </div>
+def build_display_df(platform_df):
+    display_df = platform_df[["扫描时间", "质检人员", "条码"]].copy()
+    display_df["条码"] = display_df["条码"].astype(str).apply(truncate_barcode)
+    return display_df
+
+
+def truncate_barcode(barcode, max_length=18):
+    barcode = str(barcode)
+    if len(barcode) <= max_length:
+        return barcode
+    return f"{barcode[:10]}...{barcode[-5:]}"
+
+
+st.markdown(
     """
-
-
-CARD_STYLE = """
-<style>
-body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-.platform-card {
-    border: 1px solid #E5E7EB;
-    border-radius: 8px;
-    padding: 12px 14px;
-    min-height: 300px;
-    background: #FFFFFF;
-    box-sizing: border-box;
-}
-.platform-card-header {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: baseline;
-    padding-bottom: 8px;
-    margin-bottom: 8px;
-    border-bottom: 1px solid #F1F5F9;
-}
-.platform-card-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: #111827;
-}
-.platform-card-time {
-    font-size: 12px;
-    color: #64748B;
-    white-space: nowrap;
-}
-.platform-barcode-row {
-    display: grid;
-    grid-template-columns: 62px minmax(0, 1fr) 44px;
-    gap: 8px;
-    align-items: center;
-    padding: 4px 0;
-    font-size: 13px;
-    border-bottom: 1px solid #F8FAFC;
-}
-.platform-barcode-time {
-    color: #64748B;
-    font-variant-numeric: tabular-nums;
-}
-.platform-barcode-value {
-    color: #111827;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    overflow-wrap: anywhere;
-}
-.copy-button {
-    border: 1px solid #CBD5E1;
-    border-radius: 6px;
-    background: #F8FAFC;
-    color: #334155;
-    cursor: pointer;
-    font-size: 12px;
-    height: 24px;
-}
-.copy-button:hover {
-    background: #EEF2FF;
-    border-color: #94A3B8;
-}
-</style>
-"""
+    <style>
+    .platform-card-title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        margin-top: 4px;
+        border: 1px solid #E5E7EB;
+        border-bottom: 0;
+        border-radius: 8px 8px 0 0;
+        background: #F8FAFC;
+    }
+    .platform-card-title-row strong {
+        color: #111827;
+        font-size: 15px;
+    }
+    .platform-card-title-row span {
+        color: #64748B;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)

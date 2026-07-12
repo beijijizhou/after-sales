@@ -138,17 +138,21 @@ def summarize_platform_counts(df):
 def build_latest_platform_barcodes(df, limit=10):
     required_columns = {"platform", "barcode", "scanned_at"}
     if df.empty or not required_columns.issubset(df.columns):
-        return pd.DataFrame(columns=["平台", "条码", "扫描时间"])
+        return pd.DataFrame(columns=["平台", "质检人员", "条码", "扫描时间"])
 
     latest_df = df.copy()
+    if "scanned_by" not in latest_df.columns:
+        latest_df["scanned_by"] = ""
+    latest_df["scanned_by"] = latest_df["scanned_by"].fillna("").astype(str).str.strip()
     latest_df["scanned_at_ny"] = pd.to_datetime(
         latest_df["scanned_at"], errors="coerce", utc=True
     ).dt.tz_convert(NY_TIMEZONE)
     latest_df = latest_df.dropna(subset=["scanned_at_ny"])
     latest_df = latest_df.sort_values(["platform", "scanned_at_ny"], ascending=[True, False])
     latest_df = latest_df.groupby("platform", as_index=False, group_keys=False).head(limit)
-    display_df = latest_df[["platform", "barcode", "scanned_at_ny"]].rename(columns={
+    display_df = latest_df[["platform", "scanned_by", "barcode", "scanned_at_ny"]].rename(columns={
         "platform": "平台",
+        "scanned_by": "质检人员",
         "barcode": "条码",
         "scanned_at_ny": "扫描时间",
     })
