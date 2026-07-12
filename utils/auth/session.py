@@ -7,6 +7,7 @@ from utils.auth.constants import (
     PUBLIC_PERMISSIONS,
     ROLE_ADMIN,
     ROLE_LABELS,
+    ROLE_PERMISSIONS,
     ROLE_VISITOR,
 )
 from utils.auth.security import build_auth_token, parse_auth_token, verify_password
@@ -52,22 +53,13 @@ def load_user(username):
 
 def set_current_user(user):
     role = user.get("role") or ROLE_VISITOR
+    permissions = ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS[ROLE_VISITOR])
     st.session_state["current_user"] = {
         "username": user["username"],
         "display_name": user.get("display_name") or user["username"],
         "role": role,
-        "role_label": user.get("role_label") or ROLE_LABELS.get(role, role),
-        "can_view_app": bool(user.get("can_view_app")),
-        "can_register": bool(user.get("can_register")),
-        "can_view_qa": bool(user.get("can_view_qa")),
-        "can_view_hotstamp": bool(user.get("can_view_hotstamp")),
-        "can_view_platform": bool(user.get("can_view_platform")),
-        "can_view_inventory": bool(user.get("can_view_inventory")),
-        "can_edit_inventory": bool(user.get("can_edit_inventory")),
-        "can_view_container": bool(user.get("can_view_container")),
-        "can_edit_container": bool(user.get("can_edit_container")),
-        "can_input_after_sales": bool(user.get("can_input_after_sales")),
-        "can_view_cost": bool(user.get("can_view_cost")),
+        "role_label": ROLE_LABELS.get(role, role),
+        **permissions,
     }
 
 

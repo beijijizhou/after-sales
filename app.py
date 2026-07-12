@@ -14,7 +14,7 @@ render_navigation()
 
 if not can_access_page("app"):
     st.title("生产数据")
-    st.info("请从左侧选择可以查看的页面。售后查询仅限售后和管理员账号使用。")
+    st.info("请从左侧选择可以查看的页面。")
     st.stop()
 
 url = st.secrets["SUPABASE_URL"]
