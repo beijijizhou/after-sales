@@ -1,0 +1,1 @@
+"""Platform page UI components."""

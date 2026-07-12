@@ -1,6 +1,8 @@
 import streamlit as st
 
+from ui.platform.latest_cards import render_latest_platform_cards
 from utils.platform_helpers import (
+    build_latest_platform_barcodes,
     build_platform_barcode_detail,
     load_daily_platform_detail_rows,
     load_daily_platform_rows,
@@ -16,7 +18,7 @@ def render_platform_summary(supabase, selected_date):
         raw_df = load_daily_platform_rows(
             supabase,
             selected_date,
-            columns="platform,multiple_count"
+            columns="platform,barcode,multiple_count"
         )
         if raw_df.empty:
             st.warning(f"{selected_date.isoformat()} 没有平台数据")
@@ -36,6 +38,7 @@ def render_platform_summary(supabase, selected_date):
             column_config={
                 "总生产数量": st.column_config.NumberColumn("总生产数量"),
                 "多件订单数量": st.column_config.NumberColumn("多件订单数量"),
+                "最后扫描时间": st.column_config.TextColumn("最后扫描时间"),
                 "占比": st.column_config.ProgressColumn(
                     "占比",
                     format="%.1f%%",
@@ -44,6 +47,9 @@ def render_platform_summary(supabase, selected_date):
                 )
             }
         )
+
+        latest_df = build_latest_platform_barcodes(df)
+        render_latest_platform_cards(latest_df)
 
         st.subheader("平台条码明细")
         platform_options = count_df["平台"].tolist()
