@@ -1,14 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import streamlit as st
-from supabase import create_client
+from db.supabase_client import supabase
 
-# create client once
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
-
-supabase = create_client(url, key)
 NY_TIMEZONE = ZoneInfo("America/New_York")
 
 
