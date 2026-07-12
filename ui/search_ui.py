@@ -1,3 +1,5 @@
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -7,7 +9,7 @@ from utils.barcode_patterns import (
 )
 
 
-INPUT_COLUMN = "粘贴生产订单 / 条码列表（每行一个）"
+INPUT_COLUMN = "粘贴生产订单 / 条码列表（支持换行或逗号分隔）"
 QUERY_COLUMN = "实际查询内容"
 
 
@@ -22,7 +24,7 @@ def normalize_search_response(response):
 def parse_barcodes(value):
     return list(dict.fromkeys(
         x.strip()
-        for x in value.split("\n")
+        for x in re.split(r"[\n,，]+", value)
         if x.strip()
     ))
 

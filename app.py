@@ -34,6 +34,9 @@ with input_col:
 barcodes = search_ui.parse_barcodes(input_text)
 
 if barcodes:
+    with input_col:
+        st.metric("输入数量", len(barcodes))
+
     with preview_col:
         search_ui.render_search_preview(
             "查询预览",
