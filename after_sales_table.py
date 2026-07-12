@@ -1,3 +1,6 @@
+from zoneinfo import ZoneInfo
+
+import altair as alt
 from db.supabase_client import supabase
 from db.after_sale import (
     load_after_sales_detail_by_person,
@@ -5,6 +8,8 @@ from db.after_sale import (
 )
 import pandas as pd
 import streamlit as st
+
+NY_TIMEZONE = ZoneInfo("America/New_York")
 
 
 def sales_table():
@@ -16,7 +21,70 @@ def sales_table():
     st.dataframe(df)
 
     st.metric("总售后数量", df["after_sales_count"].sum())
+    render_after_sales_shipping_chart()
     render_person_after_sales_detail()
+
+
+def render_after_sales_shipping_chart():
+    summary_df = pd.DataFrame(load_after_sales_people_summary())
+    if summary_df.empty:
+        return
+
+    latest_input = get_latest_input_time(summary_df)
+    if latest_input:
+        st.metric("表格最后更新时间", latest_input)
+
+    chart_df = build_shipping_chart_df(summary_df)
+    if chart_df.empty:
+        return
+
+    st.subheader("售后发货日期统计")
+    chart = (
+        alt.Chart(chart_df)
+        .mark_bar(color="#2563EB")
+        .encode(
+            x=alt.X("发货日期:T", title="发货日期"),
+            y=alt.Y("发货件数:Q", title="发货件数"),
+            tooltip=[
+                alt.Tooltip("发货日期:T", title="发货日期"),
+                alt.Tooltip("发货件数:Q", title="发货件数"),
+            ],
+        )
+        .properties(height=320)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def get_latest_input_time(df):
+    if "entered_at" not in df.columns:
+        return ""
+
+    entered_at = pd.to_datetime(df["entered_at"], errors="coerce", utc=True).dropna()
+    if entered_at.empty:
+        return ""
+
+    latest_at = entered_at.max().tz_convert(NY_TIMEZONE)
+    return latest_at.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def build_shipping_chart_df(df):
+    if "scanned_at" not in df.columns:
+        return pd.DataFrame()
+
+    chart_df = df.copy()
+    chart_df["发货日期"] = to_datetime_series(chart_df, "scanned_at").dt.tz_convert(NY_TIMEZONE).dt.date
+    chart_df["quantity"] = pd.to_numeric(chart_df.get("quantity", 1), errors="coerce").fillna(1)
+    chart_df = chart_df.dropna(subset=["发货日期"])
+    if chart_df.empty:
+        return pd.DataFrame()
+
+    return (
+        chart_df
+        .groupby("发货日期", as_index=False)["quantity"]
+        .sum()
+        .rename(columns={"quantity": "发货件数"})
+        .sort_values("发货日期")
+    )
 
 
 def render_person_after_sales_detail():
@@ -64,6 +132,7 @@ def build_people_summary_df():
 
     df["amount"] = pd.to_numeric(df.get("amount", 0), errors="coerce").fillna(0)
     df["quantity"] = pd.to_numeric(df.get("quantity", 1), errors="coerce").fillna(1)
+    df["entered_at_ny"] = to_datetime_series(df, "entered_at")
     summary_df = (
         df
         .groupby("scanned_by", as_index=False)
@@ -71,16 +140,19 @@ def build_people_summary_df():
             after_sales_count=("scanned_by", "size"),
             quantity=("quantity", "sum"),
             amount=("amount", "sum"),
+            entered_at_ny=("entered_at_ny", "max"),
         )
         .rename(columns={
             "scanned_by": "质检人员",
             "after_sales_count": "售后条码数",
             "quantity": "售后件数",
             "amount": "总金额",
+            "entered_at_ny": "最后输入时间",
         })
         .sort_values("售后条码数", ascending=False)
         .reset_index(drop=True)
     )
+    summary_df["最后输入时间"] = summary_df["最后输入时间"].apply(format_ny_datetime)
     return summary_df
 
 
@@ -91,6 +163,8 @@ def build_person_detail_df(person):
 
     df["amount"] = pd.to_numeric(df.get("amount", 0), errors="coerce").fillna(0)
     df["quantity"] = pd.to_numeric(df.get("quantity", 1), errors="coerce").fillna(1).astype(int)
+    df["entered_at"] = to_datetime_series(df, "entered_at").apply(format_ny_datetime)
+    df["scanned_at"] = to_datetime_series(df, "scanned_at").apply(format_ny_datetime)
     return df.rename(columns={
         "barcode": "条码",
         "scanned_by": "质检人员",
@@ -98,4 +172,18 @@ def build_person_detail_df(person):
         "quantity": "件数",
         "amount": "总金额",
         "reason": "售后原因",
-    })[["条码", "质检人员", "售后类型", "件数", "总金额", "售后原因"]]
+        "scanned_at": "发货时间",
+        "entered_at": "输入时间",
+    })[["条码", "质检人员", "售后类型", "件数", "发货时间", "输入时间", "总金额", "售后原因"]]
+
+
+def format_ny_datetime(value):
+    if pd.isna(value):
+        return ""
+    return value.tz_convert(NY_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def to_datetime_series(df, column):
+    if column not in df.columns:
+        return pd.Series(pd.NaT, index=df.index)
+    return pd.to_datetime(df[column], errors="coerce", utc=True)

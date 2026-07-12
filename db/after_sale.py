@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import streamlit as st
 from supabase import create_client
 
@@ -6,6 +9,7 @@ url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 
 supabase = create_client(url, key)
+NY_TIMEZONE = ZoneInfo("America/New_York")
 
 
 def chunk_list(values, size):
@@ -42,7 +46,7 @@ def load_after_sales_by_barcodes(barcodes):
             response = (
                 supabase
                 .table("after_sales")
-                .select("barcode,reason,amount,product_type,quantity")
+                .select("barcode,reason,amount,product_type,quantity,scanned_at,entered_at")
                 .in_("barcode", barcode_group)
                 .execute()
             )
@@ -58,6 +62,8 @@ def load_after_sales_by_barcodes(barcodes):
                 row["amount"] = 0
                 row["product_type"] = "短袖"
                 row["quantity"] = 1
+                row["scanned_at"] = None
+                row["entered_at"] = None
         rows.extend(response.data)
 
     return {
@@ -88,6 +94,12 @@ def enrich_after_sales_status(df):
     enriched_df["件数"] = enriched_df["barcode"].apply(
         lambda barcode: after_sales_by_barcode.get(barcode, {}).get("quantity", 1)
     )
+    enriched_df["scanned_at"] = enriched_df.apply(
+        lambda row: after_sales_by_barcode.get(
+            row["barcode"], {}
+        ).get("scanned_at", row.get("scanned_at")),
+        axis=1,
+    )
     return enriched_df
 
 
@@ -100,6 +112,8 @@ def save_after_sales_batch(df):
             "amount": clean_amount(row.get("总金额", 0)),
             "product_type": clean_product_type(row.get("售后类型", "短袖")),
             "quantity": clean_quantity(row.get("件数", 1)),
+            "scanned_at": row.get("scanned_at"),
+            "entered_at": datetime.now(NY_TIMEZONE).isoformat(),
         }
         for _, row in df.iterrows()
     ]
@@ -113,12 +127,23 @@ def save_after_sales_batch(df):
 
 
 def load_after_sales_people_summary():
-    response = (
-        supabase
-        .table("after_sales")
-        .select("scanned_by,amount,quantity")
-        .execute()
-    )
+    try:
+        response = (
+            supabase
+            .table("after_sales")
+            .select("scanned_by,amount,quantity,scanned_at,entered_at")
+            .execute()
+        )
+    except Exception:
+        response = (
+            supabase
+            .table("after_sales")
+            .select("scanned_by,amount,quantity")
+            .execute()
+        )
+        for row in response.data:
+            row["scanned_at"] = None
+            row["entered_at"] = None
     return response.data
 
 
@@ -127,7 +152,7 @@ def load_after_sales_detail_by_person(person):
         response = (
             supabase
             .table("after_sales")
-            .select("barcode,scanned_by,product_type,quantity,amount,reason")
+            .select("barcode,scanned_by,product_type,quantity,amount,reason,scanned_at,entered_at")
             .eq("scanned_by", person)
             .order("barcode")
             .execute()
@@ -145,6 +170,8 @@ def load_after_sales_detail_by_person(person):
             row["product_type"] = "短袖"
             row["quantity"] = 1
             row["amount"] = 0
+            row["scanned_at"] = None
+            row["entered_at"] = None
     return response.data
 
 
