@@ -24,6 +24,8 @@ ROLE_PERMISSIONS = {
         "can_view_container": False,
         "can_edit_container": False,
         "can_input_after_sales": False,
+        "can_mark_barcode_operations": False,
+        "can_view_operation_tracking": True,
         "can_view_cost": False,
     },
     ROLE_SUPERVISOR: {
@@ -37,6 +39,8 @@ ROLE_PERMISSIONS = {
         "can_view_container": True,
         "can_edit_container": False,
         "can_input_after_sales": False,
+        "can_mark_barcode_operations": True,
+        "can_view_operation_tracking": True,
         "can_view_cost": False,
     },
     ROLE_WAREHOUSE: {
@@ -50,6 +54,8 @@ ROLE_PERMISSIONS = {
         "can_view_container": True,
         "can_edit_container": True,
         "can_input_after_sales": False,
+        "can_mark_barcode_operations": False,
+        "can_view_operation_tracking": False,
         "can_view_cost": False,
     },
     ROLE_AFTER_SALES: {
@@ -63,6 +69,8 @@ ROLE_PERMISSIONS = {
         "can_view_container": True,
         "can_edit_container": True,
         "can_input_after_sales": True,
+        "can_mark_barcode_operations": True,
+        "can_view_operation_tracking": True,
         "can_view_cost": False,
     },
     ROLE_ADMIN: {
@@ -76,6 +84,8 @@ ROLE_PERMISSIONS = {
         "can_view_container": True,
         "can_edit_container": True,
         "can_input_after_sales": True,
+        "can_mark_barcode_operations": True,
+        "can_view_operation_tracking": True,
         "can_view_cost": True,
     },
 }
@@ -88,6 +98,7 @@ PAGE_ACCESS = {
     "platform": "can_view_platform",
     "inventory": "can_view_inventory",
     "container": "can_view_container",
+    "operation_tracking": "can_view_operation_tracking",
 }
 
 PUBLIC_PERMISSIONS = {
@@ -96,10 +107,12 @@ PUBLIC_PERMISSIONS = {
     "can_view_qa",
     "can_view_hotstamp",
     "can_view_platform",
+    "can_view_operation_tracking",
 }
 
 NAV_ITEMS = [
-    ("app", "售后查询", "app.py"),
+    ("operation_tracking", "问题件追踪", "app.py"),
+    ("app", "售后查询", "pages/6_售后查询.py"),
     ("register", "注册", "pages/0_注册.py"),
     ("qa", "质检", "pages/1_质检.py"),
     ("hotstamp", "烫印", "pages/2_烫印.py"),
