@@ -1,7 +1,16 @@
+from datetime import timedelta
+
 from db.inventory import SIZE_COLUMNS
 
 
-def build_inventory_consumption_alerts(inventory_df, model_df, alert_days=14, coverage_days=None):
+def build_inventory_consumption_alerts(
+    inventory_df,
+    model_df,
+    alert_days=14,
+    coverage_days=None,
+    inventory_date=None,
+    current_date=None,
+):
     if inventory_df.empty or model_df.empty:
         return inventory_df.copy()
 
@@ -13,20 +22,38 @@ def build_inventory_consumption_alerts(inventory_df, model_df, alert_days=14, co
     })
 
     alert_by_color = {}
+    elapsed_days = max((current_date - inventory_date).days, 0) if inventory_date and current_date else 0
     for _, stock_row in stock_df.iterrows():
         color = stock_row["颜色"]
         color_model = model_df[model_df["颜色"] == color]
+        model_days_by_size = {}
         days_by_size = {}
 
         for size in SIZE_COLUMNS:
             consumption = color_model[color_model["尺码"] == size]["消耗数量"]
             if consumption.empty or int(consumption.iloc[0]) <= 0:
                 continue
-            days_by_size[size] = round(int(stock_row[size]) / int(consumption.iloc[0]))
+            model_days = round(int(stock_row[size]) / int(consumption.iloc[0]))
+            model_days_by_size[size] = model_days
+            days_by_size[size] = max(model_days - elapsed_days, 0)
 
-        shortage_by_size = build_shortage_by_size(color_model, stock_row, coverage_days)
+        adjusted_coverage_days = (
+            int(coverage_days) + elapsed_days if coverage_days is not None else None
+        )
+        shortage_by_size = build_shortage_by_size(
+            color_model, stock_row, adjusted_coverage_days
+        )
+        minimum_days = min(days_by_size.values()) if days_by_size else None
+        minimum_model_days = min(model_days_by_size.values()) if model_days_by_size else None
         alert_by_color[color] = {
-            "最低剩余天数": min(days_by_size.values()) if days_by_size else None,
+            "库存基准日期": inventory_date,
+            "当前日期": current_date,
+            "最低剩余天数": minimum_days,
+            "预计最早耗尽日期": (
+                inventory_date + timedelta(days=minimum_model_days)
+                if inventory_date and minimum_model_days is not None
+                else None
+            ),
             "低于14天尺码": build_low_stock_text(days_by_size, alert_days),
             "到货前需覆盖天数": int(coverage_days) if coverage_days is not None else None,
             "到货前缺口总数": sum(shortage_by_size.values()),
@@ -69,6 +96,15 @@ def attach_alert_columns(inventory_df, alert_by_color, coverage_days):
     result_df["最低剩余天数"] = result_df["颜色"].map(
         lambda color: alert_by_color.get(color, {}).get("最低剩余天数")
     )
+    result_df["库存基准日期"] = result_df["颜色"].map(
+        lambda color: alert_by_color.get(color, {}).get("库存基准日期")
+    )
+    result_df["当前日期"] = result_df["颜色"].map(
+        lambda color: alert_by_color.get(color, {}).get("当前日期")
+    )
+    result_df["预计最早耗尽日期"] = result_df["颜色"].map(
+        lambda color: alert_by_color.get(color, {}).get("预计最早耗尽日期")
+    )
     result_df["低于14天尺码"] = result_df["颜色"].map(
         lambda color: alert_by_color.get(color, {}).get("低于14天尺码", "")
     )
@@ -84,7 +120,7 @@ def attach_alert_columns(inventory_df, alert_by_color, coverage_days):
         )
 
     columns = list(result_df.columns)
-    for column in ["最低剩余天数", "低于14天尺码"]:
+    for column in ["库存基准日期", "当前日期", "最低剩余天数", "预计最早耗尽日期", "低于14天尺码"]:
         columns.remove(column)
     planning_columns = []
     if coverage_days is not None:
@@ -94,7 +130,7 @@ def attach_alert_columns(inventory_df, alert_by_color, coverage_days):
     insert_at = columns.index("颜色") + 1 if "颜色" in columns else 0
     return result_df[
         columns[:insert_at]
-        + ["最低剩余天数", "低于14天尺码"]
+        + ["库存基准日期", "当前日期", "最低剩余天数", "预计最早耗尽日期", "低于14天尺码"]
         + planning_columns
         + columns[insert_at:]
     ]

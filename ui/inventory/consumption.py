@@ -80,6 +80,7 @@ def render_reorder_forecast(
     order_quantity,
     arrival_date,
     buffer_days,
+    inventory_date,
 ):
     if category != "黑白短袖":
         return DEFAULT_ORDER_QUANTITY
@@ -100,6 +101,8 @@ def render_reorder_forecast(
             color_df,
             model_df,
             coverage_days=coverage_days,
+            inventory_date=inventory_date,
+            current_date=today,
         )
     except Exception as e:
         st.info("暂无点货预测数据")
@@ -108,7 +111,10 @@ def render_reorder_forecast(
 
     forecast_columns = [
         "颜色",
+        "库存基准日期",
+        "当前日期",
         "最低剩余天数",
+        "预计最早耗尽日期",
         "低于14天尺码",
         "到货前需覆盖天数",
         "到货前缺口总数",
@@ -134,6 +140,11 @@ def render_reorder_forecast(
         use_container_width=True,
         column_config={
             "最低剩余天数": st.column_config.NumberColumn("最低剩余天数", format="%d"),
+            "库存基准日期": st.column_config.DateColumn("库存基准日期", format="YYYY-MM-DD"),
+            "当前日期": st.column_config.DateColumn("当前日期", format="YYYY-MM-DD"),
+            "预计最早耗尽日期": st.column_config.DateColumn(
+                "预计最早耗尽日期", format="YYYY-MM-DD"
+            ),
             "到货前需覆盖天数": st.column_config.NumberColumn("到货前需覆盖天数", format="%d"),
             "到货前缺口总数": st.column_config.NumberColumn("到货前缺口总数", format="%d"),
         },

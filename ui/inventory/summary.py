@@ -11,6 +11,7 @@ from db.inventory import (
     SIZE_COLUMNS,
     build_inventory_snapshot,
     build_inventory_table,
+    get_inventory_last_updated,
     load_inventory_departments,
     load_inventory_items,
     load_inventory_movements,
@@ -72,21 +73,21 @@ def render_inventory_metrics(inventory_df):
 def render_inventory_date_selector():
     today = datetime.now(ZoneInfo("America/New_York")).date()
     return st.date_input(
-        "库存日期",
+        "查看库存日期",
         value=today,
         max_value=today,
         key="inventory_snapshot_date",
     )
 
 
-def render_inventory_table(category, inventory_df, selected_date):
+def render_inventory_table(category, inventory_df, inventory_date):
     title_category = category or "全部品类"
     st.subheader(f"{title_category} 库存明细")
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
 
     col1, col2 = st.columns(2)
     col1.metric("当前日期", current_date.isoformat())
-    col2.metric("库存日期", selected_date.isoformat())
+    col2.metric("库存日期", inventory_date.isoformat())
 
     column_config = {
         "总库存": st.column_config.NumberColumn("总库存", format="%d"),
@@ -122,21 +123,36 @@ def render_inventory_summary(supabase):
         except Exception:
             snapshot_df = raw_df.iloc[0:0]
 
+        has_saved_snapshot = not snapshot_df.empty
         if snapshot_df.empty:
             movement_df = load_inventory_movements(supabase, department, category, limit=10000)
             sku_import_df = load_sku_imports(supabase, department, category, limit=10000)
             snapshot_df = build_inventory_snapshot(raw_df, movement_df, sku_import_df, selected_date)
 
         inventory_df = build_inventory_table(snapshot_df, category, include_cost=has_permission("can_view_cost"))
+        current_date = st.session_state["inventory_today"]
+        inventory_date = (
+            selected_date
+            if selected_date < current_date
+            else get_inventory_last_updated(raw_df) or selected_date
+        )
         if inventory_df.empty:
             st.warning("暂无库存数据")
 
-        render_inventory_table(category, inventory_df, selected_date)
+        render_inventory_table(category, inventory_df, inventory_date)
         render_inventory_metrics(inventory_df)
         render_black_white_color_summary(category, inventory_df)
         order_quantity, arrival_date, buffer_days = render_consumption_planning_inputs(category)
         render_consumption_model(supabase, category, order_quantity)
-        render_reorder_forecast(supabase, category, inventory_df, order_quantity, arrival_date, buffer_days)
+        render_reorder_forecast(
+            supabase,
+            category,
+            inventory_df,
+            order_quantity,
+            arrival_date,
+            buffer_days,
+            inventory_date,
+        )
         if has_permission("can_edit_inventory"):
             render_excel_adjustment(supabase, department, category)
             with st.expander("少量手动调整"):
