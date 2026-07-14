@@ -1,4 +1,7 @@
+import streamlit as st
+
 from db.inventory import load_inventory_movements
+from db.inventory.adjustments import reverse_inventory_batch
 from db.inventory.sku import load_sku_imports
 from ui.inventory.history_batches import (
     add_movement_batch_key,
@@ -10,6 +13,8 @@ from ui.inventory.history_tables import (
     render_movement_table,
     render_sku_import_table,
 )
+from utils.auth import get_current_user, has_permission
+from ui.inventory.i18n import t
 
 
 def render_selected_sku_import(dated_sku_import_df, selected_batch):
@@ -17,16 +22,91 @@ def render_selected_sku_import(dated_sku_import_df, selected_batch):
     render_sku_import_table(dated_sku_import_df[dated_sku_import_df["batch_key"] == selected_batch])
 
 
-def render_selected_movement(dated_movement_df, selected_batch):
+def render_selected_movement(supabase, dated_movement_df, selected_batch):
     dated_movement_df = add_movement_batch_key(dated_movement_df)
-    render_movement_table(dated_movement_df[dated_movement_df["batch_key"] == selected_batch])
+    selected_df = dated_movement_df[dated_movement_df["batch_key"] == selected_batch]
+    render_movement_table(selected_df)
+    reversed_ids = set()
+    if "reversal_of_batch_id" in dated_movement_df.columns:
+        reversed_ids = set(
+            dated_movement_df["reversal_of_batch_id"].dropna().astype(str)
+        )
+    render_movement_undo(supabase, selected_df, reversed_ids)
+
+
+def render_movement_undo(supabase, selected_df, reversed_ids):
+    if selected_df.empty or not has_permission("can_edit_inventory"):
+        return
+    if "batch_id" not in selected_df.columns or selected_df["batch_id"].isna().all():
+        st.caption(t("运行最新版库存 SQL 后，才可以撤销这笔旧记录。"))
+        return
+    if "reversal_of_batch_id" in selected_df.columns and selected_df[
+        "reversal_of_batch_id"
+    ].notna().any():
+        st.caption(t("这是撤销记录，不能再次撤销。"))
+        return
+
+    batch_id = str(selected_df.iloc[0]["batch_id"])
+    if batch_id in reversed_ids:
+        st.success(t("这笔库存变动已撤销"))
+        return
+    confirmed = st.checkbox(
+        t("我确认撤销这笔库存变动"),
+        key=f"confirm_inventory_undo_{batch_id}",
+    )
+    if st.button(t("撤销这笔库存变动"), disabled=not confirmed, use_container_width=True):
+        row = selected_df.iloc[0]
+        username = (get_current_user() or {}).get("username", "system")
+        try:
+            reverse_inventory_batch(
+                supabase,
+                batch_id,
+                row["department"],
+                row["category"],
+                username,
+            )
+        except Exception as error:
+            st.error(f"{t('撤销失败')}: {error}")
+            return
+        st.session_state["inventory_saved_message"] = t(
+            "库存变动已撤销，库存明细已恢复"
+        )
+        st.rerun()
 
 
 def render_inventory_history(supabase, department, category):
     movement_df = load_inventory_movements(supabase, department, "", limit=500)
     sku_import_df = load_sku_imports(supabase, department, "", limit=500)
     batch_df = build_movement_batches(movement_df, sku_import_df)
-    selected_batch = render_batch_selector(batch_df)
+    normal_tab, reversal_tab = st.tabs([t("库存表格记录"), t("撤销记录")])
+    if batch_df.empty:
+        with normal_tab:
+            st.info(t("暂无库存表格记录"))
+        with reversal_tab:
+            st.info(t("暂无撤销记录"))
+        return
+    with normal_tab:
+        normal_df = batch_df[batch_df["记录类别"] == "库存表格记录"]
+        render_history_tab(
+            supabase,
+            normal_df,
+            movement_df,
+            sku_import_df,
+            "inventory_history_batch",
+        )
+    with reversal_tab:
+        reversal_df = batch_df[batch_df["记录类别"] == "撤销记录"]
+        render_history_tab(
+            supabase,
+            reversal_df,
+            movement_df,
+            sku_import_df,
+            "inventory_reversal_batch",
+        )
+
+
+def render_history_tab(supabase, batch_df, movement_df, sku_import_df, key):
+    selected_batch = render_batch_selector(batch_df, key=key)
     if not selected_batch:
         return
 
@@ -36,4 +116,4 @@ def render_inventory_history(supabase, department, category):
         render_selected_sku_import(sku_import_df, selected_batch)
         return
 
-    render_selected_movement(movement_df, selected_batch)
+    render_selected_movement(supabase, movement_df, selected_batch)

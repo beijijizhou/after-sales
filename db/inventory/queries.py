@@ -36,19 +36,26 @@ def load_inventory_items(supabase, department=DEFAULT_DEPARTMENT, category=DEFAU
 
 
 def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY, limit=20):
-    query = (
-        supabase
-        .table("inventory_movements")
-        .select("department,category,brand,material,color,size,quantity_change,quantity_after,movement_date,reason,created_at")
-        .eq("department", department)
+    columns = (
+        "department,category,brand,material,color,size,quantity_change,"
+        "quantity_after,movement_date,reason,created_at,created_by,"
+        "batch_id,reversal_of_batch_id"
     )
+    query = supabase.table("inventory_movements").select(columns).eq("department", department)
     if category:
         query = query.eq("category", category)
-    response = (
-        query
-        .order("movement_date", desc=True)
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
+    try:
+        response = query.order("movement_date", desc=True).order(
+            "created_at", desc=True
+        ).limit(limit).execute()
+    except Exception:
+        fallback_columns = columns.replace(",created_by,batch_id,reversal_of_batch_id", "")
+        query = supabase.table("inventory_movements").select(fallback_columns).eq(
+            "department", department
+        )
+        if category:
+            query = query.eq("category", category)
+        response = query.order("movement_date", desc=True).order(
+            "created_at", desc=True
+        ).limit(limit).execute()
     return pd.DataFrame(response.data)

@@ -1,40 +1,11 @@
+from datetime import datetime
+from uuid import uuid4
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 
 from db.inventory.constants import SIZE_COLUMNS
 from db.inventory.snapshots import create_inventory_snapshot
-
-
-def adjust_inventory(
-    supabase,
-    department,
-    category,
-    brand,
-    material,
-    color,
-    size,
-    quantity_change,
-    reason,
-    movement_date,
-    unit_cost=None,
-):
-    params = {
-        "p_department": department,
-        "p_category": category,
-        "p_brand": brand,
-        "p_material": material,
-        "p_color": color,
-        "p_size": size,
-        "p_quantity_change": quantity_change,
-        "p_reason": reason,
-        "p_movement_date": movement_date.isoformat(),
-    }
-    function_name = "adjust_inventory_stock"
-    if unit_cost is not None:
-        function_name = "adjust_inventory_stock_with_cost"
-        params["p_unit_cost"] = float(unit_cost)
-
-    response = supabase.rpc(function_name, params).execute()
-    return response.data
 
 
 def build_adjustment_template():
@@ -125,21 +96,46 @@ def parse_adjustment_file(uploaded_file):
     return normalize_adjustment_rows(df)
 
 
-def apply_adjustment_rows(supabase, department, category, df):
+def apply_adjustment_rows(supabase, department, category, df, created_by="system"):
+    batch_id = str(uuid4())
+    records = []
     for row in df.to_dict("records"):
         quantity_change = int(row["数量"]) if row["操作"] == "增加" else -int(row["数量"])
-        adjust_inventory(
-            supabase=supabase,
-            department=department,
-            category=category,
-            brand=row["品牌"],
-            material=row["材质"],
-            color=row["颜色"],
-            size=row["尺码"],
-            quantity_change=quantity_change,
-            reason=row["备注"],
-            movement_date=row["日期"],
-            unit_cost=None if pd.isna(row.get("成本")) else row.get("成本"),
-        )
+        record = {
+            "brand": row["品牌"],
+            "material": row["材质"],
+            "color": row["颜色"],
+            "size": row["尺码"],
+            "quantity_change": quantity_change,
+            "reason": row["备注"],
+            "movement_date": row["日期"].isoformat(),
+        }
+        if not pd.isna(row.get("成本")):
+            record["unit_cost"] = float(row["成本"])
+        records.append(record)
+
+    supabase.rpc(
+        "apply_inventory_adjustment_batch",
+        {
+            "p_department": department,
+            "p_category": category,
+            "p_rows": records,
+            "p_batch_id": batch_id,
+            "p_created_by": created_by,
+        },
+    ).execute()
     for movement_date in sorted(df["日期"].dropna().unique()):
         create_inventory_snapshot(supabase, department, category, movement_date)
+    return batch_id
+
+
+def reverse_inventory_batch(
+    supabase, batch_id, department, category, created_by="system"
+):
+    response = supabase.rpc(
+        "reverse_inventory_movement_batch",
+        {"p_batch_id": batch_id, "p_created_by": created_by},
+    ).execute()
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    create_inventory_snapshot(supabase, department, category, today)
+    return response.data

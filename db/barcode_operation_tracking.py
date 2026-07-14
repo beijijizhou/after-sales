@@ -4,6 +4,7 @@ import pandas as pd
 
 from db.barcode_operations import normalize_barcode
 from db.supabase_client import supabase
+from utils.barcode_patterns import build_barcode_candidates
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -120,9 +121,22 @@ def build_history_from_rows(rows):
     operations_df["created_at_dt"] = pd.to_datetime(
         operations_df["created_at"], errors="coerce", utc=True
     )
-    barcodes = operations_df["barcode"].dropna().drop_duplicates().tolist()
+    operations_df["scan_candidates"] = operations_df["barcode"].apply(
+        get_scan_candidates
+    )
+    barcodes = list(dict.fromkeys(
+        candidate
+        for candidates in operations_df["scan_candidates"]
+        for candidate in candidates
+    ))
     scans_df = normalize_scans(load_scans(barcodes))
     return combine_history(operations_df, scans_df)
+
+
+def get_scan_candidates(barcode):
+    normalized = normalize_barcode(barcode)
+    candidates = [normalized, *build_barcode_candidates(normalized)]
+    return list(dict.fromkeys(normalize_barcode(value) for value in candidates if value))
 
 
 def normalize_scans(rows):
@@ -139,7 +153,9 @@ def normalize_scans(rows):
 def combine_history(operations_df, scans_df):
     rows = []
     for _, operation in operations_df.iterrows():
-        barcode_scans = scans_df[scans_df["barcode"] == operation["barcode"]]
+        barcode_scans = scans_df[
+            scans_df["barcode"].isin(operation["scan_candidates"])
+        ]
         earlier = barcode_scans[
             barcode_scans["scanned_at_dt"] <= operation["created_at_dt"]
         ].sort_values("scanned_at_dt", ascending=False)
@@ -162,6 +178,7 @@ def build_history_row(operation, original_scan, next_scan):
         "原扫描时间": format_ny_datetime(scan_value(original_scan, "scanned_at_dt")),
         "标记人": operation.get("created_by", ""),
         "标记时间": format_ny_datetime(operation["created_at_dt"]),
+        "后续扫描条码": scan_value(next_scan, "barcode"),
         "后续扫描人员": scan_value(next_scan, "scanned_by"),
         "后续扫描时间": format_ny_datetime(scan_value(next_scan, "scanned_at_dt")),
         "需要重扫": "是" if operation.get("requires_rescan", True) else "否",

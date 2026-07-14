@@ -1,18 +1,13 @@
-from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import streamlit as st
 
 from db.inventory import (
-    DEFAULT_CATEGORY,
-    DEFAULT_DEPARTMENT,
-    INVENTORY_CATEGORIES,
     SIZE_COLUMNS,
     build_inventory_snapshot,
     build_inventory_table,
     get_inventory_last_updated,
-    load_inventory_departments,
     load_inventory_items,
     load_inventory_movements,
     load_inventory_snapshot,
@@ -20,7 +15,6 @@ from db.inventory import (
 from db.inventory.sku import load_sku_imports
 from ui.inventory.forms import (
     render_adjust_form,
-    render_excel_adjustment,
     render_new_sku_form,
 )
 from ui.inventory.consumption import (
@@ -29,36 +23,19 @@ from ui.inventory.consumption import (
     render_consumption_planning_inputs,
     render_reorder_forecast,
 )
+from ui.inventory.calculator import render_inventory_unit_calculator
+from ui.inventory.controls import (
+    render_category_selector,
+    render_department_selector,
+    render_inventory_date_selector,
+    render_setup_help,
+)
 from ui.inventory.history import render_inventory_history
+from ui.inventory.i18n import render_language_selector, t
+from ui.inventory.outbound import render_daily_outbound
+from ui.inventory.table_filters import render_inventory_table_filters
+from ui.inventory.table_editor import render_inventory_table_editor
 from utils.auth import has_permission
-
-
-def render_setup_help():
-    sql_path = Path(__file__).resolve().parent.parent / "sql" / "inventory_tables.sql"
-    st.info("第一次使用库存页，请先在 Supabase SQL Editor 运行下面这段 SQL")
-    with st.expander("显示库存建表 SQL", expanded=True):
-        st.code(sql_path.read_text(), language="sql")
-
-
-def render_department_selector(supabase):
-    departments = load_inventory_departments(supabase)
-    options = list(dict.fromkeys([DEFAULT_DEPARTMENT, *departments, "自定义"]))
-    selected = st.selectbox("库存部门", options, index=0, key="inventory_department_selector")
-    if selected == "自定义":
-        return st.text_input("自定义部门", value="", key="inventory_department_custom").strip()
-    return selected
-
-
-def render_category_selector(department):
-    default_category = DEFAULT_CATEGORY if department == DEFAULT_DEPARTMENT else ""
-    options = ["", *INVENTORY_CATEGORIES]
-    default_index = options.index(default_category) if default_category in options else 0
-    return st.selectbox(
-        "库存品类",
-        options,
-        index=default_index,
-        key="inventory_category",
-    )
 
 
 def render_inventory_metrics(inventory_df):
@@ -66,48 +43,56 @@ def render_inventory_metrics(inventory_df):
     color_count = inventory_df["颜色"].nunique() if "颜色" in inventory_df.columns else 0
 
     col1, col2 = st.columns(2)
-    col1.metric("当前表总库存", table_total)
-    col2.metric("当前表颜色数", color_count)
+    col1.metric(t("当前表总库存"), table_total)
+    col2.metric(t("当前表颜色数"), color_count)
 
 
-def render_inventory_date_selector():
-    today = datetime.now(ZoneInfo("America/New_York")).date()
-    return st.date_input(
-        "查看库存日期",
-        value=today,
-        max_value=today,
-        key="inventory_snapshot_date",
-    )
-
-
-def render_inventory_table(category, inventory_df, inventory_date):
-    title_category = category or "全部品类"
-    st.subheader(f"{title_category} 库存明细")
+def render_inventory_table(
+    supabase, department, category, inventory_df, inventory_date, editable
+):
+    title_category = category or t("全部品类")
+    st.subheader(f"{title_category} {t('库存明细')}")
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
 
     col1, col2 = st.columns(2)
-    col1.metric("当前日期", current_date.isoformat())
-    col2.metric("库存日期", inventory_date.isoformat())
+    col1.metric(t("当前日期"), current_date.isoformat())
+    col2.metric(t("库存日期"), inventory_date.isoformat())
+    display_df = render_inventory_table_filters(inventory_df, category)
 
     column_config = {
-        "总库存": st.column_config.NumberColumn("总库存", format="%d"),
+        "总库存": st.column_config.NumberColumn(t("总库存（全部尺码）"), format="%d"),
+        "品类": st.column_config.TextColumn(t("品类")),
+        "品牌": st.column_config.TextColumn(t("品牌")),
+        "材质": st.column_config.TextColumn(t("材质")),
+        "颜色": st.column_config.TextColumn(t("颜色")),
         **{size: st.column_config.NumberColumn(size, format="%d") for size in SIZE_COLUMNS},
     }
     if "成本" in inventory_df.columns:
-        column_config["成本"] = st.column_config.NumberColumn("成本", format="%.2f")
+        column_config["成本"] = st.column_config.NumberColumn(t("成本"), format="%.2f")
 
-    table_height = min(max((len(inventory_df) + 1) * 35 + 8, 220), 900)
-    st.dataframe(
-        inventory_df,
-        hide_index=True,
-        use_container_width=True,
-        column_config=column_config,
-        height=table_height,
-    )
+    table_height = min(max((len(display_df) + 1) * 35 + 8, 220), 900)
+    if editable:
+        render_inventory_table_editor(
+            supabase,
+            department,
+            category,
+            display_df,
+            column_config,
+            table_height,
+        )
+    else:
+        st.dataframe(
+            display_df,
+            hide_index=True,
+            use_container_width=True,
+            column_config=column_config,
+            height=table_height,
+        )
 
 
 def render_inventory_summary(supabase):
-    st.title("库存")
+    st.title(t("库存"))
+    render_language_selector()
     saved_message = st.session_state.pop("inventory_saved_message", None)
     if saved_message:
         st.success(saved_message)
@@ -137,32 +122,46 @@ def render_inventory_summary(supabase):
             else get_inventory_last_updated(raw_df) or selected_date
         )
         if inventory_df.empty:
-            st.warning("暂无库存数据")
+            st.warning(t("暂无库存数据"))
 
-        render_inventory_table(category, inventory_df, inventory_date)
-        render_inventory_metrics(inventory_df)
-        render_black_white_color_summary(category, inventory_df)
-        order_quantity, arrival_date, buffer_days = render_consumption_planning_inputs(category)
-        render_consumption_model(supabase, category, order_quantity)
-        render_reorder_forecast(
-            supabase,
-            category,
-            inventory_df,
-            order_quantity,
-            arrival_date,
-            buffer_days,
-            inventory_date,
-        )
-        if has_permission("can_edit_inventory"):
-            render_excel_adjustment(supabase, department, category)
-            with st.expander("少量手动调整"):
-                render_adjust_form(supabase, department, category, inventory_df)
-            with st.expander("新增 SKU"):
-                render_new_sku_form(supabase, department, category, inventory_df)
-        else:
-            st.info("当前账号只能查看库存，不能修改库存")
-        render_inventory_history(supabase, department, category)
+        can_edit = has_permission("can_edit_inventory")
+        tab_names = [t("库存明细"), t("点货预测")]
+        if can_edit:
+            tab_names.append(t("每日出入库"))
+        tab_names.append(t("历史与撤销"))
+        tabs = st.tabs(tab_names)
+
+        with tabs[0]:
+            render_inventory_table(
+                supabase, department, category, inventory_df, inventory_date,
+                can_edit and selected_date == current_date,
+            )
+            render_inventory_metrics(inventory_df)
+            render_black_white_color_summary(category, inventory_df)
+
+        with tabs[1]:
+            order_quantity, arrival_date, buffer_days = (
+                render_consumption_planning_inputs(category)
+            )
+            render_consumption_model(supabase, category, order_quantity)
+            render_reorder_forecast(
+                supabase, category, inventory_df, order_quantity,
+                arrival_date, buffer_days, inventory_date,
+            )
+
+        history_tab = tabs[-1]
+        if can_edit:
+            with tabs[2]:
+                render_daily_outbound(supabase, department, category)
+                with st.expander(t("少量手动调整")):
+                    render_inventory_unit_calculator()
+                    render_adjust_form(supabase, department, category, inventory_df)
+                with st.expander(t("新增 SKU")):
+                    render_new_sku_form(supabase, department, category, inventory_df)
+
+        with history_tab:
+            render_inventory_history(supabase, department, category)
 
     except Exception as e:
-        st.error(f"库存数据加载失败：{e}")
+        st.error(f"{t('库存数据加载失败')}: {e}")
         render_setup_help()

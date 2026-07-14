@@ -3,6 +3,7 @@ import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
 from utils.auth import has_permission
+from ui.inventory.i18n import t
 
 
 def format_date_columns(df, date_columns):
@@ -25,7 +26,13 @@ def build_movement_detail_table(movement_df):
         movement_df["quantity_change"], errors="coerce"
     ).fillna(0).astype(int)
     movement_df["reason"] = movement_df.get("reason", "").fillna("").astype(str)
-    index_columns = ["movement_date", "department", "category", "brand", "material", "color", "reason"]
+    if "created_by" not in movement_df.columns:
+        movement_df["created_by"] = "a"
+    movement_df["created_by"] = movement_df["created_by"].fillna("a")
+    index_columns = [
+        "movement_date", "department", "category", "brand", "material",
+        "color", "created_by", "reason",
+    ]
     display_df = (
         movement_df
         .pivot_table(
@@ -43,6 +50,7 @@ def build_movement_detail_table(movement_df):
             "brand": "品牌",
             "material": "材质",
             "color": "颜色",
+            "created_by": "操作人",
             "reason": "备注",
         })
     )
@@ -51,14 +59,17 @@ def build_movement_detail_table(movement_df):
             display_df[size] = 0
         display_df[size] = pd.to_numeric(display_df[size], errors="coerce").fillna(0).astype(int)
     display_df["合计"] = display_df[SIZE_COLUMNS].sum(axis=1)
-    return display_df[["日期", "部门", "品类", "品牌", "材质", "颜色", *SIZE_COLUMNS, "合计", "备注"]]
+    return display_df[[
+        "日期", "部门", "品类", "品牌", "材质", "颜色", "操作人",
+        *SIZE_COLUMNS, "合计", "备注",
+    ]]
 
 
 def render_movement_table(movement_df):
-    st.subheader("库存变动明细")
+    st.subheader(t("库存变动明细"))
     display_df = build_movement_detail_table(movement_df)
     if display_df.empty:
-        st.info("暂无库存变动明细")
+        st.info(t("暂无库存变动明细"))
         return
 
     st.dataframe(
@@ -66,9 +77,16 @@ def render_movement_table(movement_df):
         hide_index=True,
         use_container_width=True,
         column_config={
-            "日期": st.column_config.DateColumn("日期"),
+            "日期": st.column_config.DateColumn(t("日期")),
+            "部门": st.column_config.TextColumn(t("部门")),
+            "品类": st.column_config.TextColumn(t("品类")),
+            "品牌": st.column_config.TextColumn(t("品牌")),
+            "材质": st.column_config.TextColumn(t("材质")),
+            "颜色": st.column_config.TextColumn(t("颜色")),
+            "操作人": st.column_config.TextColumn(t("操作人")),
+            "备注": st.column_config.TextColumn(t("备注")),
             **{size: st.column_config.NumberColumn(size, format="%d") for size in SIZE_COLUMNS},
-            "合计": st.column_config.NumberColumn("合计", format="%d"),
+            "合计": st.column_config.NumberColumn(t("合计"), format="%d"),
         },
     )
 
@@ -109,20 +127,25 @@ def build_sku_import_detail_table(sku_import_df):
     optional_columns = [column for column in ["部门", "品类"] if column in display_df.columns]
     display_df = display_df[["日期", *optional_columns, "品牌", "材质", "颜色", *cost_columns, *SIZE_COLUMNS]]
     column_config = {
-        "日期": st.column_config.DateColumn("日期"),
+        "日期": st.column_config.DateColumn(t("日期")),
+        "部门": st.column_config.TextColumn(t("部门")),
+        "品类": st.column_config.TextColumn(t("品类")),
+        "品牌": st.column_config.TextColumn(t("品牌")),
+        "材质": st.column_config.TextColumn(t("材质")),
+        "颜色": st.column_config.TextColumn(t("颜色")),
         **{size: st.column_config.NumberColumn(size) for size in SIZE_COLUMNS},
     }
     if "成本" in display_df.columns:
-        column_config["成本"] = st.column_config.NumberColumn("成本", format="%.2f")
+        column_config["成本"] = st.column_config.NumberColumn(t("成本"), format="%.2f")
 
     return display_df, column_config
 
 
 def render_sku_import_table(sku_import_df):
-    st.subheader("SKU 导入明细")
+    st.subheader(t("SKU 导入明细"))
     table_result = build_sku_import_detail_table(sku_import_df)
     if isinstance(table_result, pd.DataFrame) and table_result.empty:
-        st.info("暂无 SKU 导入明细")
+        st.info(t("暂无 SKU 导入明细"))
         return
 
     display_df, column_config = table_result
