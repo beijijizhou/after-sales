@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS, apply_adjustment_rows
-from utils.auth import get_current_user
+from utils.auth import get_current_operator_name
 from ui.inventory.i18n import t
 
 
@@ -53,7 +53,7 @@ def render_inventory_table_editor(
         if adjustment_df.empty:
             st.info(t("库存数量没有变化"))
             return
-        username = (get_current_user() or {}).get("username", "system")
+        username = get_current_operator_name()
         try:
             apply_adjustment_rows(
                 supabase, department, category, adjustment_df, username

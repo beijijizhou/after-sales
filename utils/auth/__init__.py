@@ -22,6 +22,7 @@ from utils.auth.session import (
     clear_persistent_login,
     ensure_persistent_login_query,
     get_current_role,
+    get_current_operator_name,
     get_current_user,
     get_query_value,
     has_permission,

@@ -7,6 +7,9 @@ TRANSLATIONS = {
     "en": {
         "库存": "Inventory", "库存明细": "Inventory Details", "点货预测": "Reorder Forecast",
         "每日出入库": "Daily Inbound / Outbound", "历史与撤销": "History & Undo",
+        "每日出库及历史": "Daily Outbound & History",
+        "日常出入库及历史": "Routine Inbound / Outbound & History",
+        "撤销": "Undo", "新建 SKU": "Create SKUs",
         "库存部门": "Department", "自定义": "Custom", "自定义部门": "Custom Department",
         "库存品类": "Category", "查看库存日期": "Inventory Date", "全部品类": "All Categories",
         "当前日期": "Current Date", "库存日期": "Inventory Date", "当前表总库存": "Table Inventory Total",
@@ -68,6 +71,9 @@ TRANSLATIONS = {
     "es": {
         "库存": "Inventario", "库存明细": "Detalle de inventario", "点货预测": "Pronóstico de reposición",
         "每日出入库": "Entradas / salidas diarias", "历史与撤销": "Historial y deshacer",
+        "每日出库及历史": "Salida diaria e historial",
+        "日常出入库及历史": "Entradas / salidas habituales e historial",
+        "撤销": "Deshacer", "新建 SKU": "Crear SKU",
         "库存部门": "Departamento", "自定义": "Personalizado", "自定义部门": "Departamento personalizado",
         "库存品类": "Categoría", "查看库存日期": "Fecha de inventario", "全部品类": "Todas las categorías",
         "当前日期": "Fecha actual", "库存日期": "Fecha de inventario", "当前表总库存": "Inventario total de la tabla",

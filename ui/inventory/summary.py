@@ -30,7 +30,7 @@ from ui.inventory.controls import (
     render_inventory_date_selector,
     render_setup_help,
 )
-from ui.inventory.history import render_inventory_history
+from ui.inventory.history import load_inventory_history_data, render_inventory_history
 from ui.inventory.i18n import render_language_selector, t
 from ui.inventory.outbound import render_daily_outbound
 from ui.inventory.table_filters import render_inventory_table_filters
@@ -125,10 +125,15 @@ def render_inventory_summary(supabase):
             st.warning(t("暂无库存数据"))
 
         can_edit = has_permission("can_edit_inventory")
-        tab_names = [t("库存明细"), t("点货预测")]
-        if can_edit:
-            tab_names.append(t("每日出入库"))
-        tab_names.append(t("历史与撤销"))
+        history_data = load_inventory_history_data(supabase, department)
+        tab_names = [
+            t("库存明细"),
+            t("点货预测"),
+            t("每日出库及历史"),
+            t("日常出入库及历史"),
+            t("撤销"),
+            t("新建 SKU"),
+        ]
         tabs = st.tabs(tab_names)
 
         with tabs[0]:
@@ -149,18 +154,35 @@ def render_inventory_summary(supabase):
                 arrival_date, buffer_days, inventory_date,
             )
 
-        history_tab = tabs[-1]
-        if can_edit:
-            with tabs[2]:
+        with tabs[2]:
+            if can_edit:
                 render_daily_outbound(supabase, department, category)
-                with st.expander(t("少量手动调整")):
-                    render_inventory_unit_calculator()
-                    render_adjust_form(supabase, department, category, inventory_df)
-                with st.expander(t("新增 SKU")):
-                    render_new_sku_form(supabase, department, category, inventory_df)
+                st.divider()
+            render_inventory_history(
+                supabase, department, "daily", history_data=history_data
+            )
 
-        with history_tab:
-            render_inventory_history(supabase, department, category)
+        with tabs[3]:
+            if can_edit:
+                render_inventory_unit_calculator()
+                render_adjust_form(supabase, department, category, inventory_df)
+                st.divider()
+            render_inventory_history(
+                supabase, department, "regular", history_data=history_data
+            )
+
+        with tabs[4]:
+            render_inventory_history(
+                supabase, department, "undo", history_data=history_data
+            )
+
+        with tabs[5]:
+            if can_edit:
+                render_new_sku_form(supabase, department, category, inventory_df)
+                st.divider()
+            render_inventory_history(
+                supabase, department, "sku", history_data=history_data
+            )
 
     except Exception as e:
         st.error(f"{t('库存数据加载失败')}: {e}")

@@ -36,7 +36,13 @@ def build_adjustment_preview(adjustment_df):
     return wide_df[[*index_columns[:-1], *SIZE_COLUMNS, "合计", "备注"]]
 
 
-def render_adjustment_preview_editor(adjustment_df, key, lock_operation=False):
+def render_adjustment_preview_editor(
+    adjustment_df,
+    key,
+    lock_operation=False,
+    lock_identity=False,
+    allow_rows=True,
+):
     preview_df = build_adjustment_preview(adjustment_df).drop(columns=["合计"])
     column_config = {
         "日期": st.column_config.DateColumn(t("日期"), required=True),
@@ -52,12 +58,15 @@ def render_adjustment_preview_editor(adjustment_df, key, lock_operation=False):
         column_config[size] = st.column_config.NumberColumn(
             size, min_value=0, step=1, format="%d"
         )
+    disabled = ["操作"] if lock_operation else []
+    if lock_identity:
+        disabled.extend(["日期", "品牌", "材质", "颜色"])
     edited_df = st.data_editor(
         preview_df,
         hide_index=True,
-        num_rows="dynamic",
+        num_rows="dynamic" if allow_rows else "fixed",
         use_container_width=True,
-        disabled=["操作"] if lock_operation else [],
+        disabled=disabled,
         column_config=column_config,
         key=key,
     )

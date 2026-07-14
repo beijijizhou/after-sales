@@ -24,6 +24,11 @@ def get_current_role():
     return user.get("role")
 
 
+def get_current_operator_name():
+    user = get_current_user() or {}
+    return user.get("username") or user.get("display_name") or "system"
+
+
 def has_permission(permission):
     user = get_current_user()
     if not user:

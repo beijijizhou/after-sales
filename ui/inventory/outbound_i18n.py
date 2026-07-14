@@ -15,6 +15,15 @@ TEXT = {
         "upload": "上传每日出货 Excel / CSV（可选）",
         "read_error": "文件读取失败",
         "caption": "尺码栏填写箱数或包数，系统会在确认前换算为件数。",
+        "rules_title": "包装换算规则",
+        "rules": (
+            "- 普通 Box：每箱 **72 件**\n"
+            "- Men's Box：每箱 **100 件**\n"
+            "- Bag（S-L）：每包 **300 件**\n"
+            "- Bag（XL-3XL）：每包 **250 件**\n"
+            "- Bag（4XL-5XL）：每包 **200 件**"
+        ),
+        "rules_help": "遇到尚未录入的新包装规格时，可以根据以上件数推算相应的箱数或包数。",
         "empty": "填写箱数或包数后，这里会显示换算件数",
         "preview": "换算件数确认",
         "total": "本次正常出货总件数",
@@ -30,6 +39,15 @@ TEXT = {
         "upload": "Upload outbound Excel / CSV (optional)",
         "read_error": "Unable to read file",
         "caption": "Enter box or bag counts by size. Pieces are calculated before confirmation.",
+        "rules_title": "Package Conversion Rules",
+        "rules": (
+            "- Standard Box: **72 pieces per box**\n"
+            "- Men's Box: **100 pieces per box**\n"
+            "- Bag (S-L): **300 pieces per bag**\n"
+            "- Bag (XL-3XL): **250 pieces per bag**\n"
+            "- Bag (4XL-5XL): **200 pieces per bag**"
+        ),
+        "rules_help": "For a new package not yet listed, use these quantities to estimate the equivalent boxes or bags.",
         "empty": "Enter box or bag counts to preview the converted pieces.",
         "preview": "Confirm Converted Pieces",
         "total": "Total outbound pieces",
@@ -45,6 +63,15 @@ TEXT = {
         "upload": "Subir Excel / CSV de salida (opcional)",
         "read_error": "No se pudo leer el archivo",
         "caption": "Ingrese cajas o bolsas por talla. Las piezas se calculan antes de confirmar.",
+        "rules_title": "Reglas de conversión de empaque",
+        "rules": (
+            "- Caja estándar: **72 piezas por caja**\n"
+            "- Caja Men's: **100 piezas por caja**\n"
+            "- Bolsa (S-L): **300 piezas por bolsa**\n"
+            "- Bolsa (XL-3XL): **250 piezas por bolsa**\n"
+            "- Bolsa (4XL-5XL): **200 piezas por bolsa**"
+        ),
+        "rules_help": "Si aparece un empaque nuevo que aún no está listado, use estas cantidades para calcular cajas o bolsas equivalentes.",
         "empty": "Ingrese cajas o bolsas para ver las piezas convertidas.",
         "preview": "Confirmar piezas convertidas",
         "total": "Total de piezas de salida",

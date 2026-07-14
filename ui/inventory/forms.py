@@ -15,7 +15,7 @@ from db.inventory.sku import (
     normalize_sku_rows,
     parse_sku_file,
 )
-from utils.auth import get_current_user, has_permission
+from utils.auth import get_current_operator_name, has_permission
 from ui.inventory.i18n import get_language, t
 
 
@@ -68,7 +68,7 @@ def render_adjust_form(supabase, department, category, inventory_df):
                 return
             if not show_cost and "成本" in adjustment_df.columns:
                 adjustment_df = adjustment_df.drop(columns=["成本"])
-            username = (get_current_user() or {}).get("username", "system")
+            username = get_current_operator_name()
             apply_adjustment_rows(
                 supabase, department, category, adjustment_df, username
             )
