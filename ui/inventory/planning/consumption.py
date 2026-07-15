@@ -1,16 +1,25 @@
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS, build_color_inventory_table
-from db.inventory.consumption import (
+from db.inventory.planning.consumption import (
     DEFAULT_ORDER_QUANTITY,
     build_consumption_model_table,
     load_consumption_model,
     scale_consumption_model,
 )
-from db.inventory.consumption_alerts import build_inventory_consumption_alerts
+from db.inventory.planning.consumption_alerts import build_inventory_consumption_alerts
+from db.inventory.planning.demand_anomaly import (
+    apply_risk_consumption,
+    build_demand_anomaly_table,
+    load_daily_outbound_history,
+)
+from ui.inventory.planning.anomaly import render_demand_anomaly_monitor
+from ui.inventory.planning.comparison import render_model_comparison
+from ui.inventory.planning.forecast_table import render_reorder_forecast_table
 from ui.inventory.i18n import t
 
 
@@ -77,6 +86,7 @@ def render_black_white_color_summary(
 
 def render_reorder_forecast(
     supabase,
+    department,
     category,
     inventory_df,
     order_quantity,
@@ -87,7 +97,6 @@ def render_reorder_forecast(
     if category != "黑白短袖":
         return DEFAULT_ORDER_QUANTITY
 
-    st.subheader(t("点货预测表"))
     color_df = build_color_inventory_table(inventory_df)
     if color_df.empty:
         st.info(t("暂无可预测库存数据"))
@@ -97,11 +106,24 @@ def render_reorder_forecast(
         model_df = load_consumption_model(supabase, category)
         model_df = scale_consumption_model(model_df, order_quantity)
         today = st.session_state.get("inventory_today")
+        anomaly_error_message = None
+        try:
+            outbound_df = load_daily_outbound_history(
+                supabase, department, category, today
+            )
+            anomaly_df = build_demand_anomaly_table(
+                model_df, outbound_df, inventory_df
+            )
+        except Exception as anomaly_error:
+            anomaly_df = pd.DataFrame()
+            outbound_df = pd.DataFrame()
+            anomaly_error_message = str(anomaly_error)
+        risk_model_df = apply_risk_consumption(model_df, anomaly_df)
         days_to_arrival = max((arrival_date - today).days, 0) if arrival_date and today else 0
         coverage_days = days_to_arrival + int(buffer_days)
         forecast_df = build_inventory_consumption_alerts(
             color_df,
-            model_df,
+            risk_model_df,
             coverage_days=coverage_days,
             inventory_date=inventory_date,
             current_date=today,
@@ -111,64 +133,13 @@ def render_reorder_forecast(
         st.caption(str(e))
         return order_quantity
 
-    forecast_columns = [
-        "颜色",
-        "库存基准日期",
-        "当前日期",
-        "最低剩余天数",
-        "预计最早耗尽日期",
-        "低于14天尺码",
-        "到货前需覆盖天数",
-        "到货前缺口总数",
-        "到货前缺口尺码",
-    ]
-    forecast_df = forecast_df[[column for column in forecast_columns if column in forecast_df.columns]]
-
-    display_df = forecast_df.style.apply(
-        lambda row: [
-            "background-color: #ffe0e0; color: #8a0000; font-weight: 700;"
-            if is_low_consumption_alert(row.get("最低剩余天数")) and column in ["最低剩余天数", "低于14天尺码"]
-            else "background-color: #fff1cc; color: #7a4a00; font-weight: 700;"
-            if has_arrival_shortage(row.get("到货前缺口总数")) and column in ["到货前缺口总数", "到货前缺口尺码"]
-            else ""
-            for column in row.index
-        ],
-        axis=1,
-    )
-
-    st.dataframe(
-        display_df,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "颜色": st.column_config.TextColumn(t("颜色")),
-            "最低剩余天数": st.column_config.NumberColumn(t("最低剩余天数"), format="%d"),
-            "库存基准日期": st.column_config.DateColumn(t("库存基准日期"), format="YYYY-MM-DD"),
-            "当前日期": st.column_config.DateColumn(t("当前日期"), format="YYYY-MM-DD"),
-            "预计最早耗尽日期": st.column_config.DateColumn(
-                t("预计最早耗尽日期"), format="YYYY-MM-DD"
-            ),
-            "低于14天尺码": st.column_config.TextColumn(t("低于14天尺码")),
-            "到货前需覆盖天数": st.column_config.NumberColumn(t("到货前需覆盖天数"), format="%d"),
-            "到货前缺口总数": st.column_config.NumberColumn(t("到货前缺口总数"), format="%d"),
-            "到货前缺口尺码": st.column_config.TextColumn(t("到货前缺口尺码")),
-        },
-    )
+    st.subheader(t("点货预测表"))
+    render_reorder_forecast_table(forecast_df)
+    if anomaly_error_message:
+        st.warning(f"{t('异常消耗加载失败')}: {anomaly_error_message}")
+    render_demand_anomaly_monitor(anomaly_df)
+    render_model_comparison(model_df, outbound_df, today)
     return order_quantity
-
-
-def is_low_consumption_alert(days):
-    try:
-        return float(days) < 14
-    except (TypeError, ValueError):
-        return False
-
-
-def has_arrival_shortage(quantity):
-    try:
-        return float(quantity) > 0
-    except (TypeError, ValueError):
-        return False
 
 
 def render_consumption_model(supabase, category, order_quantity):

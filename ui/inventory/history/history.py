@@ -1,15 +1,15 @@
 import streamlit as st
 
 from db.inventory import load_inventory_movements
-from db.inventory.adjustments import reverse_inventory_batch
+from db.inventory.operations.adjustments import reverse_inventory_batch
 from db.inventory.sku import load_sku_imports
-from ui.inventory.history_batches import (
+from ui.inventory.history.history_batches import (
     add_movement_batch_key,
     add_sku_batch_key,
     build_movement_batches,
     render_batch_selector,
 )
-from ui.inventory.history_tables import (
+from ui.inventory.history.history_tables import (
     render_movement_table,
     render_sku_import_table,
 )

@@ -26,7 +26,9 @@ def get_current_role():
 
 def get_current_operator_name():
     user = get_current_user() or {}
-    return user.get("username") or user.get("display_name") or "system"
+    return str(
+        user.get("display_name") or user.get("username") or "system"
+    ).strip()
 
 
 def has_permission(permission):
@@ -59,9 +61,12 @@ def load_user(username):
 def set_current_user(user):
     role = user.get("role") or ROLE_VISITOR
     permissions = ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS[ROLE_VISITOR])
+    display_name = str(
+        user.get("display_name") or user["username"]
+    ).strip()
     st.session_state["current_user"] = {
         "username": user["username"],
-        "display_name": user.get("display_name") or user["username"],
+        "display_name": display_name,
         "role": role,
         "role_label": ROLE_LABELS.get(role, role),
         **permissions,

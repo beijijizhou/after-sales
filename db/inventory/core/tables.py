@@ -1,7 +1,7 @@
 import pandas as pd
 from zoneinfo import ZoneInfo
 
-from db.inventory.constants import (
+from db.inventory.core.constants import (
     BLACK_WHITE_COLOR_ORDER,
     BLACK_WHITE_MATERIAL_ORDER,
     DEFAULT_CATEGORY,

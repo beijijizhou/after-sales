@@ -13,28 +13,31 @@ from db.inventory import (
     load_inventory_snapshot,
 )
 from db.inventory.sku import load_sku_imports
-from ui.inventory.forms import (
+from ui.inventory.operations.forms import (
+    render_inventory_unit_calculator,
     render_adjust_form,
     render_new_sku_form,
 )
-from ui.inventory.consumption import (
+from ui.inventory.planning.consumption import (
     render_black_white_color_summary,
     render_consumption_model,
     render_consumption_planning_inputs,
     render_reorder_forecast,
 )
-from ui.inventory.calculator import render_inventory_unit_calculator
 from ui.inventory.controls import (
     render_category_selector,
     render_department_selector,
     render_inventory_date_selector,
     render_setup_help,
 )
-from ui.inventory.history import load_inventory_history_data, render_inventory_history
+from ui.inventory.history.history import (
+    load_inventory_history_data,
+    render_inventory_history,
+)
 from ui.inventory.i18n import render_language_selector, t
-from ui.inventory.outbound import render_daily_outbound
-from ui.inventory.table_filters import render_inventory_table_filters
-from ui.inventory.table_editor import render_inventory_table_editor
+from ui.inventory.operations.outbound import render_daily_outbound
+from ui.inventory.stock.table_filters import render_inventory_table_filters
+from ui.inventory.stock.table_editor import render_inventory_table_editor
 from utils.auth import has_permission
 
 
@@ -148,11 +151,11 @@ def render_inventory_summary(supabase):
             order_quantity, arrival_date, buffer_days = (
                 render_consumption_planning_inputs(category)
             )
-            render_consumption_model(supabase, category, order_quantity)
             render_reorder_forecast(
-                supabase, category, inventory_df, order_quantity,
+                supabase, department, category, inventory_df, order_quantity,
                 arrival_date, buffer_days, inventory_date,
             )
+            render_consumption_model(supabase, category, order_quantity)
 
         with tabs[2]:
             if can_edit:

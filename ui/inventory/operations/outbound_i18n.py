@@ -1,4 +1,4 @@
-from db.inventory.outbound import OUTBOUND_SPECS
+from db.inventory.operations.outbound import OUTBOUND_SPECS
 
 
 LANGUAGES = {

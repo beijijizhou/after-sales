@@ -43,7 +43,7 @@ where not exists (
 
 update public.users
 set
-    name = coalesce(nullif(name, ''), 'a'),
+    name = 'Andy',
     department = coalesce(nullif(department, ''), '管理员'),
     employee_id = coalesce(nullif(employee_id, ''), 'a_id'),
     password = 'a',
@@ -61,7 +61,7 @@ insert into public.users (
     is_active
 )
 select
-    'a',
+    'Andy',
     'a',
     'a_id',
     '管理员',

@@ -1,6 +1,6 @@
 import pandas as pd
 
-from db.inventory.constants import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT
+from db.inventory.core.constants import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT
 
 
 def load_inventory_departments(supabase):

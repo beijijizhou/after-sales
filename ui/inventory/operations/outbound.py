@@ -2,15 +2,15 @@ import streamlit as st
 import pandas as pd
 
 from db.inventory import SIZE_COLUMNS, apply_adjustment_rows, normalize_adjustment_rows
-from db.inventory.outbound import (
+from db.inventory.operations.outbound import (
     OUTBOUND_SPECS,
     build_outbound_package_template,
     convert_packages_to_adjustments,
     normalize_outbound_packages,
 )
-from ui.inventory.adjustment_preview import render_adjustment_preview_editor
+from ui.inventory.operations.adjustment_preview import render_adjustment_preview_editor
 from ui.inventory.i18n import get_language
-from ui.inventory.outbound_i18n import (
+from ui.inventory.operations.outbound_i18n import (
     COLUMNS,
     COLORS,
     TEXT,

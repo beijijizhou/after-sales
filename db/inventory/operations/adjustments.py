@@ -4,8 +4,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from db.inventory.constants import SIZE_COLUMNS
-from db.inventory.snapshots import create_inventory_snapshot
+from db.inventory.core.constants import SIZE_COLUMNS
+from db.inventory.core.snapshots import create_inventory_snapshot
 
 
 def build_adjustment_template():

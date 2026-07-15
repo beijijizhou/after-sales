@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from ui.inventory.history_tables import format_date_columns
+from ui.inventory.history.history_tables import format_date_columns
 from ui.inventory.i18n import t
 
 
@@ -132,7 +132,7 @@ def build_sku_batch_rows(sku_import_df):
             "部门": row["department"],
             "品类": row["category"],
             "数量": int(row["quantity"]),
-            "操作人": "a",
+        "操作人": "Andy",
             "备注": "",
         }
         for row in grouped_df.to_dict("records")

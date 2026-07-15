@@ -10,7 +10,7 @@ add column if not exists is_active boolean not null default true;
 
 update public.users
 set
-    name = coalesce(nullif(name, ''), 'hy'),
+    name = '胡燕',
     department = coalesce(nullif(department, ''), '售后'),
     employee_id = coalesce(nullif(employee_id, ''), 'hy_id'),
     password = 'hy',
@@ -28,7 +28,7 @@ insert into public.users (
     is_active
 )
 select
-    'hy',
+    '胡燕',
     'hy',
     'hy_id',
     '售后',

@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from db.inventory.constants import SIZE_COLUMNS
+from db.inventory.core.constants import SIZE_COLUMNS
 
 
 OUTBOUND_SPECS = {
