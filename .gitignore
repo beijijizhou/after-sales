@@ -1,3 +1,5 @@
 .env
 .venv
 .streamlit/secrets.toml
+automation/playwright/.auth/
+output/automation/
