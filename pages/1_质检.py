@@ -1,3 +1,8 @@
+from utils.page_layout import configure_page
+
+
+configure_page()
+
 from db.supabase_client import supabase
 from ui.production.summary import render_production_summary
 from utils.auth import require_page_access

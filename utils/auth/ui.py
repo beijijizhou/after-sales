@@ -29,7 +29,7 @@ def render_login():
     st.caption("请输入账号后继续使用系统")
     with st.form("main_login_form", clear_on_submit=False):
         username, password, remember = render_login_fields("main")
-        submitted = st.form_submit_button("登录", use_container_width=True)
+        submitted = st.form_submit_button("登录", width="stretch")
     if submitted:
         handle_login(username, password, remember, show_setup_hint=True)
     st.stop()
@@ -43,7 +43,7 @@ def render_sidebar_login():
         with st.form("sidebar_login_form", clear_on_submit=False):
             username, password, remember = render_login_fields("sidebar")
             submitted = st.form_submit_button(
-                "登录", use_container_width=True
+                "登录", width="stretch"
             )
         if submitted:
             handle_login(username, password, remember, show_setup_hint=False)
@@ -92,7 +92,7 @@ def render_user_badge():
 
     with st.sidebar:
         st.caption(f"{user['display_name']} · {user['role_label']}")
-        if st.button("退出登录", use_container_width=True):
+        if st.button("退出登录", width="stretch"):
             st.session_state.pop("current_user", None)
             clear_persistent_login()
             st.rerun()

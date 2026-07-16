@@ -5,6 +5,7 @@ import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
 from db.inventory.container.repository import create_inventory_containers
+from db.inventory.container.packaging import build_container_packaging_preview
 from db.inventory.container.tables import (
     CONTAINER_STATUSES,
     build_container_schedule_preview,
@@ -12,6 +13,7 @@ from db.inventory.container.tables import (
     normalize_container_rows,
 )
 from utils.auth import get_current_operator_name, has_permission
+from ui.inventory.container.tables import render_packaging_check
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -34,7 +36,7 @@ def render_container_form(supabase, department=None, category=None):
         default_df,
         hide_index=True,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         key=(
             f"inventory_container_editor_{form_version}_"
             f"{department or 'all'}_{category or 'all'}"
@@ -71,7 +73,7 @@ def render_container_form(supabase, department=None, category=None):
         st.dataframe(
             schedule_df,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "发货日期": st.column_config.DateColumn("发货日期"),
                 "预计运输天数": st.column_config.NumberColumn(
@@ -81,7 +83,12 @@ def render_container_form(supabase, department=None, category=None):
             },
         )
 
-    if not st.button("保存货柜安排", use_container_width=True):
+    packaging_df = build_container_packaging_preview(edited_df)
+    if not packaging_df.empty:
+        st.caption("以下箱数/包装信息仅供仓库点数核对；系统仍按件数保存和计算。")
+        render_packaging_check(packaging_df, title="保存前包装核对")
+
+    if not st.button("保存货柜安排", width="stretch"):
         return
     try:
         cleaned_df = normalize_container_rows(edited_df)

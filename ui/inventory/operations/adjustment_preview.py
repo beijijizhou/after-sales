@@ -65,7 +65,7 @@ def render_adjustment_preview_editor(
         preview_df,
         hide_index=True,
         num_rows="dynamic" if allow_rows else "fixed",
-        use_container_width=True,
+        width="stretch",
         disabled=disabled,
         column_config=column_config,
         key=key,

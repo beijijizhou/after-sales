@@ -75,7 +75,7 @@ def render_movement_table(movement_df):
     st.dataframe(
         display_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "日期": st.column_config.DateColumn(t("日期")),
             "部门": st.column_config.TextColumn(t("部门")),
@@ -149,4 +149,4 @@ def render_sku_import_table(sku_import_df):
         return
 
     display_df, column_config = table_result
-    st.dataframe(display_df, hide_index=True, use_container_width=True, column_config=column_config)
+    st.dataframe(display_df, hide_index=True, width="stretch", column_config=column_config)

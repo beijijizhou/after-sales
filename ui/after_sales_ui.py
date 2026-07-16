@@ -26,7 +26,7 @@ def render_after_sales_section():
     edited_df = st.data_editor(
         editable_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         disabled=["barcode", "scanned_by", "scanned_at", "是否已售后"],
         column_config={
             "barcode": st.column_config.TextColumn("条码"),

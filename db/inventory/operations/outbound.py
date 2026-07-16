@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from db.inventory.core.constants import SIZE_COLUMNS
+from db.inventory.core.packaging import get_units_per_package
 
 
 OUTBOUND_SPECS = {
@@ -80,18 +81,10 @@ def convert_packages_to_adjustments(package_df):
                 "材质": material,
                 "颜色": source["颜色"],
                 "尺码": size,
-                "数量": package_count * get_units_per_package(brand, package_type, size),
+                "数量": package_count * get_units_per_package(
+                    brand, package_type, size
+                ),
                 "成本": pd.NA,
                 "备注": source.get("备注", "每日正常出货") or "每日正常出货",
             })
     return pd.DataFrame(rows)
-
-
-def get_units_per_package(brand, package_type, size):
-    if package_type == "Box":
-        return 100 if brand == "Men's" else 72
-    if size in ["S", "M", "L"]:
-        return 300
-    if size in ["XL", "2XL", "3XL"]:
-        return 250
-    return 200

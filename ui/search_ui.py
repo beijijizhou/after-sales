@@ -105,5 +105,5 @@ def render_search_preview(title, search_values):
     st.dataframe(
         pd.DataFrame(preview_rows),
         hide_index=True,
-        use_container_width=True
+        width="stretch"
     )

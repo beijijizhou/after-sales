@@ -1,6 +1,11 @@
 from supabase import create_client
 import streamlit as st
 
+from utils.page_layout import configure_page
+
+
+configure_page()
+
 import pandas as pd
 
 from after_sales_table import sales_table
@@ -79,7 +84,7 @@ if exact_search or like_search:
         st.success(f"找到 {len(df)} 条记录")
         st.dataframe(
             df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "操作次数": st.column_config.NumberColumn("操作次数", format="%d"),

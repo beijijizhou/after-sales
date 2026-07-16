@@ -52,14 +52,14 @@ def render_adjust_form(supabase, department, category, inventory_df):
         default_df,
         hide_index=True,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         column_config=adjustment_columns,
         key=(
             f"manual_inventory_adjustments_{get_language()}_"
             f"{current_date.isoformat()}_{form_version}"
         ),
     )
-    if st.button(t("保存手动库存调整"), use_container_width=True):
+    if st.button(t("保存手动库存调整"), width="stretch"):
         try:
             edited_df["操作"] = action
             adjustment_df = normalize_adjustment_rows(edited_df)
@@ -100,7 +100,7 @@ def render_new_sku_form(supabase, department, category, inventory_df=None):
 
     st.download_button(
         t("下载新增 SKU 模板"), data=template_df.to_csv(index=False).encode("utf-8-sig"),
-        file_name="新增SKU模板.csv", mime="text/csv", use_container_width=True,
+        file_name="新增SKU模板.csv", mime="text/csv", width="stretch",
     )
     uploaded_file = st.file_uploader(
         t("上传新增 SKU Excel / CSV"),
@@ -128,15 +128,15 @@ def render_new_sku_form(supabase, department, category, inventory_df=None):
         for size in SIZE_COLUMNS:
             sku_columns[size] = st.column_config.NumberColumn(size, min_value=0, step=1)
         sku_df = st.data_editor(
-            default_df, hide_index=True, num_rows="dynamic", use_container_width=True,
+            default_df, hide_index=True, num_rows="dynamic", width="stretch",
             column_config=sku_columns,
             key=f"new_inventory_skus_{get_language()}_{form_version}",
         )
 
     if uploaded_file is not None:
         preview_df = sku_df if show_cost or "成本" not in sku_df.columns else sku_df.drop(columns=["成本"])
-        st.dataframe(preview_df, hide_index=True, use_container_width=True)
-    if st.button(t("保存新增 SKU"), use_container_width=True):
+        st.dataframe(preview_df, hide_index=True, width="stretch")
+    if st.button(t("保存新增 SKU"), width="stretch"):
         try:
             cleaned_df = normalize_sku_rows(sku_df)
             if cleaned_df.empty:

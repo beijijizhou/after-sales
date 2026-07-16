@@ -87,7 +87,7 @@ def render_inventory_table(
         st.dataframe(
             display_df,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             column_config=column_config,
             height=table_height,
         )

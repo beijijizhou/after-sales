@@ -34,7 +34,7 @@ def render_platform_summary(supabase, selected_date):
         st.dataframe(
             count_df,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "总生产数量": st.column_config.NumberColumn("总生产数量"),
                 "多件订单数量": st.column_config.NumberColumn("多件订单数量"),
@@ -94,7 +94,7 @@ def render_platform_summary(supabase, selected_date):
         st.dataframe(
             detail_df,
             hide_index=True,
-            use_container_width=True
+            width="stretch"
         )
 
     except Exception as e:

@@ -30,7 +30,7 @@ from utils.production_helpers import (
 
 
 def render_refresh_multiple_counts_button(supabase, selected_date):
-    if st.button("刷新当前日期多件订单", use_container_width=True):
+    if st.button("刷新当前日期多件订单", width="stretch"):
         try:
             with st.spinner(f"正在刷新 {selected_date.isoformat()} 多件订单..."):
                 refresh_multiple_counts(supabase, selected_date)

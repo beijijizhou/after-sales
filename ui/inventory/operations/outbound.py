@@ -34,7 +34,7 @@ def render_daily_outbound(supabase, department, category):
         data=template_df.to_csv(index=False).encode("utf-8-sig"),
         file_name=text["file"],
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
     uploaded_file = st.file_uploader(
         text["upload"],
@@ -62,7 +62,7 @@ def render_daily_outbound(supabase, department, category):
     package_df = st.data_editor(
         template_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         disabled=[COLUMNS[language]["包装规格"]],
         column_config=build_package_column_config(language),
         key=(
@@ -93,7 +93,7 @@ def render_daily_outbound(supabase, department, category):
         return
     total = int(adjustment_df["数量"].sum())
     st.metric(text["total"], f"{total:,}")
-    if not st.button(text["confirm"], use_container_width=True):
+    if not st.button(text["confirm"], width="stretch"):
         return
 
     try:

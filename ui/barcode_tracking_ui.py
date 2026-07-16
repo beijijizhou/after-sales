@@ -45,10 +45,10 @@ def render_operation_tracking_section():
                 lambda row: ["background-color: #ffebee; color: #b71c1c"] * len(row),
                 axis=1,
             )
-            st.dataframe(pending_style, hide_index=True, use_container_width=True)
+            st.dataframe(pending_style, hide_index=True, width="stretch")
 
     with history_tab:
         if tracking_df.empty:
             st.info("所选日期内没有问题订单记录")
         else:
-            st.dataframe(tracking_df, hide_index=True, use_container_width=True)
+            st.dataframe(tracking_df, hide_index=True, width="stretch")

@@ -52,7 +52,7 @@ def render_after_sales_shipping_chart():
         )
         .properties(height=320)
     )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 
 def get_latest_input_time(df):
@@ -101,7 +101,7 @@ def render_person_after_sales_detail():
         format_func=lambda value: "请选择质检人员" if value == "" else value,
     )
     if not selected_person:
-        st.dataframe(summary_df, hide_index=True, use_container_width=True)
+        st.dataframe(summary_df, hide_index=True, width="stretch")
         return
 
     detail_df = build_person_detail_df(selected_person)
@@ -117,7 +117,7 @@ def render_person_after_sales_detail():
     st.dataframe(
         detail_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "件数": st.column_config.NumberColumn("件数", format="%d"),
             "总金额": st.column_config.NumberColumn("总金额", format="%.2f"),

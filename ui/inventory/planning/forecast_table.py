@@ -18,7 +18,7 @@ def render_reorder_forecast_table(forecast_df):
     st.dataframe(
         display_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "颜色": st.column_config.TextColumn(t("颜色")),
             "最低剩余天数": st.column_config.NumberColumn(

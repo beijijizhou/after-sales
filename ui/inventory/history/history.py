@@ -57,7 +57,7 @@ def render_movement_undo(supabase, selected_df, reversed_ids):
         t("我确认撤销这笔库存变动"),
         key=f"confirm_inventory_undo_{batch_id}",
     )
-    if st.button(t("撤销这笔库存变动"), disabled=not confirmed, use_container_width=True):
+    if st.button(t("撤销这笔库存变动"), disabled=not confirmed, width="stretch"):
         row = selected_df.iloc[0]
         username = get_current_operator_name()
         try:

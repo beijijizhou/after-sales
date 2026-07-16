@@ -75,7 +75,7 @@ def render_black_white_color_summary(
     st.dataframe(
         color_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "颜色": st.column_config.TextColumn(t("颜色")),
             "总库存": st.column_config.NumberColumn(t("总库存"), format="%d"),
@@ -163,7 +163,7 @@ def render_consumption_model(supabase, category, order_quantity):
     st.dataframe(
         display_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             **{size: st.column_config.NumberColumn(size, format="%d") for size in SIZE_COLUMNS},
         },

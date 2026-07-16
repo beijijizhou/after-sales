@@ -37,7 +37,7 @@ def render_demand_anomaly_monitor(anomaly_df):
     st.dataframe(
         styled_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "颜色": st.column_config.TextColumn(t("颜色")),
             "尺码": st.column_config.TextColumn(t("尺码")),

@@ -49,7 +49,7 @@ def render_person_platform_table(person_platform_summary, title):
     for column in platform_columns:
         column_config[column] = st.column_config.NumberColumn(column)
 
-    st.dataframe(person_platform_summary, hide_index=True, use_container_width=True, column_config=column_config)
+    st.dataframe(person_platform_summary, hide_index=True, width="stretch", column_config=column_config)
 
 
 def render_hourly_production(hourly_summary):
@@ -84,7 +84,7 @@ def render_hourly_production(hourly_summary):
     )
     total_bar = base.mark_bar(color="#B8BEC8", size=28).encode(y=alt.Y("总产量:Q", title="产量"))
     haloo_bar = base.mark_bar(color="#2563EB", size=14).encode(y=alt.Y("Haloo 产量:Q", title="产量"))
-    st.altair_chart((total_bar + haloo_bar).properties(height=360), use_container_width=True)
+    st.altair_chart((total_bar + haloo_bar).properties(height=360), width="stretch")
 
 
 def render_hourly_legend():
@@ -113,7 +113,7 @@ def render_person_switch_table(person_switch_df):
     st.dataframe(
         person_switch_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "切换次数": st.column_config.NumberColumn("切换次数", format="%d"),
             "切换路径": st.column_config.TextColumn("切换路径", width="large"),

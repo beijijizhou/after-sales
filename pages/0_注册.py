@@ -1,5 +1,10 @@
 import streamlit as st
 
+from utils.page_layout import configure_page
+
+
+configure_page()
+
 from db.supabase_client import supabase
 from utils.auth import has_permission, require_page_access
 

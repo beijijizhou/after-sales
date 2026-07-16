@@ -51,7 +51,7 @@ def render_status_update(supabase, raw_df, container_key):
         key="container_status_date",
     )
     note = st.text_input("备注", key="container_status_note")
-    if not st.button("确认已到货", use_container_width=True):
+    if not st.button("确认已到货", width="stretch"):
         return
     try:
         update_container_status(
@@ -89,7 +89,7 @@ def render_container_history(supabase, raw_df):
     st.dataframe(
         display_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "事件日期": st.column_config.DateColumn("事件日期"),
             "备注": st.column_config.TextColumn("备注", width="large"),

@@ -31,7 +31,7 @@ def render_platform_card(platform, platform_df):
     st.dataframe(
         display_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         height=318,
         column_config={
             "扫描时间": st.column_config.TextColumn("时间", width="small"),

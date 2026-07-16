@@ -1,5 +1,10 @@
 import streamlit as st
 
+from utils.page_layout import configure_page
+
+
+configure_page()
+
 from ui.barcode_operations_ui import (
     render_direct_operation_entry,
 )

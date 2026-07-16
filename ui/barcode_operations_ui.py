@@ -78,11 +78,11 @@ def render_direct_operation_entry():
         st.dataframe(
             pd.DataFrame({"单号 / 条码": barcodes}),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             height=180,
         )
 
-    if st.button("加入问题件追踪", use_container_width=True):
+    if st.button("加入问题件追踪", width="stretch"):
         if not barcodes:
             st.warning("请先输入单号或条码")
             return
@@ -134,7 +134,7 @@ def render_barcode_operation_section():
     edited_df = st.data_editor(
         editor_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         disabled=["barcode", "scanned_by", "scanned_at"],
         column_config={
             "保存": st.column_config.CheckboxColumn("保存"),
@@ -151,7 +151,7 @@ def render_barcode_operation_section():
 
     selected_df = pd.DataFrame(edited_df)
     selected_df = selected_df[selected_df["保存"]]
-    if st.button("保存订单操作标记", use_container_width=True):
+    if st.button("保存订单操作标记", width="stretch"):
         if selected_df.empty:
             st.warning("请先勾选需要保存的条码")
             return

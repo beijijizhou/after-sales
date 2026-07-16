@@ -34,7 +34,7 @@ def render_inventory_table_editor(
     edited_df = st.data_editor(
         original_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         disabled=[column for column in LOCKED_COLUMNS if column in original_df.columns],
         column_config=editor_config,
         height=table_height,
@@ -48,7 +48,7 @@ def render_inventory_table_editor(
     )
     st.caption(f"{t('当前显示尺码合计')}: {int(visible_total):,} {t('件')}")
 
-    if st.button(t("保存库存明细修改"), use_container_width=True):
+    if st.button(t("保存库存明细修改"), width="stretch"):
         adjustment_df = build_inline_adjustments(original_df, edited_df)
         if adjustment_df.empty:
             st.info(t("库存数量没有变化"))

@@ -27,7 +27,7 @@ def render_model_comparison(model_df, outbound_df, current_date):
     st.dataframe(
         styled_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "颜色": st.column_config.TextColumn(t("颜色")),
             "尺码": st.column_config.TextColumn(t("尺码")),
