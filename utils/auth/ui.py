@@ -27,8 +27,10 @@ def update_remembered_credentials(username, password, remember):
 def render_login():
     st.title("登录")
     st.caption("请输入账号后继续使用系统")
-    username, password, remember = render_login_fields("main")
-    if st.button("登录", use_container_width=True):
+    with st.form("main_login_form", clear_on_submit=False):
+        username, password, remember = render_login_fields("main")
+        submitted = st.form_submit_button("登录", use_container_width=True)
+    if submitted:
         handle_login(username, password, remember, show_setup_hint=True)
     st.stop()
 
@@ -38,8 +40,12 @@ def render_sidebar_login():
         return
 
     with st.sidebar.expander("员工登录", expanded=False):
-        username, password, remember = render_login_fields("sidebar")
-        if st.button("登录", use_container_width=True, key="sidebar_login_button"):
+        with st.form("sidebar_login_form", clear_on_submit=False):
+            username, password, remember = render_login_fields("sidebar")
+            submitted = st.form_submit_button(
+                "登录", use_container_width=True
+            )
+        if submitted:
             handle_login(username, password, remember, show_setup_hint=False)
 
 
@@ -48,7 +54,7 @@ def render_login_fields(prefix):
     username = st.text_input(
         "账号",
         value=remembered_username,
-        key=None if prefix == "main" else f"{prefix}_login_username",
+        key=f"{prefix}_login_username",
         autocomplete="username",
     )
     password = st.text_input(
