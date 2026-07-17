@@ -17,14 +17,14 @@ from automation.playwright.haloo.exports import (
 )
 from automation.playwright.haloo.filters import apply_production_item_filter
 from automation.playwright.haloo.platforms import get_erp_platform
+from automation.playwright.errors import ProductionLoginRequired
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DOWNLOAD_ROOT = PROJECT_ROOT / "output" / "automation" / "erp" / "downloads"
 
 
-class HalooLoginRequired(RuntimeError):
-    pass
+HalooLoginRequired = ProductionLoginRequired
 
 
 def download_production_workbook(

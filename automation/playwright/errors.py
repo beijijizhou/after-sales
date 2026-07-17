@@ -1,0 +1,2 @@
+class ProductionLoginRequired(RuntimeError):
+    pass

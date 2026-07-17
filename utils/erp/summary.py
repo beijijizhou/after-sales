@@ -10,24 +10,31 @@ SCOPE_OPTIONS = [SCOPE_VALID, SCOPE_PRODUCED, SCOPE_ALL]
 
 def apply_production_scope(df, scope):
     if scope == SCOPE_PRODUCED:
-        return df[df["生产项状态"] == "已生产"].copy()
+        return df[df["生产项状态"].isin(["已生产", "已发货"])].copy()
     if scope == SCOPE_ALL:
         return df.copy()
     return df[df["生产项状态"] != "已取消"].copy()
 
 
 def build_color_size_summary(df):
+    row_columns = ["颜色"]
+    if "品类" in df.columns:
+        row_columns.insert(0, "品类")
     if df.empty:
-        return pd.DataFrame(columns=["颜色", *SIZE_ORDER, "合计"])
+        return pd.DataFrame(columns=[*row_columns, *SIZE_ORDER, "合计"])
     summary = df.pivot_table(
-        index="颜色", columns="尺码", values="数量", aggfunc="sum", fill_value=0
+        index=row_columns,
+        columns="尺码",
+        values="数量",
+        aggfunc="sum",
+        fill_value=0,
     ).reset_index()
     for size in SIZE_ORDER:
         if size not in summary.columns:
             summary[size] = 0
         summary[size] = summary[size].astype(int)
     summary["合计"] = summary[SIZE_ORDER].sum(axis=1)
-    return summary[["颜色", *SIZE_ORDER, "合计"]].sort_values(
+    return summary[[*row_columns, *SIZE_ORDER, "合计"]].sort_values(
         "合计", ascending=False
     )
 

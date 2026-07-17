@@ -1,0 +1,54 @@
+                                                    Andy Hu
+              Cell: 3473482925 • Email: hongzhonghu2012@gmail.com • Queens, New York • U.S. Citizen
+Skills
+Programming Language: Python, Java, JavaScript, TypeScript, C++, Shell Script, C, MIPS, OCaml
+Development Tools & Frameworks: React, Node.js, FastAPI, SQL/ NoSQL DB, Git, Unit Testing, Django, Flask
+AI Development: AI agent, MCP, RAG, LLM, LangChain, Vector DB, Embedding Models, Machine Learning
+Cloud & DevOps: GCP, AWS, Vercel, Render, Linux, Docker, Nginx, Rabbit MQ, Kubernetes, YAML, VPN
+
+Work
+Haloo (E-Commerce, Warehouse Startup)                                                             July 2025 – Present
+Full-Stack Developer | Python, Streamlit, Next.JS, Pandas                                               Hauppuage,NY
+• Built an internal web application to track USPS tracking numbers at scale, saving hundreds of minutes of manual
+     work daily while identifying fraudulent packages to prevent USPS penalties and potential warehouse shutdowns.
+•   Developed an automated package scanning system that safeguarded client stores from platform penalties,
+    ensuring timely shipment confirmations and strengthening long-term client relationships
+•   Designed and launched a minimum viable product (MVP) enabling customers to place orders while allowing
+    warehouse teams to manage fulfillment and shipping workflows efficiently.
+•   Worked closely with clients to collect feedback and understand operational pain points, incorporating those
+    insights to improve internal tools and logistics workflows.
+
+UnieLogics (E-Commerce & Logistic Startup)                                                        Oct 2024 – May, 2025
+Full-Stack Developer | React, Node, MongoDB, JWT, Redis, AWS, Tailwind CSS, RESTful API                   Elizabeth, NJ
+• Established code quality processes from the ground up, serving as the sole reviewer and approver for all code
+     changes, enhancing the codebase through rigorous reviews and test case implementation as part of CI/CD practices.
+• Led deployment and infrastructure management, handling service migrations, troubleshooting production issues, and
+     optimizing system performance with Webpack to ensure scalability and reliability.
+• Built a real-time user session management system, enforcing single-session login, enhancing security, enabling real-
+     time notifications, and monetizing additional logins.
+• Developed a team collaboration feature, enabling users to invite and manage team members with owner privileges,
+     and offering paid options for expanding team capacity.
+
+Research
+National Science Foundation                                                                     June 2024 – May, 2025
+Software Developer | React, PostgreSQL, Cypress, Vite, TypeScript, Zustand                               Manhattan, NY
+• Developed an assistive navigation system leveraging Google Maps API to aid visually impaired users, providing
+    detailed routes that based on obstacles, and landmarks.
+ • Enhanced route safety and accuracy by 40% through the implementation of intersection and collision detection
+    mechanisms using computer vision and PostGIS, effectively alerting users during travel using text to speech.
+• Utilized Google Cloud Platform to host both the database and backend services, managing requests and data
+    processing through a Flask backend.
+Projects
+Online AI JS editor
+AI agent, RAG, MCP, FastAPI, Chroma, Vite, React, Pinecone, Docker
+• Built an online JavaScript editor with real-time code execution and testing, powered by an AI agent to provide
+    interactive, context-aware learning experiences.
+• Integrated a backend with a vector database, RAG, and MCP tools, enabling an AI JS agent to deliver precise,
+    retrieval-augmented answers for enhanced JavaScript learning support.
+
+Education
+Stony Brook University                                                                                     May 2023
+Bachelor of Science in Computer Science                                                 GPA: 3.4/4.0 Stony Brook, NY
+LaGuardia Community College                                                                                 Dec 2020
+Associate of Science in Math                                                                 GPA:3.9/4.0 Queens, NY
+
