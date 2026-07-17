@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+from automation.api.hansen import load_hansen_credentials
 from automation.api.sds import load_sds_credentials
 from automation.production import (
     DIAGNOSTIC_PATH,
@@ -20,6 +21,7 @@ from utils.erp import (
     build_status_summary,
 )
 from utils.erp.catalog import normalize_production_catalog
+from utils.erp.material import normalize_production_material
 from utils.erp.summary import SCOPE_OPTIONS
 
 
@@ -41,6 +43,8 @@ def render_production_data_page():
             disabled=not platforms,
             key=f"production_platform_{department}",
         )
+        if platforms:
+            st.caption(f"已接入平台：{'、'.join(platforms)}")
     today = datetime.now(ZoneInfo("America/New_York")).date()
     selected_range = st.date_input(
         "生产时间",
@@ -67,7 +71,9 @@ def render_production_data_page():
     if source is None:
         st.info(f"尚未获取{platform}生产数据。")
         return
-    source_df = normalize_production_catalog(source["data"])
+    source_df = normalize_production_material(
+        normalize_production_catalog(source["data"])
+    )
     source_file = source["file"]
     st.success(f"已读取：{platform} / {source_file}")
 
@@ -115,6 +121,8 @@ def _fetch_production_data(platform, start_date, end_date):
         credentials = None
         if platform in SDS_PLATFORM_PROFILES:
             credentials = _get_sds_credentials(platform)
+        elif platform == "汉森":
+            credentials = load_hansen_credentials(st.secrets)
         result = load_production_data(
             platform,
             start_date,

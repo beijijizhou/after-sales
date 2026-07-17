@@ -7,6 +7,7 @@ NORMALIZED_COLUMNS = [
     "生产项编码",
     "生产单号",
     "品类",
+    "材质",
     "商品",
     "商品底款编码",
     "商品底款",
@@ -39,12 +40,14 @@ def _normalize_record(record, platform):
         if item.get("name")
     )
     product_name = str(product.get("name") or "").strip()
+    texture = product.get("texture") or {}
     color = product.get("colorName") or ""
     source_category = category_path.split(" > ")[-1] if category_path else "其他"
     return {
         "生产项编码": record.get("no") or record.get("id"),
         "生产单号": record.get("merchantOrderNo") or record.get("no"),
         "品类": source_category,
+        "材质": texture.get("name") or "",
         "商品": product_name,
         "商品底款编码": product.get("sku") or "",
         "商品底款": product_name,

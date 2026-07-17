@@ -40,7 +40,10 @@ def build_color_size_summary(df):
 
 
 def build_material_summary(df):
-    return _group_quantity(df, ["工艺路线"])
+    columns = ["材质"]
+    if "品类" in df.columns:
+        columns.insert(0, "品类")
+    return _group_quantity(df, columns)
 
 
 def build_status_summary(df):

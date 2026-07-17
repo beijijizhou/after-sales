@@ -1,3 +1,9 @@
+from utils.erp.hansen_styles import (
+    find_hansen_hoodie_style,
+    find_hansen_uv_style,
+)
+
+
 COLOR_ALIASES = {
     "black": "黑", "黑色": "黑", "white": "白", "白色": "白",
     "red": "红色", "orange": "橙色", "tangerine": "橙色",
@@ -7,6 +13,7 @@ COLOR_ALIASES = {
     "purple": "紫色", "light purple": "紫色",
     "pink": "粉色", "pale pink": "粉色", "light pink": "粉色",
     "粉红色": "粉色", "gray": "灰色", "grey": "灰色",
+    "charcoal": "灰色", "navy": "蓝色",
     "dark gray": "灰色", "dark grey": "灰色", "深灰色": "灰色",
     "浅灰": "灰色", "浅灰色": "灰色", "beige": "杏色",
     "apricot": "杏色", "brown": "棕色",
@@ -14,7 +21,7 @@ COLOR_ALIASES = {
 }
 DESCRIPTION_COLUMNS = ["品类", "商品", "商品底款", "工艺路线"]
 HOODIE_PATTERN = r"卫衣|帽衫|hoodie|sweatshirt"
-TSHIRT_PATTERN = r"短袖|t恤|t-shirt|tshirt"
+TSHIRT_PATTERN = r"短袖|t恤|t-shirt|tshirt|t[_ ]shirt"
 UV_PATTERN = r"挂钟|铁皮画|铝牌画"
 UV_CATEGORY_RULES = {
     "挂钟": "挂钟",
@@ -26,7 +33,16 @@ UV_CATEGORY_RULES = {
 def normalize_color(value):
     original = str(value or "").strip()
     lookup = original.casefold().rstrip(".").strip()
-    return COLOR_ALIASES.get(lookup, original)
+    if lookup in COLOR_ALIASES:
+        return COLOR_ALIASES[lookup]
+    if "(" in lookup:
+        chinese_part = lookup.split("(", 1)[0].strip()
+        english_part = lookup.split("(", 1)[1].split(")", 1)[0].strip()
+        return COLOR_ALIASES.get(
+            chinese_part,
+            COLOR_ALIASES.get(english_part, original),
+        )
+    return original
 
 
 def normalize_production_catalog(df):
@@ -46,8 +62,18 @@ def normalize_production_catalog(df):
     for pattern, category in UV_CATEGORY_RULES.items():
         matches = description.str.contains(pattern, regex=False)
         result.loc[matches, "品类"] = category
-
     is_hoodie = description.str.contains(HOODIE_PATTERN, regex=True)
+    if "运营商" in result.columns:
+        is_hansen = result["运营商"].astype(str).str.casefold() == "汉森".casefold()
+        hansen_hoodie = description.map(
+            lambda value: find_hansen_hoodie_style(value) is not None
+        )
+        is_hoodie = is_hoodie | (is_hansen & hansen_hoodie)
+        hansen_uv = description.map(
+            lambda value: find_hansen_uv_style(value) is not None
+        )
+        result.loc[is_hansen & hansen_uv, "部门"] = "UV"
+        result.loc[is_hansen & hansen_uv, "品类"] = "铁皮画"
     is_tshirt = ~is_hoodie & description.str.contains(TSHIRT_PATTERN, regex=True)
     is_colored = ~result["颜色"].isin(["", "黑", "白"])
 

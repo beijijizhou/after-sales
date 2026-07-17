@@ -4,6 +4,7 @@ import warnings
 import pandas as pd
 
 from utils.erp.catalog import normalize_production_catalog
+from utils.erp.material import normalize_production_material
 
 
 REQUIRED_COLUMNS = {
@@ -11,7 +12,7 @@ REQUIRED_COLUMNS = {
     "数量", "生产项状态", "工艺路线", "创建时间", "生产完成时间",
 }
 TEXT_COLUMNS = [
-    "生产项编码", "生产单号", "部门", "品类", "商品", "商品底款编码", "商品底款",
+    "生产项编码", "生产单号", "部门", "品类", "材质", "商品", "商品底款编码", "商品底款",
     "颜色", "尺码", "生产项状态", "工艺路线", "生产批次", "运营商",
 ]
 SIZE_ALIASES = {"XXL": "2XL"}
@@ -36,6 +37,7 @@ def parse_normalized_production_data(source_df):
         if column in result.columns:
             result[column] = result[column].fillna("").astype(str).str.strip()
     result = normalize_production_catalog(result)
+    result = normalize_production_material(result)
     result["尺码"] = result["尺码"].replace(SIZE_ALIASES)
     result["数量"] = pd.to_numeric(
         result["数量"], errors="coerce"

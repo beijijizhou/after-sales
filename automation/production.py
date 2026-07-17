@@ -2,12 +2,14 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from automation.api.hansen import fetch_hansen_production_records
 from automation.api.sds import fetch_sds_production_records
 from automation.playwright.errors import ProductionLoginRequired
 from automation.playwright.haloo import DIAGNOSTIC_PATH, ERP_PLATFORM_NAMES
 from automation.playwright.haloo.workflow import download_production_workbook
 from automation.playwright.s2b import download_s2b_workbook
 from utils.erp import parse_platform_workbook
+from utils.erp.hansen_parser import parse_hansen_records
 from utils.erp.sds_parser import parse_sds_records
 
 
@@ -18,13 +20,14 @@ SDS_PLATFORM_PROFILES = {
 PRODUCTION_PLATFORM_NAMES = (
     *ERP_PLATFORM_NAMES,
     "S2B",
+    "汉森",
     *SDS_PLATFORM_PROFILES,
 )
 PRODUCTION_DEPARTMENTS = ("DTF", "3D", "UV")
 PLATFORMS_BY_DEPARTMENT = {
     "DTF": PRODUCTION_PLATFORM_NAMES,
     "3D": (),
-    "UV": ("SDS1", "SDS2"),
+    "UV": ("汉森", "SDS1", "SDS2"),
 }
 
 
@@ -57,6 +60,20 @@ def load_production_data(
         return ProductionDataResult(
             data=parse_sds_records(records, platform),
             source=f"{platform} API / {len(records):,} 条",
+        )
+
+    if platform == "汉森":
+        if not credentials:
+            raise ValueError("未配置汉森的 factory_credentials.汉森")
+        records = fetch_hansen_production_records(
+            start_date,
+            end_date,
+            credentials,
+            report_progress,
+        )
+        return ProductionDataResult(
+            data=parse_hansen_records(records),
+            source=f"汉森 API / {len(records):,} 条",
         )
 
     file_path = _download_workbook(
