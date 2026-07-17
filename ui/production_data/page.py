@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from automation.api.hansen import load_hansen_credentials
+from automation.api.diy19 import DIY19_BASE_URLS, load_diy19_credentials
 from automation.api.sds import load_sds_credentials
 from automation.production import (
     DIAGNOSTIC_PATH,
@@ -89,9 +90,20 @@ def render_production_data_page():
         department_df["生产项状态"] == "已取消", "数量"
     ].sum())
 
+    is_summary = (
+        "数据口径" in report_df.columns
+        and not report_df.empty
+        and report_df["数据口径"].eq("汇总").all()
+    )
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("生产项", report_df["生产项编码"].nunique())
-    col2.metric("生产单", report_df["生产单号"].nunique())
+    col1.metric(
+        "模板组合" if is_summary else "生产项",
+        report_df["生产项编码"].nunique(),
+    )
+    col2.metric(
+        "商品模板" if is_summary else "生产单",
+        report_df["生产单号"].nunique(),
+    )
     col3.metric("需求件数", int(report_df["数量"].sum()))
     col4.metric("已取消件数", canceled_quantity)
     _render_date_range(report_df)
@@ -123,6 +135,8 @@ def _fetch_production_data(platform, start_date, end_date):
             credentials = _get_sds_credentials(platform)
         elif platform == "汉森":
             credentials = load_hansen_credentials(st.secrets)
+        elif platform in DIY19_BASE_URLS:
+            credentials = load_diy19_credentials(st.secrets, platform)
         result = load_production_data(
             platform,
             start_date,

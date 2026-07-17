@@ -22,11 +22,14 @@ COLOR_ALIASES = {
 DESCRIPTION_COLUMNS = ["品类", "商品", "商品底款", "工艺路线"]
 HOODIE_PATTERN = r"卫衣|帽衫|hoodie|sweatshirt"
 TSHIRT_PATTERN = r"短袖|t恤|t-shirt|tshirt|t[_ ]shirt"
-UV_PATTERN = r"挂钟|铁皮画|铝牌画"
+UV_PATTERN = r"挂钟|铁皮画|铝牌画|铝板画|冰箱贴"
+THREED_PATTERN = r"咖啡杯|马克杯"
 UV_CATEGORY_RULES = {
     "挂钟": "挂钟",
     "铁皮画": "铁皮画",
     "铝牌画": "铝牌画",
+    "铝板画": "铝板画",
+    "冰箱贴": "冰箱贴",
 }
 
 
@@ -59,6 +62,9 @@ def normalize_production_catalog(df):
     result["部门"] = result["部门"].fillna("").astype(str).str.strip()
     result.loc[result["部门"] == "", "部门"] = "DTF"
     result.loc[description.str.contains(UV_PATTERN, regex=True), "部门"] = "UV"
+    threed_matches = description.str.contains(THREED_PATTERN, regex=True)
+    result.loc[threed_matches, "部门"] = "3D"
+    result.loc[threed_matches, "品类"] = "咖啡杯"
     for pattern, category in UV_CATEGORY_RULES.items():
         matches = description.str.contains(pattern, regex=False)
         result.loc[matches, "品类"] = category
