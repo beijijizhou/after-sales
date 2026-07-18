@@ -22,7 +22,9 @@ def _set_datetime(page, field, value):
     field.click(force=True)
     calendar = _wait_for_calendar(page)
     editor = calendar.locator("input.ant-calendar-input")
-    editor.fill(value)
+    editor.click(force=True)
+    editor.press("Meta+A")
+    editor.press_sequentially(value, delay=10)
     confirm = calendar.locator(".ant-calendar-ok-btn")
     confirm.click(force=True)
     for _ in range(40):

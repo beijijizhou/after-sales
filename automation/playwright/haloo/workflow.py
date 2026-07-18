@@ -49,7 +49,9 @@ def download_production_workbook(
                 download, start_date, end_date, download_dir
             )
 
-        page = find_erp_page(browser, erp.host, erp.name)
+        page = find_erp_page(
+            browser, erp.host, erp.name, erp.production_items_url
+        )
         report(f"2/7 已找到{erp.name}，正在打开生产项管理")
         if not page.url.startswith(erp.production_items_url):
             page.goto(erp.production_items_url, wait_until="domcontentloaded")

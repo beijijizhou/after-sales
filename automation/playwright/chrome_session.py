@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import subprocess
 import time
 from urllib.error import URLError
@@ -37,9 +38,10 @@ def ensure_debug_chrome(start_url):
 
 def chrome_is_connectable():
     try:
-        with urlopen(f"{CDP_URL}/json/version", timeout=1):
-            return True
-    except (URLError, TimeoutError):
+        with urlopen(f"{CDP_URL}/json/list", timeout=1) as response:
+            targets = json.load(response)
+        return any(target.get("type") == "page" for target in targets)
+    except (json.JSONDecodeError, URLError, TimeoutError):
         return False
 
 
@@ -56,10 +58,14 @@ def find_haloo_page(browser):
     return find_erp_page(browser, HALOO_HOST, "Haloo")
 
 
-def find_erp_page(browser, host, platform_name=None):
+def find_erp_page(browser, host, platform_name=None, start_url=None):
     pages = [page for context in browser.contexts for page in context.pages]
     platform_pages = [page for page in pages if host in page.url]
     if not platform_pages:
+        if start_url and browser.contexts:
+            page = browser.contexts[0].new_page()
+            page.goto(start_url, wait_until="domcontentloaded")
+            return page
         name = platform_name or host
         raise RuntimeError(f"当前 Chrome 中没有找到{name}页面，请先打开并登录")
     return platform_pages[-1]

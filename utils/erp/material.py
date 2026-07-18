@@ -16,6 +16,8 @@ def normalize_production_material(df):
     result = df.copy()
     if "材质" not in result.columns:
         result["材质"] = ""
+    if result.empty:
+        return result
     columns = [column for column in MATERIAL_COLUMNS if column in result]
     result["材质"] = result[columns].apply(_infer_material, axis=1)
     return result

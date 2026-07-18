@@ -1,6 +1,8 @@
 import json
 import re
 
+from utils.erp.time_range import build_hour_range
+
 from automation.api.diy19.auth import USER_AGENT, login_diy19
 
 
@@ -20,6 +22,8 @@ def fetch_diy19_production_summary(
     end_date,
     credentials,
     report_progress=None,
+    start_hour=0,
+    end_hour=23,
 ):
     report = report_progress or (lambda _message: None)
     base_url = DIY19_BASE_URLS[platform]
@@ -39,7 +43,9 @@ def fetch_diy19_production_summary(
     report(f"3/4 正在获取{platform}生产汇总（单次请求）")
     response = client.post(
         f"{base_url}/ProduceOrderProduct/ListForTemplate?lang=zh_chs",
-        data=_summary_form(start_date, end_date),
+        data=_summary_form(
+            start_date, end_date, start_hour, end_hour
+        ),
         headers=headers,
         timeout=60,
     )
@@ -60,15 +66,18 @@ def fetch_diy19_production_summary(
     return records
 
 
-def _summary_form(start_date, end_date):
+def _summary_form(start_date, end_date, start_hour=0, end_hour=23):
+    start_at, end_at = build_hour_range(
+        start_date, end_date, start_hour, end_hour
+    )
     return {
         "PageIndex": "1", "PageSize": "2000",
         "QueryItems[0][FieldName]": "SYS_DATE_ADD",
         "QueryItems[0][Comparator]": ">=",
-        "QueryItems[0][FieldValue]": start_date.strftime("%Y/%m/%d"),
+        "QueryItems[0][FieldValue]": start_at.strftime("%Y/%m/%d %H:%M:%S"),
         "QueryItems[1][FieldName]": "SYS_DATE_ADD",
         "QueryItems[1][Comparator]": "<=",
-        "QueryItems[1][FieldValue]": end_date.strftime("%Y/%m/%d"),
+        "QueryItems[1][FieldValue]": end_at.strftime("%Y/%m/%d %H:%M:%S"),
         "SortItems[0][FieldName]": "SYS_DATE_ADD",
         "SortItems[0][SortSymbol]": "ASC",
     }

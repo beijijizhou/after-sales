@@ -1,29 +1,23 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 import streamlit as st
 
-from automation.api.hansen import load_hansen_credentials
-from automation.api.diy19 import DIY19_BASE_URLS, load_diy19_credentials
-from automation.api.sds import load_sds_credentials
 from automation.production import (
-    DIAGNOSTIC_PATH,
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
-    ProductionLoginRequired,
-    SDS_PLATFORM_PROFILES,
-    load_production_data,
 )
+from automation.production_batch import ALL_CLOTHING_PLATFORMS
 from utils.erp import (
     apply_production_scope,
     build_color_size_summary,
     build_daily_summary,
     build_material_summary,
+    build_platform_summary,
     build_status_summary,
 )
 from utils.erp.catalog import normalize_production_catalog
 from utils.erp.material import normalize_production_material
 from utils.erp.summary import SCOPE_OPTIONS
+from ui.production_data.controls import render_production_filters
+from ui.production_data.fetch import fetch_and_store_production_data
 
 
 def render_production_data_page():
@@ -36,7 +30,12 @@ def render_production_data_page():
             PRODUCTION_DEPARTMENTS,
             index=0,
         )
-    platforms = PLATFORMS_BY_DEPARTMENT[department]
+    department_platforms = PLATFORMS_BY_DEPARTMENT[department]
+    platforms = (
+        (ALL_CLOTHING_PLATFORMS, *department_platforms)
+        if department == "DTF"
+        else department_platforms
+    )
     with platform_col:
         platform = st.selectbox(
             "生产平台",
@@ -45,23 +44,17 @@ def render_production_data_page():
             key=f"production_platform_{department}",
         )
         if platforms:
-            st.caption(f"已接入平台：{'、'.join(platforms)}")
-    today = datetime.now(ZoneInfo("America/New_York")).date()
-    selected_range = st.date_input(
-        "生产时间",
-        value=(today, today),
-        max_value=today,
+            st.caption(f"已接入平台：{'、'.join(department_platforms)}")
+    selected_range, start_hour, end_hour, submitted = (
+        render_production_filters(platform)
     )
-    has_date_range = len(selected_range) == 2
-    if st.button(
-        "获取生产数据",
-        type="primary",
-        width="stretch",
-        disabled=not has_date_range or not platform,
-    ):
-        _fetch_production_data(platform, *selected_range)
-    if not has_date_range:
-        st.info("请选择开始日期和结束日期。")
+    if submitted:
+        fetch_and_store_production_data(
+            platform,
+            *selected_range,
+            start_hour=start_hour,
+            end_hour=end_hour,
+        )
 
     if not platform:
         st.info(f"{department} 部门暂未接入生产数据平台。")
@@ -98,19 +91,23 @@ def render_production_data_page():
     col1, col2, col3, col4 = st.columns(4)
     col1.metric(
         "模板组合" if is_summary else "生产项",
-        report_df["生产项编码"].nunique(),
+        _unique_platform_count(report_df, "生产项编码"),
     )
     col2.metric(
         "商品模板" if is_summary else "生产单",
-        report_df["生产单号"].nunique(),
+        _unique_platform_count(report_df, "生产单号"),
     )
     col3.metric("需求件数", int(report_df["数量"].sum()))
     col4.metric("已取消件数", canceled_quantity)
     _render_date_range(report_df)
 
-    color_tab, material_tab, daily_tab, status_tab, detail_tab = st.tabs([
-        "颜色尺码", "材质", "每日数据", "生产状态", "生产项明细",
+    platform_tab, color_tab, material_tab, daily_tab, status_tab, detail_tab = st.tabs([
+        "平台汇总",
+        _specification_tab_label(report_df),
+        "材质", "每日数据", "生产状态", "生产项明细",
     ])
+    with platform_tab:
+        _render_table(build_platform_summary(report_df))
     with color_tab:
         _render_table(build_color_size_summary(report_df))
     with material_tab:
@@ -121,60 +118,6 @@ def render_production_data_page():
         _render_table(build_status_summary(department_df))
     with detail_tab:
         _render_table(report_df, height=520)
-
-
-def _fetch_production_data(platform, start_date, end_date):
-    status = st.status("正在准备生产数据同步...", expanded=True)
-
-    def report_progress(message):
-        status.write(message)
-
-    try:
-        credentials = None
-        if platform in SDS_PLATFORM_PROFILES:
-            credentials = _get_sds_credentials(platform)
-        elif platform == "汉森":
-            credentials = load_hansen_credentials(st.secrets)
-        elif platform in DIY19_BASE_URLS:
-            credentials = load_diy19_credentials(st.secrets, platform)
-        result = load_production_data(
-            platform,
-            start_date,
-            end_date,
-            report_progress=report_progress,
-            credentials=credentials,
-        )
-        platform_data = dict(
-            st.session_state.get("production_data_by_platform", {})
-        )
-        platform_data[platform] = {
-            "data": result.data,
-            "file": result.source,
-        }
-        st.session_state["production_data_by_platform"] = platform_data
-        status.update(
-            label=f"生产数据获取完成：{result.source}",
-            state="complete",
-            expanded=False,
-        )
-        st.toast("生产数据获取完成")
-    except ProductionLoginRequired as error:
-        status.update(label=f"等待登录：{error}", state="error", expanded=True)
-        st.warning(str(error))
-    except Exception as error:
-        status.update(label=f"获取失败：{error}", state="error", expanded=True)
-        st.error(f"生产数据获取失败：{error}")
-        if DIAGNOSTIC_PATH.exists():
-            st.caption("已记录当前页面控件，便于校准自动化流程。")
-
-
-def _get_sds_credentials(platform):
-    return load_sds_credentials(
-        st.secrets,
-        SDS_PLATFORM_PROFILES[platform],
-    )
-
-
 def _render_date_range(df):
     created = df["创建时间"].dropna()
     if created.empty:
@@ -186,10 +129,14 @@ def _render_date_range(df):
 
 
 def _render_table(df, height=None):
+    display_df = df.copy()
+    for column in ["尺码", "型号"]:
+        if column in display_df.columns and _is_blank_column(display_df[column]):
+            display_df = display_df.drop(columns=column)
     config = {
         column: st.column_config.NumberColumn(column, format="%d")
         for column in ["生产项数", "生产单数", "件数", "合计"]
-        if column in df.columns
+        if column in display_df.columns
     }
     options = {
         "hide_index": True,
@@ -198,4 +145,22 @@ def _render_table(df, height=None):
     }
     if height is not None:
         options["height"] = height
-    st.dataframe(df, **options)
+    st.dataframe(display_df, **options)
+
+
+def _specification_tab_label(df):
+    has_sizes = "尺码" in df and not _is_blank_column(df["尺码"])
+    has_models = "型号" in df and not _is_blank_column(df["型号"])
+    if has_sizes and has_models:
+        return "颜色尺码/型号"
+    return "颜色尺码" if has_sizes else "颜色型号"
+
+
+def _is_blank_column(series):
+    return series.fillna("").astype(str).str.strip().eq("").all()
+
+
+def _unique_platform_count(df, column):
+    if "运营商" not in df.columns:
+        return df[column].nunique()
+    return len(df[["运营商", column]].drop_duplicates())

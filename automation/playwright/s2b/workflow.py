@@ -35,7 +35,9 @@ def download_s2b_workbook(start_date, end_date, report):
             report("已找到 S2B 最新未下载 Excel，正在下载")
             download = download_row(records_page, ready_row)
             return _save_download(download, start_date, end_date)
-        page = find_erp_page(browser, S2B_HOST, "S2B")
+        page = find_erp_page(
+            browser, S2B_HOST, "S2B", S2B_PRODUCTION_URL
+        )
         report("2/7 已找到 S2B，正在打开账单明细")
         if not page.url.startswith(S2B_PRODUCTION_URL):
             page.goto(S2B_PRODUCTION_URL, wait_until="domcontentloaded")

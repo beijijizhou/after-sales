@@ -5,6 +5,7 @@ from utils.erp.summary import (
     build_color_size_summary,
     build_daily_summary,
     build_material_summary,
+    build_platform_summary,
     build_status_summary,
 )
 
@@ -19,6 +20,7 @@ __all__ = [
     "build_color_size_summary",
     "build_daily_summary",
     "build_material_summary",
+    "build_platform_summary",
     "build_status_summary",
     "parse_production_workbook",
     "parse_platform_workbook",

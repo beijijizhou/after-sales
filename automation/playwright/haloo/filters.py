@@ -28,23 +28,34 @@ def apply_production_item_filter(page, start_date, end_date, report):
 
 def click_named_button(page, names):
     normalized_names = {_normalize_text(name) for name in names}
-    for frame in page.frames:
-        buttons = frame.locator("button")
-        for index in range(buttons.count()):
-            button = buttons.nth(index)
-            if not button.is_visible() or not button.is_enabled():
-                continue
-            if _normalize_text(button.inner_text()) in normalized_names:
-                button.click()
-                return
+    for _ in range(120):
+        for frame in page.frames:
+            buttons = frame.locator("button")
+            for index in range(buttons.count()):
+                button = buttons.nth(index)
+                if not button.is_visible() or not button.is_enabled():
+                    continue
+                if _normalize_text(button.inner_text()) in normalized_names:
+                    button.click()
+                    return
+        page.wait_for_timeout(250)
     raise RuntimeError(f"没有找到按钮：{' / '.join(names)}")
 
 
 def _open_advanced_search(page):
+    _wait_for_page_loading(page)
     if _has_visible_text(page, "生产时间"):
         return
     click_named_button(page, ["高级搜索"])
     page.wait_for_timeout(500)
+
+
+def _wait_for_page_loading(page):
+    for _ in range(120):
+        if not _has_loading_indicator(page):
+            return
+        page.wait_for_timeout(250)
+    raise RuntimeError("生产项页面加载超过30秒，请稍后重试")
 
 
 def _has_visible_text(page, text):
