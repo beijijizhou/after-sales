@@ -1,5 +1,7 @@
 from pathlib import Path
 import json
+import os
+import signal
 import subprocess
 import time
 from urllib.error import URLError
@@ -18,22 +20,98 @@ HALOO_HOST = "haloopod.merchant.hihumbird.com"
 
 def ensure_debug_chrome(start_url):
     if chrome_is_connectable():
-        print("已连接当前 Chrome，不会打开新页面。", flush=True)
+        _safe_print("已连接当前 Chrome，不会打开新页面。")
         return
     if not CHROME_PATH.exists():
         raise FileNotFoundError("未找到 Google Chrome，请先安装 Chrome")
     AUTH_DIR.mkdir(parents=True, exist_ok=True)
-    print("正在启动可连接的 Google Chrome...", flush=True)
-    subprocess.Popen([
-        str(CHROME_PATH),
-        f"--remote-debugging-port={DEBUG_PORT}",
-        "--remote-debugging-address=127.0.0.1",
-        f"--user-data-dir={CHROME_PROFILE_DIR}",
-        "--no-first-run",
-        "--no-default-browser-check",
-        start_url,
-    ])
+    _safe_print("正在启动可连接的 Google Chrome...")
+    _launch_debug_chrome(start_url)
     wait_for_chrome()
+
+
+def _launch_debug_chrome(start_url):
+    subprocess.Popen(
+        [
+            str(CHROME_PATH),
+            f"--remote-debugging-port={DEBUG_PORT}",
+            "--remote-debugging-address=127.0.0.1",
+            f"--user-data-dir={CHROME_PROFILE_DIR}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            start_url,
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def connect_debug_chrome(playwright, start_url):
+    ensure_debug_chrome(start_url)
+    try:
+        return playwright.chromium.connect_over_cdp(
+            CDP_URL, timeout=15_000
+        )
+    except Exception as error:
+        if not _is_recoverable_connection_error(error):
+            raise
+        _safe_print("专用 Chrome 连接异常，正在自动恢复...")
+        restart_debug_chrome(start_url)
+        return playwright.chromium.connect_over_cdp(
+            CDP_URL, timeout=30_000
+        )
+
+
+def restart_debug_chrome(start_url):
+    pid = _profile_chrome_pid()
+    if pid is not None:
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(50):
+            if not _process_exists(pid):
+                break
+            time.sleep(0.1)
+        else:
+            os.kill(pid, signal.SIGKILL)
+            for _ in range(20):
+                if not _process_exists(pid):
+                    break
+                time.sleep(0.1)
+            else:
+                raise RuntimeError("专用 Chrome 无法停止，请手动关闭后重试")
+    _launch_debug_chrome(start_url)
+    wait_for_chrome()
+
+
+def _profile_chrome_pid():
+    lock = CHROME_PROFILE_DIR / "SingletonLock"
+    if not lock.is_symlink():
+        return None
+    try:
+        pid = int(os.readlink(lock).rsplit("-", 1)[-1])
+    except (OSError, ValueError):
+        return None
+    process = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "command="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return pid if str(CHROME_PROFILE_DIR) in process.stdout else None
+
+
+def _process_exists(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def _is_recoverable_connection_error(error):
+    message = str(error).casefold()
+    return "broken pipe" in message or "connect_over_cdp: timeout" in message
 
 
 def chrome_is_connectable():
@@ -48,10 +126,17 @@ def chrome_is_connectable():
 def wait_for_chrome():
     for _ in range(100):
         if chrome_is_connectable():
-            print("Google Chrome 已连接。", flush=True)
+            _safe_print("Google Chrome 已连接。")
             return
         time.sleep(0.1)
     raise TimeoutError("Google Chrome 调试接口启动超时")
+
+
+def _safe_print(message):
+    try:
+        print(message, flush=True)
+    except BrokenPipeError:
+        pass
 
 
 def find_haloo_page(browser):

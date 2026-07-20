@@ -3,8 +3,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from automation.playwright.chrome_session import (
-    CDP_URL,
-    ensure_debug_chrome,
+    connect_debug_chrome,
     find_erp_page,
 )
 from automation.playwright.haloo.diagnostics import save_control_diagnostics
@@ -34,12 +33,11 @@ def download_production_workbook(
     erp = get_erp_platform(platform)
     report = lambda message: _report(report_progress, message)
     report(f"1/7 正在连接本机 Chrome：{erp.name}")
-    ensure_debug_chrome(erp.production_items_url)
     download_dir = DOWNLOAD_ROOT / erp.name
     download_dir.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.connect_over_cdp(CDP_URL)
+        browser = connect_debug_chrome(playwright, erp.production_items_url)
         existing = find_export_records_page(browser, erp.host)
         row = _find_reusable_row(existing, start_date, end_date)
         if row is not None:

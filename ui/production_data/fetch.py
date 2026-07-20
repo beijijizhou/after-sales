@@ -15,6 +15,10 @@ from automation.production_batch import (
     ALL_CLOTHING_PLATFORMS,
     load_all_clothing_production,
 )
+from automation.production_cache import (
+    load_production_cache,
+    save_production_cache,
+)
 
 
 def fetch_and_store_production_data(
@@ -23,6 +27,7 @@ def fetch_and_store_production_data(
     end_date,
     start_hour=0,
     end_hour=23,
+    force_refresh=False,
 ):
     status = st.status("正在准备生产数据同步...", expanded=True)
 
@@ -30,6 +35,19 @@ def fetch_and_store_production_data(
         status.write(message)
 
     try:
+        cached = None if force_refresh else load_production_cache(
+            platform, start_date, end_date, start_hour, end_hour
+        )
+        if cached is not None:
+            source = f"本地缓存 {cached.saved_at} / {cached.source}"
+            _store(platform, cached.data, source)
+            status.update(
+                label=f"已从本地缓存读取：{cached.saved_at}",
+                state="complete",
+                expanded=False,
+            )
+            st.toast("已读取本地缓存")
+            return
         if platform == ALL_CLOTHING_PLATFORMS:
             source, errors = _fetch_all(
                 start_date, end_date, start_hour, end_hour, report
@@ -45,6 +63,16 @@ def fetch_and_store_production_data(
                 end_hour=end_hour,
             )
             _store(platform, result.data, result.source)
+            _save_cache(
+                platform,
+                start_date,
+                end_date,
+                start_hour,
+                end_hour,
+                result.data,
+                result.source,
+                report,
+            )
             source, errors = result.source, {}
         status.update(
             label=f"生产数据获取完成：{source}",
@@ -92,11 +120,31 @@ def _fetch_all(start_date, end_date, start_hour, end_hour, report):
     )
     for platform, result in batch.platform_results.items():
         _store(platform, result.data, result.source)
+        _save_cache(
+            platform,
+            start_date,
+            end_date,
+            start_hour,
+            end_hour,
+            result.data,
+            result.source,
+            report,
+        )
     source = (
         f"{len(batch.platform_results)} 个平台 / "
         f"{len(batch.data):,} 个衣服生产项"
     )
     _store(ALL_CLOTHING_PLATFORMS, batch.data, source)
+    _save_cache(
+        ALL_CLOTHING_PLATFORMS,
+        start_date,
+        end_date,
+        start_hour,
+        end_hour,
+        batch.data,
+        source,
+        report,
+    )
     return source, batch.errors
 
 
@@ -118,3 +166,28 @@ def _store(platform, data, source):
     platform_data = dict(st.session_state.get("production_data_by_platform", {}))
     platform_data[platform] = {"data": data, "file": source}
     st.session_state["production_data_by_platform"] = platform_data
+
+
+def _save_cache(
+    platform,
+    start_date,
+    end_date,
+    start_hour,
+    end_hour,
+    data,
+    source,
+    report,
+):
+    try:
+        saved_at = save_production_cache(
+            platform,
+            start_date,
+            end_date,
+            data,
+            source,
+            start_hour,
+            end_hour,
+        )
+        report(f"{platform} 已保存到本地缓存：{saved_at}")
+    except Exception as error:
+        report(f"{platform} 本地缓存保存失败：{error}")

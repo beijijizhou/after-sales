@@ -3,18 +3,12 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from automation.playwright.chrome_session import (
-    CDP_URL,
-    ensure_debug_chrome,
+    connect_debug_chrome,
     find_erp_page,
 )
 from automation.playwright.errors import ProductionLoginRequired
 from automation.playwright.s2b.date_filter import apply_production_time_filter
-from automation.playwright.s2b.exports import (
-    download_row,
-    find_export_record_page,
-    find_ready_undownloaded_row,
-    submit_and_download,
-)
+from automation.playwright.s2b.exports import submit_and_download
 
 
 S2B_HOST = "overseasfactory.s2bdiy.com"
@@ -25,16 +19,9 @@ DOWNLOAD_DIR = PROJECT_ROOT / "output" / "automation" / "s2b" / "downloads"
 
 def download_s2b_workbook(start_date, end_date, report):
     report("1/7 正在连接本机 Chrome：S2B")
-    ensure_debug_chrome(S2B_PRODUCTION_URL)
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
-        browser = playwright.chromium.connect_over_cdp(CDP_URL)
-        records_page = find_export_record_page(browser)
-        ready_row = find_ready_undownloaded_row(records_page)
-        if ready_row is not None:
-            report("已找到 S2B 最新未下载 Excel，正在下载")
-            download = download_row(records_page, ready_row)
-            return _save_download(download, start_date, end_date)
+        browser = connect_debug_chrome(playwright, S2B_PRODUCTION_URL)
         page = find_erp_page(
             browser, S2B_HOST, "S2B", S2B_PRODUCTION_URL
         )

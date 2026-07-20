@@ -4,6 +4,8 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 
 EXPORT_RECORD_PATH = "/factory/exportRecord"
+MAX_GENERATION_WAIT_SECONDS = 8 * 60
+REFRESH_INTERVAL_SECONDS = 15
 
 
 def find_export_record_page(browser):
@@ -86,17 +88,31 @@ def _wait_for_records_page(source_page, previous_pages):
 
 def _wait_until_generated(page, report):
     _wait_for_table(page)
-    row = _latest_bill_row(page)
-    if row is not None and _has_download(row):
-        return row
-    report("S2B Excel 正在生成，刷新一次导出记录")
-    page.wait_for_timeout(500)
-    page.reload(wait_until="domcontentloaded")
-    _wait_for_table(page)
-    row = _latest_bill_row(page)
-    if row is not None and _has_download(row):
-        return row
-    raise RuntimeError("S2B Excel 暂未生成，已停止自动刷新")
+    elapsed = 0
+    delay = 3
+    next_progress = 60
+    report("S2B Excel 正在生成，将按低频刷新等待完成")
+    while elapsed <= MAX_GENERATION_WAIT_SECONDS:
+        row = _latest_bill_row(page)
+        if row is not None:
+            if _has_download(row):
+                return row
+            if "生成失败" in _normalize(row.inner_text()):
+                raise RuntimeError("S2B Excel 生成失败")
+        if elapsed >= MAX_GENERATION_WAIT_SECONDS:
+            break
+        page.wait_for_timeout(delay * 1_000)
+        elapsed += delay
+        try:
+            page.reload(wait_until="domcontentloaded", timeout=30_000)
+        except PlaywrightTimeoutError:
+            pass
+        _wait_for_table(page)
+        if elapsed >= next_progress:
+            report(f"S2B Excel 仍在生成，已等待 {elapsed} 秒")
+            next_progress += 60
+        delay = REFRESH_INTERVAL_SECONDS
+    raise RuntimeError("S2B Excel 生成超过8分钟，请稍后查看导出记录")
 
 
 def _wait_for_table(page):

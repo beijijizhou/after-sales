@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from playwright.sync_api import sync_playwright
 
 from automation.playwright.chrome_session import (
-    CDP_URL,
+    connect_debug_chrome,
     ensure_debug_chrome,
     find_haloo_page,
 )
@@ -35,7 +35,7 @@ def capture_haloo_page(url):
 
 def capture_open_haloo_page(timestamp):
     with sync_playwright() as playwright:
-        browser = playwright.chromium.connect_over_cdp(CDP_URL)
+        browser = connect_debug_chrome(playwright, DEFAULT_URL)
         page = find_haloo_page(browser)
         screenshot_path = OUTPUT_DIR / f"haloo_{timestamp}.png"
         html_path = OUTPUT_DIR / f"haloo_{timestamp}.html"

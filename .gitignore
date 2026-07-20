@@ -4,3 +4,4 @@
 .streamlit/local_factory_credentials.toml
 automation/playwright/.auth/
 output/automation/
+.cache/

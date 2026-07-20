@@ -45,7 +45,7 @@ def render_production_data_page():
         )
         if platforms:
             st.caption(f"已接入平台：{'、'.join(department_platforms)}")
-    selected_range, start_hour, end_hour, submitted = (
+    selected_range, start_hour, end_hour, force_refresh, submitted = (
         render_production_filters(platform)
     )
     if submitted:
@@ -54,6 +54,7 @@ def render_production_data_page():
             *selected_range,
             start_hour=start_hour,
             end_hour=end_hour,
+            force_refresh=force_refresh,
         )
 
     if not platform:
@@ -71,10 +72,19 @@ def render_production_data_page():
     source_file = source["file"]
     st.success(f"已读取：{platform} / {source_file}")
 
-    scope = st.segmented_control(
-        "统计口径", options=SCOPE_OPTIONS, default=SCOPE_OPTIONS[0]
-    )
     department_df = source_df[source_df["部门"] == department]
+    filter_col, scope_col = st.columns(2)
+    with filter_col:
+        category = st.selectbox(
+            "品类筛选",
+            ["全部品类", *_ordered_categories(department_df)],
+        )
+    with scope_col:
+        scope = st.segmented_control(
+            "统计口径", options=SCOPE_OPTIONS, default=SCOPE_OPTIONS[0]
+        )
+    if category != "全部品类":
+        department_df = department_df[department_df["品类"] == category]
     report_df = apply_production_scope(
         department_df,
         scope or SCOPE_OPTIONS[0],
@@ -164,3 +174,11 @@ def _unique_platform_count(df, column):
     if "运营商" not in df.columns:
         return df[column].nunique()
     return len(df[["运营商", column]].drop_duplicates())
+
+
+def _ordered_categories(df):
+    preferred = ["黑白短袖", "彩色短袖", "卫衣"]
+    available = set(df["品类"].dropna().astype(str))
+    ordered = [category for category in preferred if category in available]
+    ordered.extend(sorted(available - set(ordered)))
+    return ordered
