@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import os
+import time
 
 import streamlit as st
 
@@ -44,14 +45,19 @@ def get_auth_secret():
     return str(st.secrets.get("AUTH_TOKEN_SECRET") or st.secrets.get("SUPABASE_KEY") or "after-sales")
 
 
+AUTH_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60
+
+
 def build_auth_token(username):
     username = str(username).strip()
+    expires_at = int(time.time()) + AUTH_TOKEN_LIFETIME_SECONDS
+    signed_value = f"{username}:{expires_at}"
     signature = hmac.new(
         get_auth_secret().encode("utf-8"),
-        username.encode("utf-8"),
+        signed_value.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
-    payload = f"{username}:{signature}".encode("utf-8")
+    payload = f"{signed_value}:{signature}".encode("utf-8")
     return base64.urlsafe_b64encode(payload).decode("utf-8").rstrip("=")
 
 
@@ -59,10 +65,18 @@ def parse_auth_token(token):
     try:
         padded_token = token + "=" * (-len(token) % 4)
         payload = base64.urlsafe_b64decode(padded_token.encode("utf-8")).decode("utf-8")
-        username, signature = payload.rsplit(":", 1)
+        parts = payload.rsplit(":", 2)
+        if len(parts) == 3:
+            username, expires_at, signature = parts
+            if int(expires_at) < int(time.time()):
+                return None
+            signed_value = f"{username}:{expires_at}"
+        else:
+            username, signature = parts
+            signed_value = username
         expected_signature = hmac.new(
             get_auth_secret().encode("utf-8"),
-            username.encode("utf-8"),
+            signed_value.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
         if not hmac.compare_digest(signature, expected_signature):

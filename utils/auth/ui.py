@@ -9,21 +9,6 @@ from utils.auth.session import (
 )
 
 
-def get_remembered_credentials(prefix):
-    credentials = st.session_state.get("remembered_login_credentials") or {}
-    return credentials.get("username", ""), credentials.get("password", "")
-
-
-def update_remembered_credentials(username, password, remember):
-    if remember:
-        st.session_state["remembered_login_credentials"] = {
-            "username": username,
-            "password": password,
-        }
-    else:
-        st.session_state.pop("remembered_login_credentials", None)
-
-
 def render_login():
     st.title("登录")
     st.caption("请输入账号后继续使用系统")
@@ -50,23 +35,20 @@ def render_sidebar_login():
 
 
 def render_login_fields(prefix):
-    remembered_username, remembered_password = get_remembered_credentials(prefix)
     username = st.text_input(
         "账号",
-        value=remembered_username,
         key=f"{prefix}_login_username",
         autocomplete="username",
     )
     password = st.text_input(
         "密码",
-        value=remembered_password,
         type="password",
-        key=None if prefix == "main" else f"{prefix}_login_password",
+        key=f"{prefix}_login_password",
         autocomplete="current-password",
     )
     remember = st.checkbox(
-        "记住账号和密码",
-        value=bool(remembered_username or remembered_password),
+        "保持登录（30天）",
+        value=True,
         key=f"{prefix}_remember_login",
     )
     return username, password, remember
@@ -75,7 +57,6 @@ def render_login_fields(prefix):
 def handle_login(username, password, remember, show_setup_hint):
     try:
         if login_user(username, password, remember):
-            update_remembered_credentials(username, password, remember)
             st.rerun()
         else:
             st.error("账号或密码不正确")

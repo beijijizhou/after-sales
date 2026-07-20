@@ -10,12 +10,23 @@ from utils.auth.constants import (
     ROLE_PERMISSIONS,
     ROLE_VISITOR,
 )
+from utils.auth.cookies import (
+    queue_auth_cookie,
+    queue_auth_cookie_deletion,
+    read_auth_cookie,
+    render_pending_auth_cookie,
+)
 from utils.auth.security import build_auth_token, parse_auth_token, verify_password
 
 
 def get_current_user():
-    restore_user_from_query()
-    ensure_persistent_login_query()
+    cookie_action = render_pending_auth_cookie()
+    if cookie_action == "delete" or st.session_state.get(
+        "suppress_auth_cookie_restore"
+    ):
+        return st.session_state.get("current_user")
+    restore_user_from_browser()
+    render_pending_auth_cookie()
     return st.session_state.get("current_user")
 
 
@@ -81,31 +92,26 @@ def get_query_value(key):
 
 
 def persist_login(username):
-    st.query_params[AUTH_QUERY_KEY] = build_auth_token(username)
+    st.session_state.pop("suppress_auth_cookie_restore", None)
+    queue_auth_cookie(build_auth_token(username))
     st.session_state["persistent_login_enabled"] = True
-
-
-def clear_persistent_login():
-    st.session_state.pop("persistent_login_enabled", None)
     if AUTH_QUERY_KEY in st.query_params:
         del st.query_params[AUTH_QUERY_KEY]
 
 
-def ensure_persistent_login_query():
-    user = st.session_state.get("current_user")
-    if not user or not st.session_state.get("persistent_login_enabled"):
-        return
-    if get_query_value(AUTH_QUERY_KEY):
-        return
-
-    persist_login(user["username"])
+def clear_persistent_login():
+    st.session_state.pop("persistent_login_enabled", None)
+    st.session_state["suppress_auth_cookie_restore"] = True
+    queue_auth_cookie_deletion()
+    if AUTH_QUERY_KEY in st.query_params:
+        del st.query_params[AUTH_QUERY_KEY]
 
 
-def restore_user_from_query():
+def restore_user_from_browser():
     if st.session_state.get("current_user"):
         return
 
-    token = get_query_value(AUTH_QUERY_KEY)
+    token = read_auth_cookie() or get_query_value(AUTH_QUERY_KEY)
     if not token:
         return
 
@@ -121,6 +127,8 @@ def restore_user_from_query():
 
     set_current_user(user)
     st.session_state["persistent_login_enabled"] = True
+    if get_query_value(AUTH_QUERY_KEY):
+        persist_login(user["username"])
 
 
 def login_user(username, password, remember=False):
