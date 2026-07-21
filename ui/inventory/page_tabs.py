@@ -8,6 +8,7 @@ from ui.inventory.operations.forms import (
     render_new_sku_form,
 )
 from ui.inventory.operations.outbound import render_daily_outbound
+from ui.inventory.operations.sku_editor import render_sku_editor
 from ui.inventory.planning.consumption import (
     render_black_white_color_summary,
     render_consumption_model,
@@ -24,21 +25,23 @@ from ui.inventory.stock.table import (
 def render_inventory_tabs(
     supabase, department, category, inventory_df, raw_df, current_cost_df,
     inventory_date, selected_date, current_date, visible_sizes, can_edit,
-    can_view_cost, history_data,
+    can_view_cost, history_data, movement_types, filter_title,
 ):
     tab_names = [
-        t("库存明细"), t("点货预测"), t("每日出库及历史"),
-        t("日常出入库及历史"), t("撤销"), t("新建 SKU"),
+        t("库存明细"), t("点货预测"), t("仓库每日出货及历史"),
+        t("临时出入库及历史"), t("撤销"), t("SKU 管理"),
     ]
     if can_view_cost:
         tab_names.append(t("库存成本"))
     tabs = st.tabs(tab_names)
 
     with tabs[0]:
+        if can_edit and not category:
+            st.info(t("全部品类为汇总视图，请选择具体品类后直接编辑库存明细"))
         render_inventory_table(
             supabase, department, category, inventory_df, inventory_date,
             can_edit and bool(category) and selected_date == current_date,
-            visible_sizes,
+            visible_sizes, filter_title,
         )
         render_inventory_metrics(inventory_df)
         render_black_white_color_summary(category, inventory_df, visible_sizes)
@@ -56,43 +59,69 @@ def render_inventory_tabs(
         )
 
     with tabs[2]:
-        if can_edit and category:
-            render_daily_outbound(supabase, department, category)
-            st.divider()
-        elif can_edit:
-            st.info(t("请先选择具体品类再进行库存操作"))
+        if can_edit:
+            operation_category = _select_operation_category(
+                category, raw_df, "daily_outbound_category"
+            )
+            if operation_category:
+                render_daily_outbound(
+                    supabase, department, operation_category
+                )
+                st.divider()
         _render_history(
-            supabase, department, "daily", history_data, visible_sizes
+            supabase, department, "daily", history_data, visible_sizes,
+            movement_types,
         )
 
     with tabs[3]:
-        if can_edit and category:
-            render_inventory_unit_calculator()
-            render_adjust_form(
-                supabase, department, category, inventory_df
+        if can_edit:
+            operation_category = _select_operation_category(
+                category, raw_df, "temporary_movement_category"
             )
-            st.divider()
-        elif can_edit:
-            st.info(t("请先选择具体品类再进行库存操作"))
+            if operation_category:
+                operation_inventory_df = inventory_df[
+                    inventory_df["品类"] == operation_category
+                ].reset_index(drop=True)
+                render_inventory_unit_calculator()
+                render_adjust_form(
+                    supabase, department, operation_category,
+                    operation_inventory_df,
+                )
+                st.divider()
         _render_history(
-            supabase, department, "regular", history_data, visible_sizes
+            supabase, department, "regular", history_data, visible_sizes,
+            movement_types,
         )
 
     with tabs[4]:
         _render_history(
-            supabase, department, "undo", history_data, visible_sizes
+            supabase, department, "undo", history_data, visible_sizes,
+            movement_types,
         )
 
     with tabs[5]:
-        if can_edit and category:
-            render_new_sku_form(
-                supabase, department, category, inventory_df
+        if can_edit:
+            operation_category = _select_operation_category(
+                category, raw_df, "sku_management_category"
             )
+            create_tab, edit_tab = st.tabs([
+                t("新增 SKU"), t("修改 SKU"),
+            ])
+            with create_tab:
+                if operation_category:
+                    operation_inventory_df = inventory_df[
+                        inventory_df["品类"] == operation_category
+                    ].reset_index(drop=True)
+                    render_new_sku_form(
+                        supabase, department, operation_category,
+                        operation_inventory_df,
+                    )
+            with edit_tab:
+                render_sku_editor(supabase, department, raw_df)
             st.divider()
-        elif can_edit:
-            st.info(t("请先选择具体品类再进行库存操作"))
         _render_history(
-            supabase, department, "sku", history_data, visible_sizes
+            supabase, department, "sku", history_data, visible_sizes,
+            movement_types,
         )
 
     if can_view_cost:
@@ -103,9 +132,30 @@ def render_inventory_tabs(
 
 
 def _render_history(
-    supabase, department, mode, history_data, visible_sizes
+    supabase, department, mode, history_data, visible_sizes, movement_types
 ):
     render_inventory_history(
         supabase, department, mode, history_data=history_data,
         visible_sizes=visible_sizes,
+        movement_types=movement_types,
     )
+
+
+def _select_operation_category(category, raw_df, key):
+    if category:
+        return category
+    if raw_df.empty or "category" not in raw_df.columns:
+        st.info(t("当前没有可操作的库存品类"))
+        return ""
+    category_order = {value: index for index, value in enumerate([
+        "黑白短袖", "彩色短袖", "卫衣",
+    ])}
+    options = sorted({
+        str(value).strip() for value in raw_df["category"].dropna()
+        if str(value).strip()
+    }, key=lambda value: (category_order.get(value, 99), value))
+    if not options:
+        st.info(t("当前没有可操作的库存品类"))
+        return ""
+    st.caption(t("当前查看全部品类，请选择本次库存操作的目标品类"))
+    return st.selectbox(t("操作品类"), options, key=key, format_func=t)

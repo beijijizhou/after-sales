@@ -48,7 +48,7 @@ def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=D
     columns = (
         "department,category,brand,material,color,size,quantity_change,"
         "quantity_after,movement_date,reason,created_at,created_by,"
-        "batch_id,reversal_of_batch_id"
+        "batch_id,reversal_of_batch_id,source_type"
     )
     query = supabase.table("inventory_movements").select(columns).eq("department", department)
     if category:
@@ -58,7 +58,9 @@ def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=D
             "created_at", desc=True
         ).limit(limit).execute()
     except Exception:
-        fallback_columns = columns.replace(",created_by,batch_id,reversal_of_batch_id", "")
+        fallback_columns = columns.replace(
+            ",created_by,batch_id,reversal_of_batch_id,source_type", ""
+        )
         query = supabase.table("inventory_movements").select(fallback_columns).eq(
             "department", department
         )

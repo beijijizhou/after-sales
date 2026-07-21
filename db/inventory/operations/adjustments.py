@@ -103,7 +103,10 @@ def parse_adjustment_file(uploaded_file):
     return normalize_adjustment_rows(df)
 
 
-def apply_adjustment_rows(supabase, department, category, df, created_by="system"):
+def apply_adjustment_rows(
+    supabase, department, category, df, created_by="system",
+    source_type="bulk",
+):
     batch_id = str(uuid4())
     records = []
     for row in df.to_dict("records"):
@@ -116,21 +119,39 @@ def apply_adjustment_rows(supabase, department, category, df, created_by="system
             "quantity_change": quantity_change,
             "reason": row["备注"],
             "movement_date": row["日期"].isoformat(),
+            "source_type": source_type,
         }
         if not pd.isna(row.get("成本")):
             record["unit_cost"] = float(row["成本"])
         records.append(record)
 
-    supabase.rpc(
-        "apply_inventory_adjustment_batch",
-        {
-            "p_department": department,
-            "p_category": category,
-            "p_rows": records,
-            "p_batch_id": batch_id,
-            "p_created_by": created_by,
-        },
-    ).execute()
+    parameters = {
+        "p_department": department,
+        "p_category": category,
+        "p_rows": records,
+        "p_batch_id": batch_id,
+        "p_created_by": created_by,
+        "p_source_type": source_type,
+    }
+    try:
+        supabase.rpc(
+            "apply_inventory_adjustment_batch", parameters
+        ).execute()
+    except Exception as error:
+        if "PGRST202" not in str(error):
+            raise
+        legacy_parameters = dict(parameters)
+        legacy_parameters.pop("p_source_type")
+        legacy_parameters["p_rows"] = [
+            {
+                key: value for key, value in record.items()
+                if key != "source_type"
+            }
+            for record in records
+        ]
+        supabase.rpc(
+            "apply_inventory_adjustment_batch", legacy_parameters
+        ).execute()
     for movement_date in sorted(df["日期"].dropna().unique()):
         create_inventory_snapshot(supabase, department, category, movement_date)
     return batch_id

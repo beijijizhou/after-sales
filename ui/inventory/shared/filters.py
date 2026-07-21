@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 import streamlit as st
 
@@ -28,9 +31,15 @@ def render_inventory_global_filters(dimensions, key="inventory_global"):
         department_rows.get("category", []), preferred_categories
     )
     category_options = ["", *categories]
-    _reset_invalid_selectbox(f"{key}_category", category_options)
+    category_key = f"{key}_category"
+    _reset_invalid_selectbox(category_key, category_options)
+    initialization_key = f"{category_key}_default_v2"
+    if initialization_key not in st.session_state:
+        if not st.session_state.get(category_key) and "黑白短袖" in categories:
+            st.session_state[category_key] = "黑白短袖"
+        st.session_state[initialization_key] = True
     category = category_col.selectbox(
-        t("库存品类"), category_options, key=f"{key}_category",
+        t("库存品类"), category_options, key=category_key,
         format_func=lambda value: t("全部品类") if not value else t(value),
     )
 
@@ -89,9 +98,19 @@ def render_inventory_global_filters(dimensions, key="inventory_global"):
         t("筛选尺码"), sizes, key=f"{key}_sizes",
         placeholder=t("全部"),
     )
+    movement_col, date_col = st.columns(2)
+    movement_types = movement_col.multiselect(
+        t("出入库类型"), ["入库", "出库"], format_func=t,
+        key=f"{key}_movement_types", placeholder=t("全部"),
+    )
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    selected_date = date_col.date_input(
+        t("查看库存日期"), value=today, max_value=today,
+        key=f"{key}_snapshot_date",
+    )
     return (
         department, category, selected_brands, selected_materials,
-        selected_colors, selected_sizes,
+        selected_colors, selected_sizes, movement_types, selected_date,
     )
 
 
@@ -112,6 +131,16 @@ def filter_inventory_rows(
     if sizes and "size" in result.columns:
         result = result[result["size"].isin(sizes)]
     return result.reset_index(drop=True)
+
+
+def build_inventory_filter_title(
+    category="", brands=None, materials=None, colors=None, sizes=None,
+):
+    parts = [t(category) if category else t("全部品类")]
+    for values in [brands, materials, colors, sizes]:
+        if values:
+            parts.append("/".join(t(str(value)) for value in values))
+    return " · ".join(part for part in parts if part)
 
 
 def _normalize_dimensions(dimensions):

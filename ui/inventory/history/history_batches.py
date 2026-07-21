@@ -77,8 +77,6 @@ def build_movement_batch_rows(movement_df):
             movement_date=("movement_date", "first"),
             department=("department", "first"),
             category=("category", "first"),
-            brands=("brand", _join_batch_values),
-            materials=("material", _join_batch_values),
             direction=("direction", "first"),
             reason=("reason", lambda values: "；".join(dict.fromkeys(
                 value for value in values if value
@@ -106,8 +104,6 @@ def build_movement_batch_rows(movement_df):
             "表格日期": row["movement_date"],
             "部门": row["department"],
             "品类": row["category"],
-            "品牌集合": row["brands"],
-            "材质集合": row["materials"],
             "数量": row["quantity"],
             "操作人": row["created_by"],
             "备注": row["reason"],
@@ -126,8 +122,6 @@ def build_sku_batch_rows(sku_import_df):
         .groupby(["batch_key", "recorded_key", "import_date", "department", "category"], as_index=False)
         .agg(
             quantity=("initial_quantity", "sum"),
-            brands=("brand", _join_batch_values),
-            materials=("material", _join_batch_values),
         )
     )
     return [
@@ -139,22 +133,12 @@ def build_sku_batch_rows(sku_import_df):
             "表格日期": row["import_date"],
             "部门": row["department"],
             "品类": row["category"],
-            "品牌集合": row["brands"],
-            "材质集合": row["materials"],
             "数量": int(row["quantity"]),
             "操作人": "Andy",
             "备注": "",
         }
         for row in grouped_df.to_dict("records")
     ]
-
-
-def _join_batch_values(values):
-    return tuple(sorted({
-        str(value).strip()
-        for value in values
-        if pd.notna(value) and str(value).strip()
-    }))
 
 
 def build_movement_batches(movement_df, sku_import_df):
@@ -169,7 +153,9 @@ def build_movement_batches(movement_df, sku_import_df):
     )
 
 
-def render_batch_selector(batch_df, key="inventory_history_batch"):
+def render_batch_selector(
+    batch_df, key="inventory_history_batch", sku_import=False
+):
     if batch_df.empty:
         st.info(t("暂无相关记录"))
         return None
@@ -177,18 +163,31 @@ def render_batch_selector(batch_df, key="inventory_history_batch"):
     options = batch_df["batch_key"].tolist()
     if key in st.session_state and st.session_state[key] not in options:
         del st.session_state[key]
-    labels = {
-        row["batch_key"]: (
-            f"{row['记录时间']}｜{t(row['类型'])}｜{row['表格日期']}｜"
-            f"{row['部门']} {row['品类']}｜{row['数量']}｜{row['操作人']}"
-        )
-        for row in batch_df.to_dict("records")
-    }
+    if sku_import:
+        labels = {
+            row["batch_key"]: (
+                f"{row['记录时间']}｜{row['表格日期']}｜"
+                f"{row['部门']} {row['品类']}｜{row['数量']}｜{row['操作人']}"
+            )
+            for row in batch_df.to_dict("records")
+        }
+    else:
+        labels = {
+            row["batch_key"]: (
+                f"{row['记录时间']}｜{t(row['类型'])}｜{row['表格日期']}｜"
+                f"{row['部门']} {row['品类']}｜{row['数量']}｜{row['操作人']}"
+            )
+            for row in batch_df.to_dict("records")
+        }
     selected_batch = st.selectbox(
-        t("选择库存表格记录"),
+        t("选择 SKU 导入记录") if sku_import else t("选择库存表格记录"),
         options,
         format_func=lambda value: labels.get(value, value),
         key=key,
     )
-    st.caption(t("输入时间｜类型｜出入库日期｜部门/品类｜总计｜操作人"))
+    caption = (
+        "输入时间｜导入日期｜部门/品类｜总计｜操作人"
+        if sku_import else "输入时间｜类型｜出入库日期｜部门/品类｜总计｜操作人"
+    )
+    st.caption(t(caption))
     return selected_batch

@@ -40,6 +40,13 @@ def render_adjust_form(supabase, department, category, inventory_df):
     action = st.radio(
         t("操作"), ["增加", "扣减"], horizontal=True, format_func=t
     )
+    source_type = "bulk"
+    if action == "增加":
+        source_label = st.radio(
+            t("库存来源"), ["大货", "临时调货"], horizontal=True,
+            format_func=t,
+        )
+        source_type = "transfer" if source_label == "临时调货" else "bulk"
     adjustment_columns = {
         "日期": st.column_config.DateColumn(t("日期"), required=True),
         "品牌": st.column_config.SelectboxColumn(t("品牌"), options=brands, required=False),
@@ -81,7 +88,8 @@ def render_adjust_form(supabase, department, category, inventory_df):
                 adjustment_df = adjustment_df.drop(columns=["成本"])
             username = get_current_operator_name()
             apply_adjustment_rows(
-                supabase, department, category, adjustment_df, username
+                supabase, department, category, adjustment_df, username,
+                source_type,
             )
             st.session_state["inventory_saved_message"] = (
                 t("已保存库存调整").format(count=len(adjustment_df))

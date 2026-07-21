@@ -9,10 +9,10 @@ LANGUAGES = {
 
 TEXT = {
     "zh": {
-        "title": "每日正常出货",
-        "notice": "每日正常出货（库存扣减）：登记当天已经完成的正常出货，确认后会从库存中扣除。",
-        "download": "下载每日出货模板",
-        "upload": "上传每日出货 Excel / CSV（可选）",
+        "title": "仓库每日出货",
+        "notice": "仓库每日出货（库存扣减）：登记仓库当天提供给生产部门的正常出货，确认后会从库存中扣除。",
+        "download": "下载仓库每日出货模板",
+        "upload": "上传仓库每日出货 Excel / CSV（可选）",
         "read_error": "文件读取失败",
         "caption": "尺码栏填写箱数或包数，系统会在确认前换算为件数。",
         "rules_title": "包装换算规则",
@@ -26,15 +26,15 @@ TEXT = {
         "rules_help": "遇到尚未录入的新包装规格时，可以根据以上件数推算相应的箱数或包数。",
         "empty": "填写箱数或包数后，这里会显示换算件数",
         "preview": "换算件数确认",
-        "total": "本次正常出货总件数",
-        "confirm": "确认登记每日出货",
-        "saved": "件正常出货，库存已刷新",
-        "save_error": "每日出货登记失败",
-        "file": "每日正常出货模板.csv",
+        "total": "本次仓库出货总件数",
+        "confirm": "确认登记仓库每日出货",
+        "saved": "件仓库每日出货，库存已刷新",
+        "save_error": "仓库每日出货登记失败",
+        "file": "仓库每日出货模板.csv",
     },
     "en": {
-        "title": "Daily Outbound",
-        "notice": "Daily outbound (inventory deduction): confirm completed shipments before deducting inventory.",
+        "title": "Warehouse Daily Outbound",
+        "notice": "Warehouse daily outbound (inventory deduction): record normal stock issued to production, then confirm the inventory deduction.",
         "download": "Download outbound template",
         "upload": "Upload outbound Excel / CSV (optional)",
         "read_error": "Unable to read file",
@@ -57,8 +57,8 @@ TEXT = {
         "file": "daily_outbound_template.csv",
     },
     "es": {
-        "title": "Salida diaria",
-        "notice": "Salida diaria (descuento de inventario): confirme los envíos terminados antes de descontar el inventario.",
+        "title": "Salida diaria de almacén",
+        "notice": "Salida diaria de almacén (descuento de inventario): registre el inventario entregado normalmente a producción y confirme el descuento.",
         "download": "Descargar plantilla de salida",
         "upload": "Subir Excel / CSV de salida (opcional)",
         "read_error": "No se pudo leer el archivo",
@@ -101,9 +101,9 @@ PACKAGE_WORDS = {
 }
 
 NOTES = {
-    "zh": "每日正常出货",
-    "en": "Daily outbound",
-    "es": "Salida diaria",
+    "zh": "仓库每日出货",
+    "en": "Warehouse daily outbound",
+    "es": "Salida diaria de almacén",
 }
 
 

@@ -9,7 +9,6 @@ from ui.inventory.history.history_batches import (
     build_movement_batches,
     render_batch_selector,
 )
-from ui.inventory.history.history_filters import render_history_filters
 from ui.inventory.history.history_tables import (
     render_movement_table,
     render_sku_import_table,
@@ -120,8 +119,21 @@ def filter_history_batches(batch_df, mode):
     return normal_df[normal_df["类型"] != "新增 SKU"]
 
 
+def filter_batches_by_movement_type(batch_df, movement_types):
+    if batch_df.empty or not movement_types:
+        return batch_df
+    return batch_df[
+        batch_df["类型"].fillna("").apply(
+            lambda value: any(
+                movement_type in value for movement_type in movement_types
+            )
+        )
+    ]
+
+
 def render_inventory_history(
-    supabase, department, mode, history_data=None, visible_sizes=None
+    supabase, department, mode, history_data=None, visible_sizes=None,
+    movement_types=None,
 ):
     movement_df, sku_import_df, batch_df = history_data or load_inventory_history_data(
         supabase, department
@@ -131,6 +143,13 @@ def render_inventory_history(
         return
 
     selected_df = filter_history_batches(batch_df, mode)
+    if mode != "sku":
+        selected_df = filter_batches_by_movement_type(
+            selected_df, movement_types
+        )
+
+    if mode == "sku":
+        st.subheader(t("SKU 导入历史"))
 
     render_history_tab(
         supabase,
@@ -140,10 +159,14 @@ def render_inventory_history(
         f"inventory_{mode}_history_batch",
         allow_undo=mode == "undo",
         visible_sizes=visible_sizes,
+        sku_import=mode == "sku",
     )
     if mode == "undo":
         st.subheader(t("撤销记录"))
         reversal_df = batch_df[batch_df["记录类别"] == "撤销记录"]
+        reversal_df = filter_batches_by_movement_type(
+            reversal_df, movement_types
+        )
         render_history_tab(
             supabase,
             reversal_df,
@@ -157,10 +180,11 @@ def render_inventory_history(
 
 def render_history_tab(
     supabase, batch_df, movement_df, sku_import_df, key, allow_undo=False,
-    visible_sizes=None,
+    visible_sizes=None, sku_import=False,
 ):
-    batch_df = render_history_filters(batch_df, key)
-    selected_batch = render_batch_selector(batch_df, key=key)
+    selected_batch = render_batch_selector(
+        batch_df, key=key, sku_import=sku_import
+    )
     if not selected_batch:
         return
 

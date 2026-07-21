@@ -14,16 +14,17 @@ from db.inventory import (
     load_inventory_snapshot,
 )
 from db.inventory.sku import load_sku_imports
-from ui.inventory.controls import (
-    render_inventory_date_selector,
-)
 from ui.inventory.history.history import (
     filter_inventory_history_data,
     load_inventory_history_data,
 )
 from ui.inventory.i18n import render_language_selector, t
 from ui.inventory.page_tabs import render_inventory_tabs
-from ui.inventory.shared import filter_inventory_rows, render_inventory_global_filters
+from ui.inventory.shared import (
+    build_inventory_filter_title,
+    filter_inventory_rows,
+    render_inventory_global_filters,
+)
 from utils.auth import has_permission
 
 
@@ -38,12 +39,17 @@ def render_inventory_summary(supabase):
     except Exception as error:
         st.error(f"{t('库存数据加载失败')}: {error}")
         return
-    department, category, brands, materials, colors, selected_sizes = (
+    (
+        department, category, brands, materials, colors, selected_sizes,
+        movement_types, selected_date,
+    ) = (
         render_inventory_global_filters(dimensions_df)
     )
     visible_sizes = selected_sizes or SIZE_COLUMNS
+    filter_title = build_inventory_filter_title(
+        category, brands, materials, colors, selected_sizes
+    )
     st.session_state["inventory_today"] = datetime.now(ZoneInfo("America/New_York")).date()
-    selected_date = render_inventory_date_selector()
 
     try:
         raw_df = load_inventory_items(supabase, department, category)
@@ -97,6 +103,8 @@ def render_inventory_summary(supabase):
             supabase, department, category, inventory_df, raw_df,
             current_cost_df, inventory_date, selected_date, current_date,
             visible_sizes, can_edit, can_view_cost, history_data,
+            movement_types,
+            filter_title,
         )
 
     except Exception as e:

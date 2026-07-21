@@ -11,10 +11,9 @@ from ui.inventory.stock.table_filters import render_inventory_table_filters
 
 def render_inventory_table(
     supabase, department, category, inventory_df, inventory_date, editable,
-    visible_sizes,
+    visible_sizes, filter_title,
 ):
-    title_category = category or t("全部品类")
-    st.subheader(f"{title_category} {t('库存明细')}")
+    st.subheader(f"{filter_title} {t('库存明细')}")
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
 
     col1, col2 = st.columns(2)

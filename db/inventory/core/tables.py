@@ -54,7 +54,10 @@ def build_inventory_table(df, category=DEFAULT_CATEGORY, include_cost=False):
         index_columns.append("unit_cost")
     pivot_df = (
         inventory_df
-        .pivot_table(index=index_columns, columns="size", values="quantity", fill_value=0)
+        .pivot_table(
+            index=index_columns, columns="size", values="quantity",
+            aggfunc="sum", fill_value=0,
+        )
         .reset_index()
         .rename(columns={
             "category": "品类",

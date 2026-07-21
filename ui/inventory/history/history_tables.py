@@ -29,9 +29,18 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
     if "created_by" not in movement_df.columns:
         movement_df["created_by"] = "a"
     movement_df["created_by"] = movement_df["created_by"].fillna("a")
+    if "source_type" not in movement_df.columns:
+        movement_df["source_type"] = ""
+    movement_df["source_type"] = (
+        movement_df["source_type"].fillna("").map({
+            "bulk": t("大货"),
+            "transfer": t("临时调货"),
+            "opening": t("期初库存"),
+        }).fillna("")
+    )
     index_columns = [
         "movement_date", "department", "category", "brand", "material",
-        "color", "created_by", "reason",
+        "color", "source_type", "created_by", "reason",
     ]
     display_df = (
         movement_df
@@ -50,6 +59,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
             "brand": "品牌",
             "material": "材质",
             "color": "颜色",
+            "source_type": "库存来源",
             "created_by": "操作人",
             "reason": "备注",
         })
@@ -61,7 +71,8 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
     sizes = visible_sizes or SIZE_COLUMNS
     display_df["合计"] = display_df[sizes].sum(axis=1)
     return display_df[[
-        "日期", "部门", "品类", "品牌", "材质", "颜色", "操作人",
+        "日期", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
+        "操作人",
         *sizes, "合计", "备注",
     ]]
 
@@ -84,6 +95,7 @@ def render_movement_table(movement_df, visible_sizes=None):
             "品牌": st.column_config.TextColumn(t("品牌")),
             "材质": st.column_config.TextColumn(t("材质")),
             "颜色": st.column_config.TextColumn(t("颜色")),
+            "库存来源": st.column_config.TextColumn(t("库存来源")),
             "操作人": st.column_config.TextColumn(t("操作人")),
             "备注": st.column_config.TextColumn(t("备注")),
             **{size: st.column_config.NumberColumn(size, format="%d") for size in SIZE_COLUMNS},
