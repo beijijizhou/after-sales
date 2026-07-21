@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from db.inventory import SIZE_COLUMNS
+from db.inventory import DEFAULT_DEPARTMENT, SIZE_COLUMNS
 from ui.inventory.i18n import t
 
 
