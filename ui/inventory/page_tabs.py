@@ -8,7 +8,10 @@ from ui.inventory.operations.forms import (
     render_new_sku_form,
 )
 from ui.inventory.operations.outbound import render_daily_outbound
-from ui.inventory.operations.sku_editor import render_sku_editor
+from ui.inventory.operations.sku_editor import (
+    render_sku_catalog,
+    render_sku_editor,
+)
 from ui.inventory.planning.consumption import (
     render_black_white_color_summary,
     render_consumption_model,
@@ -104,9 +107,14 @@ def render_inventory_tabs(
             operation_category = _select_operation_category(
                 category, raw_df, "sku_management_category"
             )
-            create_tab, edit_tab = st.tabs([
-                t("新增 SKU"), t("修改 SKU"),
+            operation_raw_df = raw_df[
+                raw_df["category"] == operation_category
+            ].reset_index(drop=True) if operation_category else raw_df.iloc[0:0]
+            current_tab, create_tab, edit_tab = st.tabs([
+                t("现有 SKU"), t("新增 SKU"), t("修改 SKU"),
             ])
+            with current_tab:
+                render_sku_catalog(operation_raw_df)
             with create_tab:
                 if operation_category:
                     operation_inventory_df = inventory_df[
@@ -117,7 +125,12 @@ def render_inventory_tabs(
                         operation_inventory_df,
                     )
             with edit_tab:
-                render_sku_editor(supabase, department, raw_df)
+                render_sku_editor(
+                    supabase, department, operation_raw_df
+                )
+            st.divider()
+        else:
+            render_sku_catalog(raw_df)
             st.divider()
         _render_history(
             supabase, department, "sku", history_data, visible_sizes,

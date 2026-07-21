@@ -13,6 +13,31 @@ from ui.inventory.i18n import t
 from utils.auth import get_current_operator_name
 
 
+def render_sku_catalog(inventory_df):
+    st.subheader(t("现有 SKU"))
+    source_df = build_sku_identity_table(inventory_df)
+    if source_df.empty:
+        st.info(t("暂无 SKU"))
+        return
+
+    st.metric(t("SKU 组合数"), len(source_df))
+    display_df = source_df.drop(columns=["当前 SKU"])
+    st.dataframe(
+        display_df,
+        hide_index=True,
+        width="stretch",
+        height=min(max((len(source_df) + 1) * 35 + 8, 220), 800),
+        column_config={
+            "品类": st.column_config.TextColumn(t("品类")),
+            "品牌": st.column_config.TextColumn(t("品牌")),
+            "材质": st.column_config.TextColumn(t("材质")),
+            "颜色": st.column_config.TextColumn(t("颜色")),
+            "尺码": st.column_config.TextColumn(t("包含尺码")),
+            "总库存": st.column_config.NumberColumn(t("总库存"), format="%d"),
+        },
+    )
+
+
 def render_sku_editor(supabase, department, inventory_df):
     st.subheader(t("修改 SKU"))
     source_df = build_sku_identity_table(inventory_df)
