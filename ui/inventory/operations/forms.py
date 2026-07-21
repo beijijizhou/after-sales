@@ -16,6 +16,11 @@ from db.inventory.sku import (
     parse_sku_file,
 )
 from utils.auth import get_current_operator_name, has_permission
+from ui.inventory.operations.adjustment_costs import (
+    apply_size_costs,
+    render_adjustment_totals,
+    render_size_cost_editor,
+)
 from ui.inventory.i18n import get_language, t
 
 
@@ -32,8 +37,6 @@ def render_adjust_form(supabase, department, category, inventory_df):
     default_df.loc[0, "日期"] = current_date
     default_df.loc[0, "材质"] = "180g"
     show_cost = has_permission("can_view_cost")
-    if show_cost:
-        default_df.insert(4, "成本", None)
     action = st.radio(
         t("操作"), ["增加", "扣减"], horizontal=True, format_func=t
     )
@@ -43,8 +46,6 @@ def render_adjust_form(supabase, department, category, inventory_df):
         "材质": st.column_config.SelectboxColumn(t("材质"), options=materials, required=True),
         "颜色": st.column_config.SelectboxColumn(t("颜色"), options=colors, required=True),
     }
-    if show_cost:
-        adjustment_columns["成本"] = st.column_config.NumberColumn(t("成本"), min_value=0, step=0.01)
     for size in SIZE_COLUMNS:
         adjustment_columns[size] = st.column_config.NumberColumn(size, min_value=0, step=1)
     adjustment_columns["备注"] = st.column_config.TextColumn(t("备注"))
@@ -59,10 +60,20 @@ def render_adjust_form(supabase, department, category, inventory_df):
             f"{current_date.isoformat()}_{form_version}"
         ),
     )
+    cost_df = None
+    if show_cost and action == "增加":
+        cost_df = render_size_cost_editor(
+            edited_df, f"manual_inventory_costs_{form_version}"
+        )
+    render_adjustment_totals(edited_df, cost_df)
+
     if st.button(t("保存手动库存调整"), width="stretch"):
         try:
-            edited_df["操作"] = action
-            adjustment_df = normalize_adjustment_rows(edited_df)
+            quantity_df = edited_df.copy()
+            quantity_df["操作"] = action
+            quantity_df["入库行"] = range(1, len(quantity_df) + 1)
+            adjustment_df = normalize_adjustment_rows(quantity_df)
+            adjustment_df = apply_size_costs(adjustment_df, cost_df)
             if adjustment_df.empty:
                 st.warning(t("请先填写有效库存调整"))
                 return

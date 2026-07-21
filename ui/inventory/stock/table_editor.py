@@ -1,4 +1,5 @@
 from datetime import datetime
+import hashlib
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -22,9 +23,11 @@ def render_inventory_table_editor(
 ):
     original_df = display_df.drop(columns=["总库存"], errors="ignore").reset_index(drop=True)
     version = st.session_state.get("inventory_inline_editor_version", 0)
-    signature = "_".join(
-        [*original_df.get("颜色", pd.Series(dtype=str)).astype(str).unique(), *original_df.columns]
-    )
+    identity_columns = [
+        column for column in LOCKED_COLUMNS if column in original_df.columns
+    ]
+    identity = original_df[identity_columns].fillna("").astype(str).to_csv(index=False)
+    signature = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
     editor_config = dict(column_config)
     for size in SIZE_COLUMNS:
         if size in original_df.columns:

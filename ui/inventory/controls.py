@@ -1,5 +1,4 @@
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -11,14 +10,6 @@ from db.inventory import (
     load_inventory_departments,
 )
 from ui.inventory.i18n import t
-
-
-def render_setup_help():
-    sql_path = Path(__file__).resolve().parents[2] / "sql" / "inventory_tables.sql"
-    st.info(t("第一次使用库存页，请先在 Supabase SQL Editor 运行下面这段 SQL"))
-    with st.expander(t("显示库存建表 SQL"), expanded=True):
-        st.code(sql_path.read_text(), language="sql")
-
 
 def render_department_selector(supabase):
     departments = load_inventory_departments(supabase)

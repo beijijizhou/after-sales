@@ -16,6 +16,7 @@ from db.inventory.core.constants import (
     SIZE_COLUMNS,
 )
 from db.inventory.core.queries import (
+    load_inventory_dimensions,
     load_inventory_departments,
     load_inventory_items,
     load_inventory_movements,
@@ -51,6 +52,7 @@ __all__ = [
     "create_inventory_snapshot",
     "get_inventory_last_updated",
     "load_inventory_departments",
+    "load_inventory_dimensions",
     "load_inventory_items",
     "load_inventory_movements",
     "load_inventory_snapshot",

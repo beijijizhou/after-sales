@@ -36,19 +36,26 @@ def normalize_wide_adjustment_rows(df):
     if "成本" not in df.columns:
         df["成本"] = pd.NA
     df["成本"] = pd.to_numeric(df["成本"], errors="coerce")
+    row_columns = ["入库行"] if "入库行" in df.columns else []
     for size in SIZE_COLUMNS:
         df[size] = pd.to_numeric(df[size], errors="coerce").fillna(0).astype(int)
 
     df = df.dropna(subset=["日期"])
     df = df[(df["材质"] != "") & (df["颜色"] != "") & (df["操作"].isin(["增加", "扣减"]))]
     adjustment_df = df.melt(
-        id_vars=["日期", "操作", "品牌", "材质", "颜色", "成本", "备注"],
+        id_vars=[
+            "日期", "操作", "品牌", "材质", "颜色", "成本", "备注",
+            *row_columns,
+        ],
         value_vars=SIZE_COLUMNS,
         var_name="尺码",
         value_name="数量",
     )
     adjustment_df = adjustment_df[adjustment_df["数量"] > 0]
-    columns = ["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "成本", "备注"]
+    columns = [
+        "日期", "操作", "品牌", "材质", "颜色", "尺码", "数量",
+        "成本", "备注", *row_columns,
+    ]
     return adjustment_df[columns].reset_index(drop=True)
 
 

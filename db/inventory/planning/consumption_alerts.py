@@ -10,10 +10,12 @@ def build_inventory_consumption_alerts(
     coverage_days=None,
     inventory_date=None,
     current_date=None,
+    sizes=None,
 ):
     if inventory_df.empty or model_df.empty:
         return inventory_df.copy()
 
+    active_sizes = sizes or SIZE_COLUMNS
     stock_df = inventory_df.groupby("颜色", as_index=False)[SIZE_COLUMNS].sum()
     model_df = model_df.rename(columns={
         "color": "颜色",
@@ -29,7 +31,7 @@ def build_inventory_consumption_alerts(
         model_days_by_size = {}
         days_by_size = {}
 
-        for size in SIZE_COLUMNS:
+        for size in active_sizes:
             consumption = color_model[color_model["尺码"] == size]["消耗数量"]
             if consumption.empty or int(consumption.iloc[0]) <= 0:
                 continue
@@ -41,7 +43,7 @@ def build_inventory_consumption_alerts(
             int(coverage_days) + elapsed_days if coverage_days is not None else None
         )
         shortage_by_size = build_shortage_by_size(
-            color_model, stock_row, adjusted_coverage_days
+            color_model, stock_row, adjusted_coverage_days, active_sizes
         )
         minimum_days = min(days_by_size.values()) if days_by_size else None
         minimum_model_days = min(model_days_by_size.values()) if model_days_by_size else None
@@ -74,12 +76,14 @@ def build_low_stock_text(days_by_size, alert_days):
     )
 
 
-def build_shortage_by_size(color_model, stock_row, coverage_days):
+def build_shortage_by_size(
+    color_model, stock_row, coverage_days, sizes=None
+):
     if coverage_days is None:
         return {}
 
     shortage_by_size = {}
-    for size in SIZE_COLUMNS:
+    for size in sizes or SIZE_COLUMNS:
         consumption = color_model[color_model["尺码"] == size]["消耗数量"]
         if consumption.empty or int(consumption.iloc[0]) <= 0:
             continue

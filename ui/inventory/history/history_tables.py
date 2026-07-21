@@ -17,7 +17,7 @@ def format_date_columns(df, date_columns):
     return formatted_df
 
 
-def build_movement_detail_table(movement_df):
+def build_movement_detail_table(movement_df, visible_sizes=None):
     if movement_df.empty:
         return pd.DataFrame()
 
@@ -58,16 +58,17 @@ def build_movement_detail_table(movement_df):
         if size not in display_df.columns:
             display_df[size] = 0
         display_df[size] = pd.to_numeric(display_df[size], errors="coerce").fillna(0).astype(int)
-    display_df["合计"] = display_df[SIZE_COLUMNS].sum(axis=1)
+    sizes = visible_sizes or SIZE_COLUMNS
+    display_df["合计"] = display_df[sizes].sum(axis=1)
     return display_df[[
         "日期", "部门", "品类", "品牌", "材质", "颜色", "操作人",
-        *SIZE_COLUMNS, "合计", "备注",
+        *sizes, "合计", "备注",
     ]]
 
 
-def render_movement_table(movement_df):
+def render_movement_table(movement_df, visible_sizes=None):
     st.subheader(t("库存变动明细"))
-    display_df = build_movement_detail_table(movement_df)
+    display_df = build_movement_detail_table(movement_df, visible_sizes)
     if display_df.empty:
         st.info(t("暂无库存变动明细"))
         return
@@ -91,7 +92,7 @@ def render_movement_table(movement_df):
     )
 
 
-def build_sku_import_detail_table(sku_import_df):
+def build_sku_import_detail_table(sku_import_df, visible_sizes=None):
     if sku_import_df.empty:
         return pd.DataFrame()
 
@@ -125,7 +126,11 @@ def build_sku_import_detail_table(sku_import_df):
             display_df[size] = 0
     cost_columns = ["成本"] if include_cost else []
     optional_columns = [column for column in ["部门", "品类"] if column in display_df.columns]
-    display_df = display_df[["日期", *optional_columns, "品牌", "材质", "颜色", *cost_columns, *SIZE_COLUMNS]]
+    sizes = visible_sizes or SIZE_COLUMNS
+    display_df = display_df[[
+        "日期", *optional_columns, "品牌", "材质", "颜色", *cost_columns,
+        *sizes,
+    ]]
     column_config = {
         "日期": st.column_config.DateColumn(t("日期")),
         "部门": st.column_config.TextColumn(t("部门")),
@@ -141,9 +146,9 @@ def build_sku_import_detail_table(sku_import_df):
     return display_df, column_config
 
 
-def render_sku_import_table(sku_import_df):
+def render_sku_import_table(sku_import_df, visible_sizes=None):
     st.subheader(t("SKU 导入明细"))
-    table_result = build_sku_import_detail_table(sku_import_df)
+    table_result = build_sku_import_detail_table(sku_import_df, visible_sizes)
     if isinstance(table_result, pd.DataFrame) and table_result.empty:
         st.info(t("暂无 SKU 导入明细"))
         return

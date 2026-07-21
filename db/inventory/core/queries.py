@@ -3,6 +3,15 @@ import pandas as pd
 from db.inventory.core.constants import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT
 
 
+def load_inventory_dimensions(supabase):
+    response = (
+        supabase.table("inventory_items")
+        .select("department,category,brand,material,color,size")
+        .execute()
+    )
+    return pd.DataFrame(response.data)
+
+
 def load_inventory_departments(supabase):
     response = (
         supabase

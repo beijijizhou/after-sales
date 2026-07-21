@@ -1,3 +1,8 @@
+-- LEGACY INITIAL SETUP ONLY.
+-- The current database uses the English columns from
+-- inventory_department_english_columns.sql. Do not run this file on an
+-- existing inventory database.
+
 create table if not exists public.inventory_items (
     id uuid primary key default gen_random_uuid(),
     category text not null,

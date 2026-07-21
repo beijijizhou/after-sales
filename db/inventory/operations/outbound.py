@@ -11,7 +11,7 @@ OUTBOUND_SPECS = {
     "180g/Haloo/Box": ("Haloo", "180g", "Box"),
     "180g/Haloo/Bag": ("Haloo", "180g", "Bag"),
     "160g/Mens/Box": ("Men's", "160g", "Box"),
-    "160g/SK/Box": ("SK", "160g", "Box"),
+    "180g/SK/Box": ("SK", "180g", "Box"),
     "160g/B64/Box": ("B64", "160g", "Box"),
     "160g/Velan/Box": ("Velan", "160g", "Box"),
     "160g/T64/Box": ("T64", "160g", "Box"),

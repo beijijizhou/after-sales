@@ -62,6 +62,7 @@ def render_consumption_planning_inputs(category):
 def render_black_white_color_summary(
     category,
     inventory_df,
+    visible_sizes=None,
 ):
     if category != "黑白短袖":
         return
@@ -72,8 +73,9 @@ def render_black_white_color_summary(
         st.info(t("暂无黑白短袖库存数据"))
         return
 
+    sizes = visible_sizes or SIZE_COLUMNS
     st.dataframe(
-        color_df,
+        color_df[["颜色", *sizes, "总库存"]],
         hide_index=True,
         width="stretch",
         column_config={
@@ -93,6 +95,7 @@ def render_reorder_forecast(
     arrival_date,
     buffer_days,
     inventory_date,
+    visible_sizes=None,
 ):
     if category != "黑白短袖":
         return DEFAULT_ORDER_QUANTITY
@@ -105,12 +108,18 @@ def render_reorder_forecast(
     try:
         model_df = load_consumption_model(supabase, category)
         model_df = scale_consumption_model(model_df, order_quantity)
+        if visible_sizes:
+            model_df = model_df[model_df["size"].isin(visible_sizes)]
         today = st.session_state.get("inventory_today")
         anomaly_error_message = None
         try:
             outbound_df = load_daily_outbound_history(
                 supabase, department, category, today
             )
+            if visible_sizes:
+                outbound_df = outbound_df[
+                    outbound_df["尺码"].isin(visible_sizes)
+                ]
             anomaly_df = build_demand_anomaly_table(
                 model_df, outbound_df, inventory_df
             )
@@ -127,6 +136,7 @@ def render_reorder_forecast(
             coverage_days=coverage_days,
             inventory_date=inventory_date,
             current_date=today,
+            sizes=visible_sizes,
         )
     except Exception as e:
         st.info(t("暂无点货预测数据"))
@@ -142,7 +152,9 @@ def render_reorder_forecast(
     return order_quantity
 
 
-def render_consumption_model(supabase, category, order_quantity):
+def render_consumption_model(
+    supabase, category, order_quantity, visible_sizes=None
+):
     if category != "黑白短袖":
         return
 
@@ -150,6 +162,8 @@ def render_consumption_model(supabase, category, order_quantity):
     try:
         model_df = load_consumption_model(supabase, category)
         model_df = scale_consumption_model(model_df, order_quantity)
+        if visible_sizes:
+            model_df = model_df[model_df["size"].isin(visible_sizes)]
     except Exception as e:
         st.info(t("请先运行消耗模型 SQL"))
         st.caption(str(e))

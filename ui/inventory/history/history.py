@@ -9,25 +9,33 @@ from ui.inventory.history.history_batches import (
     build_movement_batches,
     render_batch_selector,
 )
+from ui.inventory.history.history_filters import render_history_filters
 from ui.inventory.history.history_tables import (
     render_movement_table,
     render_sku_import_table,
 )
 from utils.auth import get_current_operator_name, has_permission
 from ui.inventory.i18n import t
+from ui.inventory.shared import filter_inventory_rows
 
 
-def render_selected_sku_import(dated_sku_import_df, selected_batch):
+def render_selected_sku_import(
+    dated_sku_import_df, selected_batch, visible_sizes=None
+):
     dated_sku_import_df = add_sku_batch_key(dated_sku_import_df)
-    render_sku_import_table(dated_sku_import_df[dated_sku_import_df["batch_key"] == selected_batch])
+    render_sku_import_table(
+        dated_sku_import_df[dated_sku_import_df["batch_key"] == selected_batch],
+        visible_sizes,
+    )
 
 
 def render_selected_movement(
-    supabase, dated_movement_df, selected_batch, allow_undo=True
+    supabase, dated_movement_df, selected_batch, allow_undo=True,
+    visible_sizes=None,
 ):
     dated_movement_df = add_movement_batch_key(dated_movement_df)
     selected_df = dated_movement_df[dated_movement_df["batch_key"] == selected_batch]
-    render_movement_table(selected_df)
+    render_movement_table(selected_df, visible_sizes)
     reversed_ids = set()
     if "reversal_of_batch_id" in dated_movement_df.columns:
         reversed_ids = set(
@@ -84,6 +92,20 @@ def load_inventory_history_data(supabase, department):
     return movement_df, sku_import_df, batch_df
 
 
+def filter_inventory_history_data(
+    history_data, category, brands, materials, colors, sizes
+):
+    movement_df, sku_import_df, _ = history_data
+    movement_df = filter_inventory_rows(
+        movement_df, category, brands, materials, colors, sizes
+    )
+    sku_import_df = filter_inventory_rows(
+        sku_import_df, category, brands, materials, colors, sizes
+    )
+    batch_df = build_movement_batches(movement_df, sku_import_df)
+    return movement_df, sku_import_df, batch_df
+
+
 def filter_history_batches(batch_df, mode):
     normal_df = batch_df[batch_df["记录类别"] == "库存表格记录"]
     daily_mask = normal_df["备注"].fillna("").str.contains(
@@ -98,7 +120,9 @@ def filter_history_batches(batch_df, mode):
     return normal_df[normal_df["类型"] != "新增 SKU"]
 
 
-def render_inventory_history(supabase, department, mode, history_data=None):
+def render_inventory_history(
+    supabase, department, mode, history_data=None, visible_sizes=None
+):
     movement_df, sku_import_df, batch_df = history_data or load_inventory_history_data(
         supabase, department
     )
@@ -115,6 +139,7 @@ def render_inventory_history(supabase, department, mode, history_data=None):
         sku_import_df,
         f"inventory_{mode}_history_batch",
         allow_undo=mode == "undo",
+        visible_sizes=visible_sizes,
     )
     if mode == "undo":
         st.subheader(t("撤销记录"))
@@ -126,12 +151,15 @@ def render_inventory_history(supabase, department, mode, history_data=None):
             sku_import_df,
             "inventory_reversal_batch",
             allow_undo=False,
+            visible_sizes=visible_sizes,
         )
 
 
 def render_history_tab(
-    supabase, batch_df, movement_df, sku_import_df, key, allow_undo=False
+    supabase, batch_df, movement_df, sku_import_df, key, allow_undo=False,
+    visible_sizes=None,
 ):
+    batch_df = render_history_filters(batch_df, key)
     selected_batch = render_batch_selector(batch_df, key=key)
     if not selected_batch:
         return
@@ -139,9 +167,10 @@ def render_history_tab(
     selected_batch_df = batch_df[batch_df["batch_key"] == selected_batch]
     selected_type = selected_batch_df.iloc[0]["类型"] if not selected_batch_df.empty else ""
     if selected_type == "新增 SKU":
-        render_selected_sku_import(sku_import_df, selected_batch)
+        render_selected_sku_import(sku_import_df, selected_batch, visible_sizes)
         return
 
     render_selected_movement(
-        supabase, movement_df, selected_batch, allow_undo=allow_undo
+        supabase, movement_df, selected_batch, allow_undo=allow_undo,
+        visible_sizes=visible_sizes,
     )
