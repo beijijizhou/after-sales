@@ -143,7 +143,9 @@ def render_new_sku_form(supabase, department, category, inventory_df=None):
         sku_columns["材质"] = st.column_config.TextColumn(t("材质"), required=True)
         sku_columns["颜色"] = st.column_config.TextColumn(t("颜色"), required=True)
         if show_cost:
-            sku_columns["成本"] = st.column_config.NumberColumn(t("成本"), min_value=0, step=0.01)
+            sku_columns["成本"] = st.column_config.NumberColumn(
+                t("成本"), min_value=0.0, step=0.0001, format="%.4f"
+            )
         for size in SIZE_COLUMNS:
             sku_columns[size] = st.column_config.NumberColumn(size, min_value=0, step=1)
         sku_df = st.data_editor(

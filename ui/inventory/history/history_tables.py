@@ -153,7 +153,9 @@ def build_sku_import_detail_table(sku_import_df, visible_sizes=None):
         **{size: st.column_config.NumberColumn(size) for size in SIZE_COLUMNS},
     }
     if "成本" in display_df.columns:
-        column_config["成本"] = st.column_config.NumberColumn(t("成本"), format="%.2f")
+        column_config["成本"] = st.column_config.NumberColumn(
+            t("成本"), format="%.4f"
+        )
 
     return display_df, column_config
 

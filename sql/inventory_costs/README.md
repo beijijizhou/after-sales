@@ -11,6 +11,9 @@ Run these files in Supabase SQL Editor in order:
 After installation, run `05_verify_cost_lots.sql`. Its first query must return
 no rows.
 
+Run `06_four_decimal_costs.sql` to upgrade every active inventory unit-cost
+column from two decimal places to four decimal places.
+
 The migration keeps `inventory_items.unit_cost` for compatibility. Cost history
 is stored in `inventory_cost_lots`, while outbound deductions are stored in
 `inventory_cost_allocations`.

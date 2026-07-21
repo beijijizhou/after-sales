@@ -99,7 +99,7 @@ begin
                     when merged_quantity > 0 then round((
                         target_item.unit_cost * target_item.quantity
                         + source_item.unit_cost * source_item.quantity
-                    ) / merged_quantity, 2)
+                    ) / merged_quantity, 4)
                     else coalesce(nullif(target_item.unit_cost, 0), source_item.unit_cost, 0)
                 end;
                 update public.inventory_items

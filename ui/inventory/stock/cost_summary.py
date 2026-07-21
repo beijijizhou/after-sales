@@ -77,7 +77,9 @@ def _render_cost_table(cost_df):
             "材质": st.column_config.TextColumn(t("材质")),
             "颜色": st.column_config.TextColumn(t("颜色")),
             "尺码": st.column_config.TextColumn(t("尺码")),
-            "单位成本": st.column_config.NumberColumn(t("单位成本"), format="$%.2f"),
+            "单位成本": st.column_config.NumberColumn(
+                t("单位成本"), format="$%.4f"
+            ),
             "库存数量": st.column_config.NumberColumn(t("库存数量"), format="%d"),
             "库存金额": st.column_config.NumberColumn(t("库存金额"), format="$%.2f"),
         },
@@ -132,4 +134,3 @@ def _attach_cost_identities(sku_df, cost_df):
     identities = sku_df.copy()
     identities[ROW_COLUMN] = range(1, len(identities) + 1)
     return cost_df.merge(identities, on=ROW_COLUMN, how="left")
-

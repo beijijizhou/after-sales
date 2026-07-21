@@ -18,7 +18,9 @@ def render_container_dataframe(display_df):
         "总件数": st.column_config.NumberColumn("总件数", format="%d"),
     }
     if "成本" in table_df.columns:
-        column_config["成本"] = st.column_config.NumberColumn("成本", format="%.2f")
+        column_config["成本"] = st.column_config.NumberColumn(
+            "成本", format="%.4f"
+        )
     st.dataframe(
         table_df, hide_index=True, width="stretch",
         column_config=column_config,
@@ -48,7 +50,9 @@ def render_container_detail(display_df, container_key):
         "总件数": st.column_config.NumberColumn("总件数", format="%d"),
     }
     if "成本" in detail_df.columns:
-        config["成本"] = st.column_config.NumberColumn("成本", format="%.2f")
+        config["成本"] = st.column_config.NumberColumn(
+            "成本", format="%.4f"
+        )
     st.dataframe(
         detail_df, hide_index=True, width="stretch", column_config=config
     )

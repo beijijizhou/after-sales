@@ -15,7 +15,7 @@ create table if not exists public.inventory_cost_lots (
     source_type text not null,
     received_quantity integer not null check (received_quantity > 0),
     remaining_quantity integer not null,
-    unit_cost numeric(12, 4),
+    unit_cost numeric(14, 4),
     movement_date date not null,
     note text,
     created_by text not null default 'system',
@@ -41,7 +41,7 @@ create table if not exists public.inventory_cost_allocations (
     cost_lot_id uuid not null
         references public.inventory_cost_lots(id) on delete restrict,
     quantity integer not null check (quantity > 0),
-    unit_cost numeric(12, 4),
+    unit_cost numeric(14, 4),
     source_type text not null,
     created_at timestamptz not null default now(),
     reversal_movement_id uuid

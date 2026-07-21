@@ -24,7 +24,7 @@ def render_size_cost_editor(quantity_df, key):
         SKU_COLUMN: st.column_config.TextColumn("SKU", disabled=True),
         **{
             size: st.column_config.NumberColumn(
-                size, min_value=0.0, step=0.01, format="%.2f"
+                size, min_value=0.0, step=0.0001, format="%.4f"
             )
             for size in SIZE_COLUMNS
         },

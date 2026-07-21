@@ -54,7 +54,7 @@ def render_container_form(supabase, department=None, category=None):
             "颜色": st.column_config.TextColumn("颜色", required=True),
             **({
                 "成本": st.column_config.NumberColumn(
-                    "成本", min_value=0.0, format="%.2f"
+                    "成本", min_value=0.0, step=0.0001, format="%.4f"
                 )
             } if can_view_cost else {}),
             **{
