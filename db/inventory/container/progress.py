@@ -4,7 +4,7 @@ import pandas as pd
 def build_container_progress_summary(df, today):
     columns = [
         "货柜记录ID", "货柜号", "部门", "品类", "发货日期", "预计到货日期",
-        "已运输天数", "剩余天数", "运输进度", "总件数", "状态",
+        "已运输天数", "剩余天数", "到货提醒", "运输进度", "总件数", "状态",
     ]
     if df.empty:
         return pd.DataFrame(columns=columns)
@@ -23,6 +23,16 @@ def build_container_progress_summary(df, today):
         elapsed_days = max((today - shipped_date).days, 0)
         remaining_days = (expected_date - today).days
         progress = min(round(elapsed_days / transit_days * 100), 100)
+        if remaining_days < 0:
+            arrival_alert = f"已延迟 {abs(remaining_days)} 天"
+        elif remaining_days <= 7:
+            arrival_alert = (
+                "预计今天到货"
+                if remaining_days == 0
+                else f"{remaining_days} 天内到货"
+            )
+        else:
+            arrival_alert = ""
         departments = sorted({
             str(value).strip() for value in group["department"].dropna()
             if str(value).strip()
@@ -41,12 +51,17 @@ def build_container_progress_summary(df, today):
             "预计到货日期": expected_date,
             "已运输天数": elapsed_days,
             "剩余天数": remaining_days,
+            "到货提醒": arrival_alert,
             "运输进度": progress,
             "总件数": int(pd.to_numeric(
                 group["quantity"], errors="coerce"
             ).fillna(0).sum()),
             "状态": group["status"].iloc[0],
         })
-    return pd.DataFrame(rows, columns=columns).sort_values(
-        ["运输进度", "预计到货日期"], ascending=[False, True]
-    ).reset_index(drop=True)
+    result = pd.DataFrame(rows, columns=columns)
+    result["_alert_order"] = result["剩余天数"].map(
+        lambda value: 0 if value < 0 else (1 if value <= 7 else 2)
+    )
+    return result.sort_values(
+        ["_alert_order", "预计到货日期"], ascending=[True, True]
+    ).drop(columns="_alert_order").reset_index(drop=True)

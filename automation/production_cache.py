@@ -18,6 +18,7 @@ class CachedProductionData:
     data: pd.DataFrame
     source: str
     saved_at: str
+    metadata: dict
 
 
 def load_production_cache(
@@ -42,6 +43,7 @@ def load_production_cache(
         data=data,
         source=str(metadata.get("source") or "本地生产数据"),
         saved_at=str(metadata.get("saved_at") or ""),
+        metadata=metadata,
     )
 
 
@@ -53,6 +55,7 @@ def save_production_cache(
     source,
     start_hour=0,
     end_hour=23,
+    extra_metadata=None,
 ):
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     key = _cache_key(platform, start_date, end_date, start_hour, end_hour)
@@ -62,19 +65,21 @@ def save_production_cache(
     temporary_metadata = metadata_path.with_suffix(".json.tmp")
     saved_at = datetime.now(NEW_YORK).strftime("%Y-%m-%d %H:%M:%S")
     data.to_parquet(temporary_data, index=False, compression="snappy")
+    metadata = {
+        "version": CACHE_VERSION,
+        "platform": platform,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "start_hour": start_hour,
+        "end_hour": end_hour,
+        "rows": len(data),
+        "source": source,
+        "saved_at": saved_at,
+    }
+    metadata.update(extra_metadata or {})
     temporary_metadata.write_text(
         json.dumps(
-            {
-                "version": CACHE_VERSION,
-                "platform": platform,
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-                "start_hour": start_hour,
-                "end_hour": end_hour,
-                "rows": len(data),
-                "source": source,
-                "saved_at": saved_at,
-            },
+            metadata,
             ensure_ascii=False,
             indent=2,
         ),

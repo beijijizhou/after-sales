@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
@@ -21,11 +22,12 @@ NY_TIMEZONE = ZoneInfo("America/New_York")
 
 def render_container_form(supabase, department=None, category=None):
     st.subheader("新增货柜安排")
+    if not department:
+        st.info("请先在页面顶部选择具体部门，再新增货柜安排")
+        return
     today = datetime.now(NY_TIMEZONE).date()
     form_version = st.session_state.get("container_form_version", 0)
-    default_df = build_container_template(today)
-    if department:
-        default_df["部门"] = department
+    default_df = _build_department_template(today, department)
     if category:
         default_df["品类"] = category
     can_view_cost = has_permission("can_view_cost")
@@ -41,31 +43,7 @@ def render_container_form(supabase, department=None, category=None):
             f"inventory_container_editor_{form_version}_"
             f"{department or 'all'}_{category or 'all'}"
         ),
-        column_config={
-            "发货日期": st.column_config.DateColumn("发货日期", required=True),
-            "预计运输天数": st.column_config.NumberColumn(
-                "预计运输天数", min_value=1, step=1, required=True
-            ),
-            "货柜号": st.column_config.TextColumn("货柜号"),
-            "部门": st.column_config.TextColumn("部门", required=True),
-            "品类": st.column_config.TextColumn("品类（可选）"),
-            "品牌": st.column_config.TextColumn("品牌"),
-            "材质": st.column_config.TextColumn("材质", required=True),
-            "颜色": st.column_config.TextColumn("颜色", required=True),
-            **({
-                "成本": st.column_config.NumberColumn(
-                    "成本", min_value=0.0, step=0.0001, format="%.4f"
-                )
-            } if can_view_cost else {}),
-            **{
-                size: st.column_config.NumberColumn(size, min_value=0, step=1)
-                for size in SIZE_COLUMNS
-            },
-            "状态": st.column_config.SelectboxColumn(
-                "状态", options=CONTAINER_STATUSES, required=True
-            ),
-            "备注": st.column_config.TextColumn("备注"),
-        },
+        column_config=_build_column_config(department, can_view_cost),
     )
     schedule_df = build_container_schedule_preview(edited_df)
     if not schedule_df.empty:
@@ -83,11 +61,13 @@ def render_container_form(supabase, department=None, category=None):
             },
         )
 
-    packaging_df = build_container_packaging_preview(edited_df)
-    if not packaging_df.empty:
-        st.caption("以下箱数/包装信息仅供仓库点数核对；系统仍按件数保存和计算。")
-        render_packaging_check(packaging_df, title="保存前包装核对")
+    if department == "DTF":
+        packaging_df = build_container_packaging_preview(edited_df)
+        if not packaging_df.empty:
+            st.caption("以下箱数/包装信息仅供仓库点数核对；系统仍按件数保存和计算。")
+            render_packaging_check(packaging_df, title="保存前包装核对")
 
+    st.metric("当前编辑总件数", f"{_edited_total(edited_df):,}")
     if not st.button("保存货柜安排", width="stretch"):
         return
     try:
@@ -104,3 +84,63 @@ def render_container_form(supabase, department=None, category=None):
     except Exception as error:
         st.error(f"保存失败：{error}")
         st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
+
+
+def _build_department_template(today, department):
+    template = build_container_template(today)
+    template["部门"] = department
+    if department == "DTF":
+        return template
+    common = [
+        "发货日期", "预计运输天数", "货柜号", "部门", "品类",
+        "品牌", "材质", "颜色", "成本", "状态", "备注",
+    ]
+    template = template[common]
+    template["颜色"] = "白"
+    template.insert(template.columns.get_loc("状态"), "型号", "")
+    template.insert(template.columns.get_loc("状态"), "数量", 0)
+    return template
+
+
+def _build_column_config(department, can_view_cost):
+    columns = {
+        "发货日期": st.column_config.DateColumn("发货日期", required=True),
+        "预计运输天数": st.column_config.NumberColumn(
+            "预计运输天数", min_value=1, step=1, required=True
+        ),
+        "货柜号": st.column_config.TextColumn("货柜号"),
+        "部门": st.column_config.TextColumn("部门", disabled=True),
+        "品类": st.column_config.TextColumn("品类（可选）"),
+        "品牌": st.column_config.TextColumn("品牌"),
+        "材质": st.column_config.TextColumn("材质", required=True),
+        "颜色": st.column_config.TextColumn("颜色", required=True),
+        "状态": st.column_config.SelectboxColumn(
+            "状态", options=CONTAINER_STATUSES, required=True
+        ),
+        "备注": st.column_config.TextColumn("备注"),
+    }
+    if can_view_cost:
+        columns["成本"] = st.column_config.NumberColumn(
+            "成本", min_value=0.0, step=0.0001, format="%.4f"
+        )
+    if department == "DTF":
+        columns.update({
+            size: st.column_config.NumberColumn(size, min_value=0, step=1)
+            for size in SIZE_COLUMNS
+        })
+    else:
+        columns["型号"] = st.column_config.TextColumn("型号", required=True)
+        columns["数量"] = st.column_config.NumberColumn(
+            "数量", min_value=0, step=1, required=True
+        )
+    return columns
+
+
+def _edited_total(df):
+    if "数量" in df.columns:
+        value = pd.to_numeric(df["数量"], errors="coerce").fillna(0).sum()
+        return int(value)
+    return int(sum(
+        pd.to_numeric(df.get(size, 0), errors="coerce").fillna(0).sum()
+        for size in SIZE_COLUMNS
+    ))

@@ -6,7 +6,7 @@ from automation.api.hansen import load_hansen_credentials
 from automation.api.sds import load_sds_credentials
 from automation.production import (
     DIAGNOSTIC_PATH,
-    PRODUCTION_PLATFORM_NAMES,
+    DTF_PRODUCTION_PLATFORMS,
     ProductionLoginRequired,
     SDS_PLATFORM_PROFILES,
     load_production_data,
@@ -15,9 +15,12 @@ from automation.production_batch import (
     ALL_CLOTHING_PLATFORMS,
     load_all_clothing_production,
 )
-from automation.production_cache import (
-    load_production_cache,
-    save_production_cache,
+from automation.production_cache import load_production_cache
+from ui.production_data.cache_state import (
+    aggregate_missing,
+    load_existing_platform_results,
+    save_cache_safely,
+    store_production_data,
 )
 
 
@@ -39,16 +42,36 @@ def fetch_and_store_production_data(
             platform, start_date, end_date, start_hour, end_hour
         )
         if cached is not None:
-            source = f"本地缓存 {cached.saved_at} / {cached.source}"
-            _store(platform, cached.data, source)
-            status.update(
-                label=f"已从本地缓存读取：{cached.saved_at}",
-                state="complete",
-                expanded=False,
+            missing = aggregate_missing(
+                platform, cached.data, cached.metadata
             )
-            st.toast("已读取本地缓存")
-            return
-        if platform == ALL_CLOTHING_PLATFORMS:
+            if missing:
+                report(
+                    "检测到部分缓存，仅重新获取："
+                    + "、".join(sorted(missing))
+                )
+                existing = load_existing_platform_results(
+                    cached, missing, start_date, end_date,
+                    start_hour, end_hour,
+                )
+                source, errors = _fetch_all(
+                    start_date, end_date, start_hour, end_hour, report,
+                    platforms=missing,
+                    existing_results=existing,
+                )
+            else:
+                source = f"本地缓存 {cached.saved_at} / {cached.source}"
+                store_production_data(
+                    platform, cached.data, source, cached.saved_at
+                )
+                status.update(
+                    label=f"已从本地缓存读取：{cached.saved_at}",
+                    state="complete",
+                    expanded=False,
+                )
+                st.toast("已读取本地缓存")
+                return
+        elif platform == ALL_CLOTHING_PLATFORMS:
             source, errors = _fetch_all(
                 start_date, end_date, start_hour, end_hour, report
             )
@@ -62,8 +85,8 @@ def fetch_and_store_production_data(
                 start_hour=start_hour,
                 end_hour=end_hour,
             )
-            _store(platform, result.data, result.source)
-            _save_cache(
+            store_production_data(platform, result.data, result.source)
+            save_cache_safely(
                 platform,
                 start_date,
                 end_date,
@@ -102,9 +125,13 @@ def fetch_and_store_production_data(
             st.caption("已记录当前页面控件，便于校准自动化流程。")
 
 
-def _fetch_all(start_date, end_date, start_hour, end_hour, report):
+def _fetch_all(
+    start_date, end_date, start_hour, end_hour, report,
+    platforms=None, existing_results=None,
+):
     credentials, credential_errors = {}, {}
-    for platform in PRODUCTION_PLATFORM_NAMES:
+    requested = tuple(platforms or DTF_PRODUCTION_PLATFORMS)
+    for platform in requested:
         try:
             credentials[platform] = _credentials_for(platform)
         except Exception as error:
@@ -117,10 +144,12 @@ def _fetch_all(start_date, end_date, start_hour, end_hour, report):
         report_progress=report,
         start_hour=start_hour,
         end_hour=end_hour,
+        platforms=requested,
+        existing_results=existing_results,
     )
     for platform, result in batch.platform_results.items():
-        _store(platform, result.data, result.source)
-        _save_cache(
+        store_production_data(platform, result.data, result.source)
+        save_cache_safely(
             platform,
             start_date,
             end_date,
@@ -131,11 +160,12 @@ def _fetch_all(start_date, end_date, start_hour, end_hour, report):
             report,
         )
     source = (
+        f"{'部分数据 / ' if batch.errors else ''}"
         f"{len(batch.platform_results)} 个平台 / "
         f"{len(batch.data):,} 个衣服生产项"
     )
-    _store(ALL_CLOTHING_PLATFORMS, batch.data, source)
-    _save_cache(
+    store_production_data(ALL_CLOTHING_PLATFORMS, batch.data, source)
+    save_cache_safely(
         ALL_CLOTHING_PLATFORMS,
         start_date,
         end_date,
@@ -144,6 +174,11 @@ def _fetch_all(start_date, end_date, start_hour, end_hour, report):
         batch.data,
         source,
         report,
+        extra_metadata={
+            "included_platforms": sorted(batch.platform_results),
+            "missing_platforms": sorted(batch.errors),
+            "is_complete": not batch.errors,
+        },
     )
     return source, batch.errors
 
@@ -160,34 +195,3 @@ def _credentials_for(platform):
     if platform in DIY19_BASE_URLS:
         return load_diy19_credentials(st.secrets, platform)
     return None
-
-
-def _store(platform, data, source):
-    platform_data = dict(st.session_state.get("production_data_by_platform", {}))
-    platform_data[platform] = {"data": data, "file": source}
-    st.session_state["production_data_by_platform"] = platform_data
-
-
-def _save_cache(
-    platform,
-    start_date,
-    end_date,
-    start_hour,
-    end_hour,
-    data,
-    source,
-    report,
-):
-    try:
-        saved_at = save_production_cache(
-            platform,
-            start_date,
-            end_date,
-            data,
-            source,
-            start_hour,
-            end_hour,
-        )
-        report(f"{platform} 已保存到本地缓存：{saved_at}")
-    except Exception as error:
-        report(f"{platform} 本地缓存保存失败：{error}")

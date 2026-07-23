@@ -10,6 +10,7 @@ from ui.production.components import (
     render_person_platform_table,
     render_person_switch_table,
 )
+from ui.production.period_analysis import render_qa_period_analysis
 from utils.multiple_count_helpers import refresh_multiple_counts
 from utils.production_helpers import (
     NY_TIMEZONE,
@@ -117,6 +118,15 @@ def render_production_summary(supabase, selected_date, title, user_column):
     if selected_date == datetime.now(NY_TIMEZONE).date():
         snapshot_at = datetime.now(NY_TIMEZONE)
         st.caption(f"统计截止时间：{snapshot_at.strftime('%Y-%m-%d %H:%M:%S')} NY")
+
+    if user_column == "scanned_by":
+        try:
+            render_qa_period_analysis(
+                supabase, selected_date, user_column, snapshot_at
+            )
+        except Exception as e:
+            st.error(f"数据加载失败：{e}")
+        return
 
     try:
         user_summary, person_platform_summary, hourly_summary, person_switch_df, working_hours = (

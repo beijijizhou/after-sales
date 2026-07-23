@@ -4,6 +4,7 @@ from uuid import uuid4
 import pandas as pd
 
 from db.inventory import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT, SIZE_COLUMNS
+from db.inventory.core.constants import UV_MODEL_ORDER
 
 
 CONTAINER_STATUSES = ["未到货", "已到货", "延迟", "取消"]
@@ -29,7 +30,12 @@ def build_container_template(today=None):
 
 
 def normalize_container_rows(df):
-    required = {"发货日期", "预计运输天数", "部门", "材质", "颜色", *SIZE_COLUMNS}
+    model_input = {"型号", "数量"}.issubset(df.columns)
+    item_columns = {"型号", "数量"} if model_input else set(SIZE_COLUMNS)
+    required = {
+        "发货日期", "预计运输天数", "部门", "材质", "颜色",
+        *item_columns,
+    }
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"缺少列：{', '.join(sorted(missing))}")
@@ -61,11 +67,26 @@ def normalize_container_rows(df):
     result["货柜记录ID"] = result.apply(get_container_key, axis=1)
     result["成本"] = pd.to_numeric(result["成本"], errors="coerce").fillna(0)
     result.loc[~result["状态"].isin(CONTAINER_STATUSES), "状态"] = "未到货"
-    for size in SIZE_COLUMNS:
-        result[size] = pd.to_numeric(result[size], errors="coerce").fillna(0).astype(int)
-
     result = result.dropna(subset=["发货日期", "预计到货日期"])
     result = result[(result["部门"] != "") & (result["材质"] != "") & (result["颜色"] != "")]
+    if model_input:
+        result["型号"] = result["型号"].fillna("").astype(str).str.strip()
+        result["数量"] = pd.to_numeric(
+            result["数量"], errors="coerce"
+        ).fillna(0).astype(int)
+        details = result.rename(columns={"型号": "尺码"})
+        return details[
+            (details["尺码"] != "") & (details["数量"] > 0)
+        ][[
+            "货柜记录ID", "发货日期", "预计运输天数", "预计到货日期",
+            "货柜号", "部门", "品类", "品牌", "材质", "颜色", "成本",
+            "状态", "备注", "尺码", "数量",
+        ]].reset_index(drop=True)
+
+    for size in SIZE_COLUMNS:
+        result[size] = pd.to_numeric(
+            result[size], errors="coerce"
+        ).fillna(0).astype(int)
     details = result.melt(
         id_vars=[
             "货柜记录ID", "发货日期", "预计运输天数", "预计到货日期", "货柜号", "部门",
@@ -112,7 +133,8 @@ def build_container_schedule_preview(df):
 
 
 def build_container_display(df, include_cost=False):
-    columns = container_display_columns(include_cost)
+    item_columns = _ordered_item_columns(df.get("size", []))
+    columns = container_display_columns(include_cost, item_columns)
     if df.empty:
         return pd.DataFrame(columns=columns)
 
@@ -135,11 +157,13 @@ def build_container_display(df, include_cost=False):
     pivot = display.pivot_table(
         index=index, columns="size", values="quantity", aggfunc="sum", fill_value=0
     ).reset_index()
-    for size in SIZE_COLUMNS:
-        if size not in pivot.columns:
-            pivot[size] = 0
-        pivot[size] = pd.to_numeric(pivot[size], errors="coerce").fillna(0).astype(int)
-    pivot["总件数"] = pivot[SIZE_COLUMNS].sum(axis=1)
+    for item in item_columns:
+        if item not in pivot.columns:
+            pivot[item] = 0
+        pivot[item] = pd.to_numeric(
+            pivot[item], errors="coerce"
+        ).fillna(0).astype(int)
+    pivot["总件数"] = pivot[item_columns].sum(axis=1)
     pivot.loc[
         pivot["actual_arrival_date"] == missing_arrival, "actual_arrival_date"
     ] = None
@@ -160,11 +184,34 @@ def build_container_display(df, include_cost=False):
     return pivot[columns]
 
 
-def container_display_columns(include_cost):
+def container_display_columns(include_cost, item_columns=None):
     cost = ["成本"] if include_cost else []
+    item_columns = item_columns or SIZE_COLUMNS
     return [
         "货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期",
         "实际到货日期", "货柜号",
         "部门", "品类", "品牌", "材质", "颜色", *cost,
-        *SIZE_COLUMNS, "总件数", "状态", "备注",
+        *item_columns, "总件数", "状态", "备注",
     ]
+
+
+def get_container_item_columns(display_df):
+    metadata = {
+        "货柜记录ID", "批次标识", "发货日期", "运输天数",
+        "预计到货日期", "实际到货日期", "货柜号", "部门", "品类",
+        "品牌", "材质", "颜色", "成本", "总件数", "状态", "备注",
+    }
+    return [
+        column for column in display_df.columns
+        if column not in metadata
+    ]
+
+
+def _ordered_item_columns(values):
+    available = {
+        str(value).strip() for value in values
+        if pd.notna(value) and str(value).strip()
+    }
+    preferred = [*SIZE_COLUMNS, *UV_MODEL_ORDER]
+    ordered = [value for value in preferred if value in available]
+    return [*ordered, *sorted(available - set(ordered))] or SIZE_COLUMNS

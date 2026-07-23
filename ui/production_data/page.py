@@ -17,6 +17,7 @@ from utils.erp.catalog import normalize_production_catalog
 from utils.erp.material import normalize_production_material
 from utils.erp.summary import SCOPE_OPTIONS
 from ui.production_data.controls import render_production_filters
+from ui.production_data.cache_state import sync_session_from_local_cache
 from ui.production_data.fetch import fetch_and_store_production_data
 
 
@@ -55,6 +56,10 @@ def render_production_data_page():
             start_hour=start_hour,
             end_hour=end_hour,
             force_refresh=force_refresh,
+        )
+    else:
+        sync_session_from_local_cache(
+            platform, *selected_range, start_hour, end_hour
         )
 
     if not platform:

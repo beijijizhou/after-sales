@@ -12,13 +12,14 @@ from ui.inventory.operations.sku_editor import (
     render_sku_catalog,
     render_sku_editor,
 )
+from ui.inventory.planning.comparison import render_consumption_models
 from ui.inventory.planning.consumption import (
     render_black_white_color_summary,
-    render_consumption_model,
     render_consumption_planning_inputs,
     render_reorder_forecast,
 )
 from ui.inventory.stock.cost_summary import render_inventory_cost_summary
+from ui.inventory.stock.incoming import render_incoming_inventory_forecast
 from ui.inventory.stock.table import (
     render_inventory_metrics,
     render_inventory_table,
@@ -31,7 +32,8 @@ def render_inventory_tabs(
     can_view_cost, history_data, movement_types, filter_title,
 ):
     tab_names = [
-        t("库存明细"), t("点货预测"), t("仓库每日出货及历史"),
+        t("库存明细"), t("点货预测"), t("消耗模型"),
+        t("仓库每日出货及历史"),
         t("临时出入库及历史"), t("撤销"), t("SKU 管理"),
     ]
     if can_view_cost:
@@ -47,6 +49,10 @@ def render_inventory_tabs(
             visible_sizes, filter_title,
         )
         render_inventory_metrics(inventory_df)
+        if selected_date == current_date:
+            render_incoming_inventory_forecast(
+                supabase, department, category, raw_df, current_date
+            )
         render_black_white_color_summary(
             category, inventory_df, visible_sizes, filter_title
         )
@@ -59,11 +65,13 @@ def render_inventory_tabs(
             supabase, department, category, inventory_df, order_quantity,
             arrival_date, buffer_days, inventory_date, visible_sizes,
         )
-        render_consumption_model(
-            supabase, category, order_quantity, visible_sizes
+    with tabs[2]:
+        render_consumption_models(
+            supabase, department, category, order_quantity,
+            current_date, visible_sizes,
         )
 
-    with tabs[2]:
+    with tabs[3]:
         if can_edit:
             operation_category = _select_operation_category(
                 category, raw_df, "daily_outbound_category"
@@ -78,7 +86,7 @@ def render_inventory_tabs(
             movement_types,
         )
 
-    with tabs[3]:
+    with tabs[4]:
         if can_edit:
             operation_category = _select_operation_category(
                 category, raw_df, "temporary_movement_category"
@@ -98,13 +106,13 @@ def render_inventory_tabs(
             movement_types,
         )
 
-    with tabs[4]:
+    with tabs[5]:
         _render_history(
             supabase, department, "undo", history_data, visible_sizes,
             movement_types,
         )
 
-    with tabs[5]:
+    with tabs[6]:
         if can_edit:
             operation_category = _select_operation_category(
                 category, raw_df, "sku_management_category"
@@ -140,7 +148,7 @@ def render_inventory_tabs(
         )
 
     if can_view_cost:
-        with tabs[6]:
+        with tabs[7]:
             render_inventory_cost_summary(
                 supabase, department, category, current_cost_df, raw_df
             )

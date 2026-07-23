@@ -5,7 +5,7 @@ import pandas as pd
 
 from automation.api.diy19 import DIY19_BASE_URLS
 from automation.production import (
-    PRODUCTION_PLATFORM_NAMES,
+    DTF_PRODUCTION_PLATFORMS,
     SDS_PLATFORM_PROFILES,
     ProductionDataResult,
     load_production_data,
@@ -34,34 +34,30 @@ def load_all_clothing_production(
     report_progress=None,
     start_hour=0,
     end_hour=23,
+    platforms=None,
+    existing_results=None,
 ):
     report = report_progress or (lambda _message: None)
     errors = dict(initial_errors or {})
-    results = {}
+    results = dict(existing_results or {})
+    requested = tuple(platforms or DTF_PRODUCTION_PLATFORMS)
     browser_platforms = [
-        platform for platform in PRODUCTION_PLATFORM_NAMES
+        platform for platform in requested
         if platform not in API_PLATFORMS and platform not in errors
     ]
     report("第一阶段：优先读取蜂鸟 ERP 和 S2B 浏览器平台")
     for index, platform in enumerate(browser_platforms, start=1):
         report(f"浏览器平台 {index}/{len(browser_platforms)}：{platform}")
         try:
-            results[platform] = load_production_data(
-                platform,
-                start_date,
-                end_date,
-                report_progress=lambda message, name=platform: report(
-                    f"{name}：{message}"
-                ),
-                start_hour=start_hour,
-                end_hour=end_hour,
+            results[platform] = _load_browser_platform(
+                platform, start_date, end_date, start_hour, end_hour, report
             )
         except Exception as error:
             errors[platform] = str(error)
             report(f"{platform} 获取失败，继续读取其他平台")
 
     api_platforms = [
-        platform for platform in PRODUCTION_PLATFORM_NAMES
+        platform for platform in requested
         if platform in API_PLATFORMS and platform not in errors
     ]
     report(f"第二阶段：并行读取 {len(api_platforms)} 个 API 平台")
@@ -89,12 +85,45 @@ def load_all_clothing_production(
                 errors[platform] = str(error)
                 report(f"{platform} 获取失败，继续读取其他平台")
 
+    retry_platforms = [
+        platform for platform in browser_platforms if platform in errors
+    ]
+    if retry_platforms:
+        report(
+            "第三阶段：仅重试失败的浏览器平台："
+            + "、".join(retry_platforms)
+        )
+    for index, platform in enumerate(retry_platforms, start=1):
+        report(f"重试 {index}/{len(retry_platforms)}：{platform}")
+        try:
+            results[platform] = _load_browser_platform(
+                platform, start_date, end_date, start_hour, end_hour, report
+            )
+            errors.pop(platform, None)
+            report(f"{platform} 重试成功")
+        except Exception as error:
+            errors[platform] = str(error)
+            report(f"{platform} 重试仍失败，已停止继续请求")
+
     frames = [_clothing_rows(result.data) for result in results.values()]
     frames = [frame for frame in frames if not frame.empty]
     if not results:
         raise ValueError("所有平台均获取失败，请检查登录状态和平台凭据")
     combined = pd.concat(frames, ignore_index=True) if frames else _empty_frame()
     return BatchProductionResult(combined, results, errors)
+
+
+def _load_browser_platform(
+    platform, start_date, end_date, start_hour, end_hour, report
+):
+    return load_production_data(
+        platform,
+        start_date,
+        end_date,
+        report_progress=lambda message: report(f"{platform}：{message}"),
+        start_hour=start_hour,
+        end_hour=end_hour,
+    )
 
 
 def _clothing_rows(df):

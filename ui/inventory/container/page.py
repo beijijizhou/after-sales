@@ -52,6 +52,7 @@ def render_in_transit_table(supabase, department, category):
     ].nunique())
     today = datetime.now(NY_TIMEZONE).date()
     progress_df = build_container_progress_summary(raw_df, today)
+    _render_arrival_alerts(progress_df)
     selection_df = progress_df.drop(columns=["货柜记录ID"])
     selection = st.dataframe(
         selection_df,
@@ -65,6 +66,7 @@ def render_in_transit_table(supabase, department, category):
             "预计到货日期": st.column_config.DateColumn("预计到货日期"),
             "已运输天数": st.column_config.NumberColumn("已运输天数", format="%d 天"),
             "剩余天数": st.column_config.NumberColumn("剩余天数", format="%d 天"),
+            "到货提醒": st.column_config.TextColumn("到货提醒"),
             "运输进度": st.column_config.ProgressColumn(
                 "运输进度", min_value=0, max_value=100, format="%d%%"
             ),
@@ -78,6 +80,25 @@ def render_in_transit_table(supabase, department, category):
         if has_permission("can_edit_container"):
             render_status_update(supabase, raw_df, container_key)
     return raw_df
+
+
+def _render_arrival_alerts(progress_df):
+    delayed = progress_df[progress_df["剩余天数"] < 0]
+    arriving = progress_df[
+        progress_df["剩余天数"].between(0, 7, inclusive="both")
+    ]
+    if not delayed.empty:
+        labels = "；".join(
+            f"{row['货柜号']}（已延迟{abs(int(row['剩余天数']))}天）"
+            for _, row in delayed.iterrows()
+        )
+        st.error(f"延迟到货提醒：{labels}")
+    if not arriving.empty:
+        labels = "；".join(
+            f"{row['货柜号']}（{int(row['剩余天数'])}天）"
+            for _, row in arriving.iterrows()
+        )
+        st.warning(f"一周内到货提醒：{labels}")
 
 
 def render_arrival_history_table(supabase, department, category):

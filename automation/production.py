@@ -16,26 +16,37 @@ from utils.erp.hansen_parser import parse_hansen_records
 from utils.erp.diy19_parser import parse_diy19_records
 from utils.erp.sds_parser import parse_sds_records
 from utils.erp.time_range import filter_production_time
+from utils.erp.sds_catalog import normalize_sds_platform_catalog
 
 
 SDS_PLATFORM_PROFILES = {
     "SDS1": "1号线",
     "SDS2": "2号线",
+    "忆点万象": "忆点万象",
+    "3D热转印": "3D热转印",
 }
-PRODUCTION_PLATFORM_NAMES = (
+DTF_PRODUCTION_PLATFORMS = (
     *ERP_PLATFORM_NAMES,
     "S2B",
     "汉森",
     "七创",
     "一朵云",
     "方果",
-    *SDS_PLATFORM_PROFILES,
+    "SDS1",
+    "SDS2",
+)
+PRODUCTION_PLATFORM_NAMES = (
+    *DTF_PRODUCTION_PLATFORMS,
+    "忆点万象",
+    "3D热转印",
 )
 PRODUCTION_DEPARTMENTS = ("DTF", "3D", "UV")
 PLATFORMS_BY_DEPARTMENT = {
-    "DTF": PRODUCTION_PLATFORM_NAMES,
-    "3D": ("一朵云", "方果"),
-    "UV": ("汉森", "一朵云", "方果", "SDS1", "SDS2"),
+    "DTF": DTF_PRODUCTION_PLATFORMS,
+    "3D": ("一朵云", "方果", "3D热转印"),
+    "UV": (
+        "汉森", "一朵云", "方果", "SDS1", "SDS2", "忆点万象",
+    ),
 }
 
 
@@ -69,8 +80,10 @@ def load_production_data(
             start_hour=start_hour,
             end_hour=end_hour,
         )
+        data = parse_sds_records(records, platform)
+        data = normalize_sds_platform_catalog(data, platform)
         data = filter_production_time(
-            parse_sds_records(records, platform),
+            data,
             start_date,
             end_date,
             start_hour,
@@ -185,6 +198,7 @@ def _download_workbook(platform, start_date, end_date, report_progress):
 
 __all__ = [
     "DIAGNOSTIC_PATH",
+    "DTF_PRODUCTION_PLATFORMS",
     "PRODUCTION_PLATFORM_NAMES",
     "PRODUCTION_DEPARTMENTS",
     "PLATFORMS_BY_DEPARTMENT",

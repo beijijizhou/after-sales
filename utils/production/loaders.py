@@ -81,3 +81,24 @@ def load_hourly_person_client_rows(supabase, selected_date, user_column, snapsho
         "get_daily_hotstamp_hourly_person_client_summary",
     )
     return load_summary_rpc(supabase, function_name, selected_date, snapshot_at) if function_name else pd.DataFrame()
+
+
+def load_period_person_platform_rows(
+    supabase, start_date, end_date, user_column, snapshot_at=None
+):
+    function_name = get_rpc_name(
+        user_column,
+        "get_period_qa_person_platform_summary",
+        "get_period_hotstamp_person_platform_summary",
+    )
+    if not function_name:
+        return pd.DataFrame()
+
+    params = {
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+    }
+    if snapshot_at:
+        params["snapshot_at"] = snapshot_at.isoformat()
+    response = supabase.rpc(function_name, params).execute()
+    return pd.DataFrame(response.data)

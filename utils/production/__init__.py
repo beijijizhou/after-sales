@@ -8,6 +8,7 @@ from utils.production.loaders import (
     load_daily_production_rows,
     load_hourly_person_client_rows,
     load_hourly_summary_rows,
+    load_period_person_platform_rows,
     load_person_platform_summary_rows,
 )
 from utils.production.normalization import (

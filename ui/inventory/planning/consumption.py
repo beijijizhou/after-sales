@@ -7,7 +7,6 @@ import streamlit as st
 from db.inventory import SIZE_COLUMNS, build_color_inventory_table
 from db.inventory.planning.consumption import (
     DEFAULT_ORDER_QUANTITY,
-    build_consumption_model_table,
     load_consumption_model,
     scale_consumption_model,
 )
@@ -18,7 +17,6 @@ from db.inventory.planning.demand_anomaly import (
     load_daily_outbound_history,
 )
 from ui.inventory.planning.anomaly import render_demand_anomaly_monitor
-from ui.inventory.planning.comparison import render_model_comparison
 from ui.inventory.planning.forecast_table import render_reorder_forecast_table
 from ui.inventory.i18n import t
 
@@ -154,37 +152,4 @@ def render_reorder_forecast(
     if anomaly_error_message:
         st.warning(f"{t('异常消耗加载失败')}: {anomaly_error_message}")
     render_demand_anomaly_monitor(anomaly_df)
-    render_model_comparison(model_df, outbound_df, today)
     return order_quantity
-
-
-def render_consumption_model(
-    supabase, category, order_quantity, visible_sizes=None
-):
-    if category != "黑白短袖":
-        return
-
-    st.subheader(f"Haloo {order_quantity:,}{t('单消耗模型')}")
-    try:
-        model_df = load_consumption_model(supabase, category)
-        model_df = scale_consumption_model(model_df, order_quantity)
-        if visible_sizes:
-            model_df = model_df[model_df["size"].isin(visible_sizes)]
-    except Exception as e:
-        st.info(t("请先运行消耗模型 SQL"))
-        st.caption(str(e))
-        return
-
-    display_df = build_consumption_model_table(model_df)
-    if display_df.empty:
-        st.info(t("暂无消耗模型数据"))
-        return
-
-    st.dataframe(
-        display_df,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            **{size: st.column_config.NumberColumn(size, format="%d") for size in SIZE_COLUMNS},
-        },
-    )

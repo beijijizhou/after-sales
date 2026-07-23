@@ -17,7 +17,7 @@ REQUIRED_CREDENTIALS = (
 def login_sds_factory(credentials, session=None):
     missing = [key for key in REQUIRED_CREDENTIALS if not credentials.get(key)]
     if missing:
-        raise ValueError(f"SDS2 登录配置缺少：{', '.join(missing)}")
+        raise ValueError(f"SDS 工厂登录配置缺少：{', '.join(missing)}")
 
     client = session or requests.Session()
     response = client.post(
@@ -36,5 +36,5 @@ def login_sds_factory(credentials, session=None):
     token = data.get("access_token") or data.get("token")
     factory_id = data.get("factory_id") or data.get("factoryId")
     if not token or not factory_id:
-        raise ValueError("SDS2 登录成功，但响应中缺少 token 或工厂 ID")
+        raise ValueError("SDS 工厂登录成功，但响应中缺少 token 或工厂 ID")
     return client, token, factory_id

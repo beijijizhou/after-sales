@@ -186,22 +186,17 @@ def _reset_invalid_multiselect(key, options):
 
 
 def render_department_category_filters(dimensions, key="inventory_shared"):
-    departments = sorted({
-        str(value).strip() for value in dimensions.get("department", [])
-        if pd.notna(value) and str(value).strip()
-    })
-    if DEFAULT_DEPARTMENT not in departments:
-        departments.insert(0, DEFAULT_DEPARTMENT)
-    col1, col2 = st.columns(2)
-    department_label = col1.selectbox(
-        "部门", ["全部部门", *departments, "自定义"], key=f"{key}_department"
+    departments = _ordered_options(
+        dimensions.get("department", []), PREFERRED_DEPARTMENTS
     )
-    if department_label == "自定义":
-        department = col1.text_input(
-            "自定义部门", key=f"{key}_department_custom"
-        ).strip()
-    else:
-        department = None if department_label == "全部部门" else department_label
+    col1, col2 = st.columns(2)
+    department_options = ["全部部门", *departments]
+    department_key = f"{key}_department"
+    _reset_invalid_selectbox(department_key, department_options)
+    department_label = col1.selectbox(
+        "部门", department_options, key=department_key
+    )
+    department = None if department_label == "全部部门" else department_label
     category_rows = dimensions
     if department and not dimensions.empty:
         category_rows = dimensions[dimensions["department"] == department]

@@ -70,3 +70,22 @@ def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=D
             "created_at", desc=True
         ).limit(limit).execute()
     return pd.DataFrame(response.data)
+
+
+def load_recent_inventory_outbound(
+    supabase, department, start_date, category=None, limit=5000
+):
+    query = (
+        supabase.table("inventory_movements")
+        .select(
+            "department,category,brand,material,color,size,"
+            "quantity_change,movement_date"
+        )
+        .eq("department", department)
+        .lt("quantity_change", 0)
+        .gte("movement_date", start_date.isoformat())
+    )
+    if category:
+        query = query.eq("category", category)
+    response = query.limit(limit).execute()
+    return pd.DataFrame(response.data)

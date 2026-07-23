@@ -13,7 +13,7 @@ from utils.erp.summary import (
 def parse_platform_workbook(file_bytes, platform):
     if platform == "S2B":
         return parse_s2b_workbook(file_bytes)
-    return parse_production_workbook(file_bytes)
+    return parse_production_workbook(file_bytes, platform)
 
 __all__ = [
     "apply_production_scope",
