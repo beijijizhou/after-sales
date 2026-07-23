@@ -16,23 +16,21 @@ class PeriodFilterState:
     platforms: tuple[str, ...]
 
 
-def render_period_filters(rows, start_date, end_date):
-    date_col, person_col = st.columns(2)
-    selected_dates = date_col.date_input(
+def render_period_date_filter(default_start, default_end):
+    selected_dates = st.date_input(
         "日期范围",
-        value=(start_date, end_date),
-        min_value=start_date,
-        max_value=end_date,
-        key=f"qa_period_dates_{end_date.isoformat()}",
+        value=(default_start, default_end),
+        max_value=default_end,
+        key="qa_period_dates_v2",
     )
-    filter_start, filter_end = normalize_date_range(
-        selected_dates, start_date, end_date
+    return normalize_date_range(
+        selected_dates, default_start, default_end
     )
 
-    date_rows = filter_period_rows(
-        rows, filter_start, filter_end
-    )
-    people_options = sorted(date_rows["人员"].dropna().unique())
+
+def render_period_filters(rows, start_date, end_date):
+    person_col, client_col, platform_col = st.columns(3)
+    people_options = sorted(rows["人员"].dropna().unique())
     reset_invalid_selection("qa_period_people", people_options)
     people = person_col.multiselect(
         "质检人员", people_options,
@@ -40,9 +38,8 @@ def render_period_filters(rows, start_date, end_date):
     )
 
     people_rows = filter_period_rows(
-        date_rows, filter_start, filter_end, people=people
+        rows, start_date, end_date, people=people
     )
-    client_col, platform_col = st.columns(2)
     client_type = client_col.segmented_control(
         "客户类型",
         ["全部", HALOO_PLATFORM, OTHER_CLIENT],
@@ -51,7 +48,7 @@ def render_period_filters(rows, start_date, end_date):
     ) or "全部"
 
     client_rows = filter_period_rows(
-        people_rows, filter_start, filter_end,
+        people_rows, start_date, end_date,
         client_type=client_type,
     )
     platform_options = sorted(client_rows["平台"].dropna().unique())
@@ -62,12 +59,12 @@ def render_period_filters(rows, start_date, end_date):
     )
 
     filtered = filter_period_rows(
-        rows, filter_start, filter_end, people,
+        rows, start_date, end_date, people,
         client_type, platforms,
     )
     state = PeriodFilterState(
-        start_date=filter_start,
-        end_date=filter_end,
+        start_date=start_date,
+        end_date=end_date,
         people=tuple(people),
         client_type=client_type,
         platforms=tuple(platforms),

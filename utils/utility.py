@@ -2,15 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import streamlit as st
 
-WEEKDAY_NAMES = [
-    "星期一",
-    "星期二",
-    "星期三",
-    "星期四",
-    "星期五",
-    "星期六",
-    "星期日",
-]
+from utils.date_display import format_date_with_weekday
 
 
 def get_selected_date():
@@ -24,6 +16,6 @@ def get_selected_date():
         ).date()
     )
 
-    st.caption(f"已选择：{selected_date.isoformat()} {WEEKDAY_NAMES[selected_date.weekday()]}")
+    st.caption(f"已选择：{format_date_with_weekday(selected_date)}")
 
     return selected_date

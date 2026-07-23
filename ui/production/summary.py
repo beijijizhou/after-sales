@@ -10,7 +10,8 @@ from ui.production.components import (
     render_person_platform_table,
     render_person_switch_table,
 )
-from ui.production.period_analysis import render_qa_period_analysis
+from ui.production.analysis import render_qa_period_analysis
+from utils.date_display import format_date_with_weekday
 from utils.multiple_count_helpers import refresh_multiple_counts
 from utils.production_helpers import (
     NY_TIMEZONE,
@@ -72,13 +73,11 @@ def load_rpc_summary(supabase, selected_date, user_column, snapshot_at):
 def load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at):
     raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
     if raw_df.empty:
-        st.warning(f"{selected_date.isoformat()} 没有生产数据")
-        st.stop()
+        raise ValueError(f"{selected_date.isoformat()} 没有生产数据")
 
     df = prepare_production_df(raw_df, user_column)
     if df.empty:
-        st.warning(f"{selected_date.isoformat()} 没有{title}人员数据")
-        st.stop()
+        raise ValueError(f"{selected_date.isoformat()} 没有{title}人员数据")
 
     return (
         summarize_by_user(df, user_column),
@@ -117,17 +116,42 @@ def render_production_summary(supabase, selected_date, title, user_column):
     snapshot_at = None
     if selected_date == datetime.now(NY_TIMEZONE).date():
         snapshot_at = datetime.now(NY_TIMEZONE)
-        st.caption(f"统计截止时间：{snapshot_at.strftime('%Y-%m-%d %H:%M:%S')} NY")
+        st.caption(
+            "统计截止时间："
+            f"{format_date_with_weekday(snapshot_at)} "
+            f"{snapshot_at.strftime('%H:%M:%S')} NY"
+        )
 
     if user_column == "scanned_by":
-        try:
-            render_qa_period_analysis(
-                supabase, selected_date, user_column, snapshot_at
+        daily_tab, analysis_tab = st.tabs([
+            "当日工作流", "总结分析",
+        ])
+        with daily_tab:
+            st.caption(
+                f"当日统计：{format_date_with_weekday(selected_date)}"
+                "（纽约时间）"
             )
-        except Exception as e:
-            st.error(f"数据加载失败：{e}")
+            render_daily_production_content(
+                supabase, selected_date, title,
+                user_column, snapshot_at,
+            )
+        with analysis_tab:
+            try:
+                render_qa_period_analysis(
+                    supabase, selected_date, user_column, snapshot_at
+                )
+            except Exception as e:
+                st.error(f"数据加载失败：{e}")
         return
 
+    render_daily_production_content(
+        supabase, selected_date, title, user_column, snapshot_at
+    )
+
+
+def render_daily_production_content(
+    supabase, selected_date, title, user_column, snapshot_at
+):
     try:
         user_summary, person_platform_summary, hourly_summary, person_switch_df, working_hours = (
             resolve_production_summary(supabase, selected_date, title, user_column, snapshot_at)
@@ -137,4 +161,7 @@ def render_production_summary(supabase, selected_date, title, user_column):
         render_hourly_production(hourly_summary)
         render_person_switch_table(person_switch_df)
     except Exception as e:
-        st.error(f"数据加载失败：{e}")
+        if "没有生产数据" in str(e) or "没有" + title in str(e):
+            st.warning(str(e))
+        else:
+            st.error(f"数据加载失败：{e}")
