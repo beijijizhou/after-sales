@@ -45,7 +45,9 @@ def render_inventory_summary(supabase):
     ) = (
         render_inventory_global_filters(dimensions_df)
     )
-    visible_sizes = selected_sizes or SIZE_COLUMNS
+    visible_sizes = selected_sizes or (
+        SIZE_COLUMNS if department == "DTF" else None
+    )
     filter_title = build_inventory_filter_title(
         category, brands, materials, colors, selected_sizes
     )
@@ -80,9 +82,13 @@ def render_inventory_summary(supabase):
             snapshot_df = build_inventory_snapshot(raw_df, movement_df, sku_import_df, selected_date)
 
         can_view_cost = has_permission("can_view_cost")
-        inventory_df = build_inventory_table(snapshot_df, category, include_cost=False)
+        inventory_df = build_inventory_table(
+            snapshot_df, category, include_cost=False, department=department
+        )
         current_cost_df = (
-            build_inventory_table(raw_df, category, include_cost=True)
+            build_inventory_table(
+                raw_df, category, include_cost=True, department=department
+            )
             if can_view_cost else None
         )
         current_date = st.session_state["inventory_today"]

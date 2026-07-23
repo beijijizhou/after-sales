@@ -28,6 +28,7 @@ def render_inventory_table(
         "品牌": st.column_config.TextColumn(t("品牌")),
         "材质": st.column_config.TextColumn(t("材质")),
         "颜色": st.column_config.TextColumn(t("颜色")),
+        "型号": st.column_config.TextColumn(t("型号")),
         **{
             size: st.column_config.NumberColumn(size, format="%d")
             for size in SIZE_COLUMNS

@@ -21,10 +21,18 @@ from ui.inventory.operations.adjustment_costs import (
     render_adjustment_totals,
     render_size_cost_editor,
 )
+from ui.inventory.operations.model_forms import (
+    render_model_adjust_form,
+    render_model_sku_form,
+)
 from ui.inventory.i18n import get_language, t
 
 
 def render_adjust_form(supabase, department, category, inventory_df):
+    if department != "DTF":
+        return render_model_adjust_form(
+            supabase, department, category, inventory_df
+        )
     st.subheader(t("手动库存调整"))
 
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
@@ -102,6 +110,8 @@ def render_adjust_form(supabase, department, category, inventory_df):
 
 
 def render_new_sku_form(supabase, department, category, inventory_df=None):
+    if department != "DTF":
+        return render_model_sku_form(supabase, department, category)
     st.subheader(t("新增 SKU"))
     saved_message = st.session_state.pop("new_sku_saved_message", None)
     if saved_message:

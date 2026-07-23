@@ -63,11 +63,17 @@ def render_black_white_color_summary(
     category,
     inventory_df,
     visible_sizes=None,
+    filter_title=None,
 ):
     if category != "黑白短袖":
         return
 
-    st.subheader(t("黑白短袖颜色库存汇总"))
+    summary_title = (
+        f"{filter_title} {t('颜色库存汇总')}"
+        if filter_title
+        else t("黑白短袖颜色库存汇总")
+    )
+    st.subheader(summary_title)
     color_df = build_color_inventory_table(inventory_df)
     if color_df.empty:
         st.info(t("暂无黑白短袖库存数据"))

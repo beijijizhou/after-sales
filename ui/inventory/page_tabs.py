@@ -47,7 +47,9 @@ def render_inventory_tabs(
             visible_sizes, filter_title,
         )
         render_inventory_metrics(inventory_df)
-        render_black_white_color_summary(category, inventory_df, visible_sizes)
+        render_black_white_color_summary(
+            category, inventory_df, visible_sizes, filter_title
+        )
 
     with tabs[1]:
         order_quantity, arrival_date, buffer_days = (

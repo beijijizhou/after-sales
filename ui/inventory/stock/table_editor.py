@@ -10,7 +10,7 @@ from utils.auth import get_current_operator_name
 from ui.inventory.i18n import t
 
 
-LOCKED_COLUMNS = ["品类", "品牌", "材质", "颜色", "成本"]
+LOCKED_COLUMNS = ["品类", "品牌", "材质", "颜色", "型号", "成本"]
 
 
 def render_inventory_table_editor(
@@ -21,7 +21,10 @@ def render_inventory_table_editor(
     column_config,
     table_height,
 ):
-    original_df = display_df.drop(columns=["总库存"], errors="ignore").reset_index(drop=True)
+    is_model_inventory = "型号" in display_df.columns
+    original_df = display_df.reset_index(drop=True)
+    if not is_model_inventory:
+        original_df = original_df.drop(columns=["总库存"], errors="ignore")
     version = st.session_state.get("inventory_inline_editor_version", 0)
     identity_columns = [
         column for column in LOCKED_COLUMNS if column in original_df.columns
@@ -34,6 +37,10 @@ def render_inventory_table_editor(
             editor_config[size] = st.column_config.NumberColumn(
                 size, min_value=0, step=1, format="%d"
             )
+    if is_model_inventory:
+        editor_config["总库存"] = st.column_config.NumberColumn(
+            t("总库存"), min_value=0, step=1, format="%d"
+        )
     edited_df = st.data_editor(
         original_df,
         hide_index=True,
@@ -45,14 +52,25 @@ def render_inventory_table_editor(
     )
     edited_df = pd.DataFrame(edited_df)
     visible_sizes = [size for size in SIZE_COLUMNS if size in edited_df.columns]
-    visible_total = sum(
-        pd.to_numeric(edited_df[size], errors="coerce").fillna(0).sum()
-        for size in visible_sizes
-    )
-    st.caption(f"{t('当前显示尺码合计')}: {int(visible_total):,} {t('件')}")
+    if is_model_inventory:
+        visible_total = pd.to_numeric(
+            edited_df["总库存"], errors="coerce"
+        ).fillna(0).sum()
+        total_label = t("当前显示型号合计")
+    else:
+        visible_total = sum(
+            pd.to_numeric(edited_df[size], errors="coerce").fillna(0).sum()
+            for size in visible_sizes
+        )
+        total_label = t("当前显示尺码合计")
+    st.caption(f"{total_label}: {int(visible_total):,} {t('件')}")
 
     if st.button(t("保存库存明细修改"), width="stretch"):
-        adjustment_df = build_inline_adjustments(original_df, edited_df)
+        adjustment_df = (
+            build_model_inline_adjustments(original_df, edited_df)
+            if is_model_inventory
+            else build_inline_adjustments(original_df, edited_df)
+        )
         if adjustment_df.empty:
             st.info(t("库存数量没有变化"))
             return
@@ -95,6 +113,28 @@ def build_inline_adjustments(original_df, edited_df):
                 "成本": pd.NA,
                 "备注": "库存明细直接编辑",
             })
+    return pd.DataFrame(rows)
+
+
+def build_model_inline_adjustments(original_df, edited_df):
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    rows = []
+    for index, original in original_df.iterrows():
+        new_quantity = clean_quantity(edited_df.iloc[index].get("总库存", 0))
+        difference = new_quantity - clean_quantity(original.get("总库存", 0))
+        if difference == 0:
+            continue
+        rows.append({
+            "日期": today,
+            "操作": "增加" if difference > 0 else "扣减",
+            "品牌": original.get("品牌", ""),
+            "材质": original.get("材质", ""),
+            "颜色": original.get("颜色", ""),
+            "尺码": original.get("型号", ""),
+            "数量": abs(difference),
+            "成本": pd.NA,
+            "备注": "库存明细直接编辑",
+        })
     return pd.DataFrame(rows)
 
 

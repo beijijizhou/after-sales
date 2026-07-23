@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory import DEFAULT_DEPARTMENT, SIZE_COLUMNS
+from db.inventory.core.constants import UV_MODEL_ORDER
 from ui.inventory.i18n import t
 
 
@@ -90,13 +91,16 @@ def render_inventory_global_filters(dimensions, key="inventory_global"):
     if selected_colors:
         size_rows = size_rows[size_rows["color"].isin(selected_colors)]
     sizes = _ordered_options(
-        size_rows.get("size", []), SIZE_COLUMNS if department == "DTF" else [],
+        size_rows.get("size", []),
+        SIZE_COLUMNS if department == "DTF" else UV_MODEL_ORDER,
         include_missing=False,
     )
     _reset_invalid_multiselect(f"{key}_sizes", sizes)
+    size_filter_label = "筛选尺码" if department == "DTF" else "筛选型号"
     selected_sizes = size_col.multiselect(
-        t("筛选尺码"), sizes, key=f"{key}_sizes",
+        t(size_filter_label), sizes, key=f"{key}_sizes",
         placeholder=t("全部"),
+        format_func=lambda value: "yuan" if value == "YUAN" else value,
     )
     movement_col, date_col = st.columns(2)
     movement_types = movement_col.multiselect(

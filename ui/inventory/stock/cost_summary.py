@@ -15,6 +15,30 @@ def build_inventory_cost_table(inventory_df):
         return pd.DataFrame()
 
     cost_df = inventory_df.copy()
+    if "型号" in cost_df.columns:
+        cost_df = cost_df.rename(columns={
+            "成本": "单位成本", "总库存": "库存数量"
+        })
+        cost_df["单位成本"] = pd.to_numeric(
+            cost_df["单位成本"], errors="coerce"
+        ).fillna(0)
+        cost_df["库存数量"] = pd.to_numeric(
+            cost_df["库存数量"], errors="coerce"
+        ).fillna(0).astype(int)
+        cost_df = cost_df[
+            (cost_df["单位成本"] > 0) & (cost_df["库存数量"] != 0)
+        ]
+        if cost_df.empty:
+            return pd.DataFrame()
+        cost_df["库存金额"] = cost_df["库存数量"] * cost_df["单位成本"]
+        columns = [
+            "品类", "品牌", "材质", "颜色", "型号", "单位成本",
+            "库存数量", "库存金额",
+        ]
+        return cost_df[columns].sort_values(
+            "库存金额", ascending=False
+        ).reset_index(drop=True)
+
     size_columns = [column for column in SIZE_COLUMNS if column in cost_df.columns]
     for column in size_columns:
         cost_df[column] = pd.to_numeric(cost_df[column], errors="coerce").fillna(0)
@@ -77,6 +101,7 @@ def _render_cost_table(cost_df):
             "材质": st.column_config.TextColumn(t("材质")),
             "颜色": st.column_config.TextColumn(t("颜色")),
             "尺码": st.column_config.TextColumn(t("尺码")),
+            "型号": st.column_config.TextColumn(t("型号")),
             "单位成本": st.column_config.NumberColumn(
                 t("单位成本"), format="$%.4f"
             ),
@@ -93,6 +118,11 @@ def _render_missing_costs(supabase, department, category, raw_df):
 
     st.divider()
     st.subheader(t("未填写成本库存"))
+    if _uses_models(missing_df):
+        _render_missing_model_costs(
+            supabase, department, category, missing_df, raw_df
+        )
+        return
     st.dataframe(
         missing_df[["品牌", "材质"]].drop_duplicates().reset_index(drop=True),
         hide_index=True,
@@ -116,6 +146,56 @@ def _render_missing_costs(supabase, department, category, raw_df):
         ).format(count=updated)
         st.session_state["inventory_cost_editor_version"] = version + 1
         st.rerun()
+
+
+def _render_missing_model_costs(
+    supabase, department, category, missing_df, raw_df
+):
+    sku_df = (
+        missing_df[["品类", "品牌", "材质", "颜色", "size"]]
+        .drop_duplicates()
+        .rename(columns={"size": "型号"})
+        .reset_index(drop=True)
+    )
+    sku_df["成本"] = None
+    version = st.session_state.get("inventory_model_cost_version", 0)
+    edited = pd.DataFrame(st.data_editor(
+        sku_df, hide_index=True, width="stretch",
+        disabled=["品类", "品牌", "材质", "颜色", "型号"],
+        column_config={
+            "品类": st.column_config.TextColumn(t("品类")),
+            "品牌": st.column_config.TextColumn(t("品牌")),
+            "材质": st.column_config.TextColumn(t("材质")),
+            "颜色": st.column_config.TextColumn(t("颜色")),
+            "型号": st.column_config.TextColumn(t("型号")),
+            "成本": st.column_config.NumberColumn(
+                t("成本"), min_value=0.0, step=0.0001, format="%.4f"
+            ),
+        },
+        key=f"inventory_model_cost_{version}",
+    ))
+    if not st.button(t("保存库存成本"), width="stretch"):
+        return
+    cost_updates = edited.rename(columns={"型号": "尺码"})
+    updated = update_inventory_unit_costs(
+        supabase, department, category, cost_updates, raw_df
+    )
+    if not updated:
+        st.warning(t("请先填写有效成本"))
+        return
+    st.session_state["inventory_cost_saved_message"] = t(
+        "库存成本已更新"
+    ).format(count=updated)
+    st.session_state["inventory_model_cost_version"] = version + 1
+    st.rerun()
+
+
+def _uses_models(df):
+    values = {
+        str(value).strip().upper() for value in df.get("size", [])
+        if pd.notna(value) and str(value).strip()
+    }
+    return bool(values - set(SIZE_COLUMNS))
 
 
 def _missing_cost_inventory(raw_df):

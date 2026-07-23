@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
+from db.inventory.core.constants import UV_MODEL_ORDER
 from utils.auth import has_permission
 from ui.inventory.i18n import t
 
@@ -64,11 +65,11 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
             "reason": "备注",
         })
     )
-    for size in SIZE_COLUMNS:
+    sizes = _display_item_columns(movement_df, visible_sizes)
+    for size in sizes:
         if size not in display_df.columns:
             display_df[size] = 0
         display_df[size] = pd.to_numeric(display_df[size], errors="coerce").fillna(0).astype(int)
-    sizes = visible_sizes or SIZE_COLUMNS
     display_df["合计"] = display_df[sizes].sum(axis=1)
     return display_df[[
         "日期", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
@@ -98,7 +99,11 @@ def render_movement_table(movement_df, visible_sizes=None):
             "库存来源": st.column_config.TextColumn(t("库存来源")),
             "操作人": st.column_config.TextColumn(t("操作人")),
             "备注": st.column_config.TextColumn(t("备注")),
-            **{size: st.column_config.NumberColumn(size, format="%d") for size in SIZE_COLUMNS},
+            **{
+                size: st.column_config.NumberColumn(size, format="%d")
+                for size in display_df.columns
+                if size in SIZE_COLUMNS or size.upper() in UV_MODEL_ORDER
+            },
             "合计": st.column_config.NumberColumn(t("合计"), format="%d"),
         },
     )
@@ -133,12 +138,12 @@ def build_sku_import_detail_table(sku_import_df, visible_sizes=None):
             "unit_cost": "成本",
         })
     )
-    for size in SIZE_COLUMNS:
+    sizes = _display_item_columns(import_df, visible_sizes)
+    for size in sizes:
         if size not in display_df.columns:
             display_df[size] = 0
     cost_columns = ["成本"] if include_cost else []
     optional_columns = [column for column in ["部门", "品类"] if column in display_df.columns]
-    sizes = visible_sizes or SIZE_COLUMNS
     display_df = display_df[[
         "日期", *optional_columns, "品牌", "材质", "颜色", *cost_columns,
         *sizes,
@@ -150,7 +155,7 @@ def build_sku_import_detail_table(sku_import_df, visible_sizes=None):
         "品牌": st.column_config.TextColumn(t("品牌")),
         "材质": st.column_config.TextColumn(t("材质")),
         "颜色": st.column_config.TextColumn(t("颜色")),
-        **{size: st.column_config.NumberColumn(size) for size in SIZE_COLUMNS},
+        **{size: st.column_config.NumberColumn(size) for size in sizes},
     }
     if "成本" in display_df.columns:
         column_config["成本"] = st.column_config.NumberColumn(
@@ -169,3 +174,19 @@ def render_sku_import_table(sku_import_df, visible_sizes=None):
 
     display_df, column_config = table_result
     st.dataframe(display_df, hide_index=True, width="stretch", column_config=column_config)
+
+
+def _display_item_columns(df, visible_sizes=None):
+    if visible_sizes:
+        return list(visible_sizes)
+    available = {
+        str(value).strip() for value in df.get("size", []).dropna()
+        if str(value).strip()
+    }
+    if not available or available.issubset(set(SIZE_COLUMNS)):
+        return [size for size in SIZE_COLUMNS if size in available] or SIZE_COLUMNS
+    order = {value: index for index, value in enumerate(UV_MODEL_ORDER)}
+    return sorted(
+        available,
+        key=lambda value: (order.get(value.upper(), 99), value),
+    )

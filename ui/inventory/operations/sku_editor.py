@@ -22,6 +22,7 @@ def render_sku_catalog(inventory_df):
 
     st.metric(t("SKU 组合数"), len(source_df))
     display_df = source_df.drop(columns=["当前 SKU"])
+    item_label = _item_label(inventory_df)
     st.dataframe(
         display_df,
         hide_index=True,
@@ -32,7 +33,7 @@ def render_sku_catalog(inventory_df):
             "品牌": st.column_config.TextColumn(t("品牌")),
             "材质": st.column_config.TextColumn(t("材质")),
             "颜色": st.column_config.TextColumn(t("颜色")),
-            "尺码": st.column_config.TextColumn(t("包含尺码")),
+            "尺码": st.column_config.TextColumn(t(item_label)),
             "总库存": st.column_config.NumberColumn(t("总库存"), format="%d"),
         },
     )
@@ -60,7 +61,7 @@ def render_sku_editor(supabase, department, inventory_df):
             "品牌": st.column_config.TextColumn(t("品牌")),
             "材质": st.column_config.TextColumn(t("材质"), required=True),
             "颜色": st.column_config.TextColumn(t("颜色"), required=True),
-            "尺码": st.column_config.TextColumn(t("包含尺码")),
+            "尺码": st.column_config.TextColumn(t(_item_label(inventory_df))),
             "总库存": st.column_config.NumberColumn(t("总库存"), format="%d"),
         },
         key=f"sku_identity_editor_{version}_{signature}",
@@ -97,3 +98,12 @@ def render_sku_editor(supabase, department, inventory_df):
     ).format(count=updated)
     st.session_state["sku_identity_editor_version"] = version + 1
     st.rerun()
+
+
+def _item_label(inventory_df):
+    sizes = {
+        str(value).strip() for value in inventory_df.get("size", [])
+        if pd.notna(value) and str(value).strip()
+    }
+    apparel_sizes = {"S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"}
+    return "包含尺码" if not sizes or sizes.issubset(apparel_sizes) else "包含型号"

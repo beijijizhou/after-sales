@@ -5,7 +5,10 @@ from db.inventory.core.constants import (
     BLACK_WHITE_COLOR_ORDER,
     BLACK_WHITE_MATERIAL_ORDER,
     DEFAULT_CATEGORY,
+    DEFAULT_DEPARTMENT,
     SIZE_COLUMNS,
+    UV_MATERIAL_ORDER,
+    UV_MODEL_ORDER,
 )
 
 
@@ -27,17 +30,24 @@ def sort_inventory_table(df, category):
     sorted_df = df.copy()
     sorted_df["_material_order"] = sorted_df["材质"].map(BLACK_WHITE_MATERIAL_ORDER).fillna(99)
     sorted_df["_color_order"] = sorted_df["颜色"].map(BLACK_WHITE_COLOR_ORDER).fillna(99)
-    sort_columns = ["_material_order", "_color_order", "品牌"]
+    sort_columns = ["_material_order", "品牌", "_color_order"]
     if "成本" in sorted_df.columns:
         sort_columns.append("成本")
     sorted_df = sorted_df.sort_values(sort_columns, kind="stable")
     return sorted_df.drop(columns=["_material_order", "_color_order"])
 
 
-def build_inventory_table(df, category=DEFAULT_CATEGORY, include_cost=False):
+def build_inventory_table(
+    df, category=DEFAULT_CATEGORY, include_cost=False,
+    department=DEFAULT_DEPARTMENT,
+):
     if df.empty:
         cost_columns = ["成本"] if include_cost else []
-        return pd.DataFrame(columns=["品类", "品牌", "材质", "颜色", *cost_columns, *SIZE_COLUMNS, "总库存"])
+        details = [*SIZE_COLUMNS] if department == DEFAULT_DEPARTMENT else ["型号"]
+        return pd.DataFrame(columns=[
+            "品类", "品牌", "材质", "颜色", *cost_columns,
+            *details, "总库存",
+        ])
 
     inventory_df = df.copy()
     if include_cost and "unit_cost" not in inventory_df.columns:
@@ -48,6 +58,9 @@ def build_inventory_table(df, category=DEFAULT_CATEGORY, include_cost=False):
         inventory_df[column] = inventory_df[column].fillna("").astype(str)
     if include_cost:
         inventory_df["unit_cost"] = pd.to_numeric(inventory_df["unit_cost"], errors="coerce").fillna(0)
+
+    if department != DEFAULT_DEPARTMENT:
+        return _build_model_inventory_table(inventory_df, include_cost)
 
     index_columns = ["category", "brand", "material", "color"]
     if include_cost:
@@ -76,6 +89,41 @@ def build_inventory_table(df, category=DEFAULT_CATEGORY, include_cost=False):
     cost_columns = ["成本"] if include_cost else []
     display_df = pivot_df[["品类", "品牌", "材质", "颜色", *cost_columns, *SIZE_COLUMNS, "总库存"]]
     return sort_inventory_table(display_df, category).reset_index(drop=True)
+
+
+def _build_model_inventory_table(inventory_df, include_cost=False):
+    index_columns = ["category", "brand", "material", "color", "size"]
+    if include_cost:
+        index_columns.append("unit_cost")
+    result = (
+        inventory_df.groupby(index_columns, dropna=False, as_index=False)
+        .agg(quantity=("quantity", "sum"))
+        .rename(columns={
+            "category": "品类", "brand": "品牌", "material": "材质",
+            "color": "颜色", "size": "型号", "unit_cost": "成本",
+            "quantity": "总库存",
+        })
+    )
+    result["型号"] = result["型号"].fillna("").astype(str).map(
+        lambda value: "yuan" if value.upper() == "YUAN" else value
+    )
+    result["总库存"] = pd.to_numeric(
+        result["总库存"], errors="coerce"
+    ).fillna(0).astype(int)
+    model_order = {value: index for index, value in enumerate(UV_MODEL_ORDER)}
+    result["_material_order"] = result["材质"].map(
+        UV_MATERIAL_ORDER
+    ).fillna(99)
+    result["_model_order"] = (
+        result["型号"].str.upper().map(model_order).fillna(99)
+    )
+    return (
+        result.sort_values(
+            ["_material_order", "_model_order", "型号"], kind="stable"
+        )
+        .drop(columns=["_material_order", "_model_order"])
+        .reset_index(drop=True)
+    )
 
 
 def build_color_inventory_table(inventory_df):

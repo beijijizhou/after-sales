@@ -3,5 +3,7 @@ DEFAULT_DEPARTMENT = "DTF"
 CATEGORY = DEFAULT_CATEGORY
 INVENTORY_CATEGORIES = ["彩色短袖", "黑白短袖", "卫衣"]
 SIZE_COLUMNS = ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
+UV_MODEL_ORDER = ["2030", "3040", "1530", "YUAN", "1040", "盾牌", "爱心"]
+UV_MATERIAL_ORDER = {"铝牌": 0, "铁牌": 1}
 BLACK_WHITE_MATERIAL_ORDER = {"180g": 0, "160g": 1, "CVC": 2}
 BLACK_WHITE_COLOR_ORDER = {"黑": 0, "白": 1}
