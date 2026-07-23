@@ -167,34 +167,3 @@ def build_period_person_platform_summary(rows):
     pivot = pivot.merge(multiple, on="人员", how="left")
     pivot = pivot.merge(working_hours, on="人员", how="left")
     return finalize_person_platform_summary(pivot, platform_columns)
-
-
-def classify_productivity_days(daily, tolerance=0.10):
-    result = daily.copy()
-    valid = result[
-        (result["参与人数"] > 0)
-        & (result["人均小时产量"] > 0)
-    ]
-    baseline = (
-        float(valid["人均小时产量"].mean())
-        if not valid.empty else 0
-    )
-    result["时产均值"] = baseline
-    if not baseline:
-        result["与均值差异"] = 0.0
-        result["时产状态"] = "无有效数据"
-        return result
-    result["与均值差异"] = (
-        (result["人均小时产量"] / baseline - 1) * 100
-    ).round(1)
-    result["时产状态"] = "正常"
-    result.loc[
-        result["人均小时产量"] >= baseline * (1 + tolerance),
-        "时产状态",
-    ] = "高产"
-    result.loc[
-        result["人均小时产量"] <= baseline * (1 - tolerance),
-        "时产状态",
-    ] = "偏低"
-    result.loc[result["参与人数"] <= 0, "时产状态"] = "无有效数据"
-    return result

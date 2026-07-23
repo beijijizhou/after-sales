@@ -82,4 +82,4 @@ def render_qa_period_analysis(
     with client_tab:
         render_client_summary(daily)
     with rate_tab:
-        render_productivity_chart(daily)
+        render_productivity_chart(daily, filtered)
