@@ -23,6 +23,7 @@ from ui.inventory.stock.incoming import render_incoming_inventory_forecast
 from ui.inventory.stock.table import (
     render_inventory_metrics,
     render_inventory_table,
+    render_inventory_view_mode,
 )
 
 
@@ -41,21 +42,29 @@ def render_inventory_tabs(
     tabs = st.tabs(tab_names)
 
     with tabs[0]:
-        if can_edit and not category:
-            st.info(t("全部品类为汇总视图，请选择具体品类后直接编辑库存明细"))
-        render_inventory_table(
-            supabase, department, category, inventory_df, inventory_date,
-            can_edit and bool(category) and selected_date == current_date,
-            visible_sizes, filter_title,
-        )
-        render_inventory_metrics(inventory_df)
-        if selected_date == current_date:
-            render_incoming_inventory_forecast(
-                supabase, department, category, raw_df, current_date
+        view_mode = render_inventory_view_mode(category, inventory_df)
+        editable = can_edit and selected_date == current_date
+        if view_mode == "整体黑白统计":
+            st.caption(t("整体黑白统计为只读汇总；修改库存请切换到品牌明细"))
+            render_black_white_color_summary(
+                category, inventory_df, visible_sizes, filter_title
             )
-        render_black_white_color_summary(
-            category, inventory_df, visible_sizes, filter_title
-        )
+        else:
+            if not can_edit:
+                st.info(t("当前账号只有库存查看权限，不能修改库存"))
+            elif selected_date != current_date:
+                st.info(t("历史库存为只读记录，请切换到今天修改当前库存"))
+                st.button(
+                    t("切换到今天修改"),
+                    key="inventory_switch_to_today",
+                    on_click=_select_current_inventory_date,
+                    args=(current_date,),
+                )
+            render_inventory_table(
+                supabase, department, category, inventory_df, inventory_date,
+                editable, visible_sizes, filter_title,
+            )
+            render_inventory_metrics(inventory_df)
 
     with tabs[1]:
         order_quantity, arrival_date, buffer_days = (
@@ -65,6 +74,10 @@ def render_inventory_tabs(
             supabase, department, category, inventory_df, order_quantity,
             arrival_date, buffer_days, inventory_date, visible_sizes,
         )
+        if selected_date == current_date:
+            render_incoming_inventory_forecast(
+                supabase, department, category, raw_df, current_date
+            )
     with tabs[2]:
         render_consumption_models(
             supabase, department, category, order_quantity,
@@ -182,3 +195,7 @@ def _select_operation_category(category, raw_df, key):
         return ""
     st.caption(t("当前查看全部品类，请选择本次库存操作的目标品类"))
     return st.selectbox(t("操作品类"), options, key=key, format_func=t)
+
+
+def _select_current_inventory_date(current_date):
+    st.session_state["inventory_global_snapshot_date"] = current_date

@@ -31,6 +31,7 @@ from db.inventory.core.snapshots import (
 from db.inventory.core.tables import (
     build_color_inventory_table,
     build_inventory_table,
+    build_material_color_inventory_table,
     get_inventory_last_updated,
     sort_inventory_table,
 )
@@ -48,6 +49,7 @@ __all__ = [
     "build_color_inventory_table",
     "build_inventory_snapshot",
     "build_inventory_table",
+    "build_material_color_inventory_table",
     "build_wide_adjustment_template",
     "create_inventory_snapshot",
     "get_inventory_last_updated",

@@ -27,6 +27,7 @@ ROLE_PERMISSIONS = {
         "can_input_after_sales": False,
         "can_mark_barcode_operations": False,
         "can_view_operation_tracking": True,
+        "can_use_image_stretch": True,
         "can_view_cost": False,
     },
     ROLE_SUPERVISOR: {
@@ -43,6 +44,7 @@ ROLE_PERMISSIONS = {
         "can_input_after_sales": False,
         "can_mark_barcode_operations": True,
         "can_view_operation_tracking": True,
+        "can_use_image_stretch": True,
         "can_view_cost": False,
     },
     ROLE_WAREHOUSE: {
@@ -59,6 +61,7 @@ ROLE_PERMISSIONS = {
         "can_input_after_sales": False,
         "can_mark_barcode_operations": False,
         "can_view_operation_tracking": False,
+        "can_use_image_stretch": True,
         "can_view_cost": False,
     },
     ROLE_AFTER_SALES: {
@@ -75,6 +78,7 @@ ROLE_PERMISSIONS = {
         "can_input_after_sales": True,
         "can_mark_barcode_operations": True,
         "can_view_operation_tracking": True,
+        "can_use_image_stretch": True,
         "can_view_cost": False,
     },
     ROLE_ADMIN: {
@@ -91,6 +95,7 @@ ROLE_PERMISSIONS = {
         "can_input_after_sales": True,
         "can_mark_barcode_operations": True,
         "can_view_operation_tracking": True,
+        "can_use_image_stretch": True,
         "can_view_cost": True,
     },
 }
@@ -105,6 +110,7 @@ PAGE_ACCESS = {
     "inventory": "can_view_inventory",
     "container": "can_view_container",
     "operation_tracking": "can_view_operation_tracking",
+    "image_stretch": "can_use_image_stretch",
 }
 
 PUBLIC_PERMISSIONS = {
@@ -114,6 +120,7 @@ PUBLIC_PERMISSIONS = {
     "can_view_hotstamp",
     "can_view_platform",
     "can_view_operation_tracking",
+    "can_use_image_stretch",
 }
 
 NAV_ITEMS = [
@@ -126,6 +133,7 @@ NAV_ITEMS = [
     ("production_data", "生产数据", "pages/7_生产数据.py"),
     ("inventory", "库存", "pages/4_库存.py"),
     ("container", "货柜安排", "pages/5_货柜安排.py"),
+    ("image_stretch", "图片拉伸", "pages/8_图片拉伸.py"),
 ]
 
 AUTH_QUERY_KEY = "auth"

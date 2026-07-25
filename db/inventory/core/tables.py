@@ -141,3 +141,34 @@ def build_color_inventory_table(inventory_df):
         .drop(columns=["_color_order"])
         .reset_index(drop=True)
     )
+
+
+def build_material_color_inventory_table(inventory_df):
+    columns = ["材质", "颜色", *SIZE_COLUMNS, "总库存"]
+    if inventory_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    summary_df = (
+        inventory_df.groupby(["材质", "颜色"], as_index=False)[SIZE_COLUMNS]
+        .sum()
+    )
+    for size in SIZE_COLUMNS:
+        summary_df[size] = pd.to_numeric(
+            summary_df[size], errors="coerce"
+        ).fillna(0).astype(int)
+    summary_df["总库存"] = summary_df[SIZE_COLUMNS].sum(axis=1)
+    summary_df["_material_order"] = summary_df["材质"].map(
+        BLACK_WHITE_MATERIAL_ORDER
+    ).fillna(99)
+    summary_df["_color_order"] = summary_df["颜色"].map(
+        BLACK_WHITE_COLOR_ORDER
+    ).fillna(99)
+    return (
+        summary_df[[*columns, "_material_order", "_color_order"]]
+        .sort_values(
+            ["_material_order", "材质", "_color_order", "颜色"],
+            kind="stable",
+        )
+        .drop(columns=["_material_order", "_color_order"])
+        .reset_index(drop=True)
+    )

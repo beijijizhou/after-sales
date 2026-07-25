@@ -76,7 +76,7 @@ def render_inventory_table_editor(
             return
         username = get_current_operator_name()
         try:
-            apply_adjustment_rows(
+            save_inline_adjustments(
                 supabase, department, category, adjustment_df, username
             )
         except Exception as error:
@@ -105,6 +105,7 @@ def build_inline_adjustments(original_df, edited_df):
             rows.append({
                 "日期": today,
                 "操作": "增加" if difference > 0 else "扣减",
+                "品类": original.get("品类", ""),
                 "品牌": original.get("品牌", ""),
                 "材质": original.get("材质", ""),
                 "颜色": original.get("颜色", ""),
@@ -127,6 +128,7 @@ def build_model_inline_adjustments(original_df, edited_df):
         rows.append({
             "日期": today,
             "操作": "增加" if difference > 0 else "扣减",
+            "品类": original.get("品类", ""),
             "品牌": original.get("品牌", ""),
             "材质": original.get("材质", ""),
             "颜色": original.get("颜色", ""),
@@ -136,6 +138,25 @@ def build_model_inline_adjustments(original_df, edited_df):
             "备注": "库存明细直接编辑",
         })
     return pd.DataFrame(rows)
+
+
+def save_inline_adjustments(
+    supabase, department, selected_category, adjustment_df, username,
+):
+    if selected_category:
+        apply_adjustment_rows(
+            supabase, department, selected_category, adjustment_df, username,
+        )
+        return
+
+    categories = adjustment_df["品类"].fillna("").astype(str).str.strip()
+    if (categories == "").any():
+        raise ValueError(t("存在无法识别品类的库存行，请先选择具体品类"))
+
+    for row_category, category_df in adjustment_df.groupby("品类", sort=False):
+        apply_adjustment_rows(
+            supabase, department, row_category, category_df, username,
+        )
 
 
 def clean_quantity(value):

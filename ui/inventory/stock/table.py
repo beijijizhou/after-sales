@@ -9,6 +9,27 @@ from ui.inventory.stock.table_editor import render_inventory_table_editor
 from ui.inventory.stock.table_filters import render_inventory_table_filters
 
 
+def render_inventory_view_mode(category, inventory_df):
+    has_black_white = (
+        category == "黑白短袖"
+        or (
+            not category
+            and "品类" in inventory_df.columns
+            and (inventory_df["品类"] == "黑白短袖").any()
+        )
+    )
+    if not has_black_white:
+        return "品牌明细"
+
+    return st.segmented_control(
+        t("库存查看方式"),
+        ["品牌明细", "整体黑白统计"],
+        default="品牌明细",
+        format_func=t,
+        key="inventory_stock_view_mode",
+    )
+
+
 def render_inventory_table(
     supabase, department, category, inventory_df, inventory_date, editable,
     visible_sizes, filter_title,
