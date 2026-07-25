@@ -16,48 +16,74 @@ def load_image(image_bytes):
         return image.convert(target_mode)
 
 
-def stretch_image_bottom(image, fixed_top_percent, stretch_factor):
-    if not 0 <= fixed_top_percent < 100:
-        raise ValueError("顶部保留比例必须在 0% 到 99% 之间")
+def stretch_image_middle(
+    image,
+    stretch_start_percent,
+    stretch_end_percent,
+    stretch_factor,
+):
+    if not 0 <= stretch_start_percent < stretch_end_percent <= 100:
+        raise ValueError("中间拉伸范围必须从上到下正确排列")
     if stretch_factor < 1:
-        raise ValueError("底部拉伸倍数不能小于 1")
+        raise ValueError("中间拉伸倍数不能小于 1")
 
     width, height = image.size
-    split_y = min(
-        max(round(height * fixed_top_percent / 100), 0),
+    start_y = min(
+        max(round(height * stretch_start_percent / 100), 0),
         height - 1,
     )
-    top = image.crop((0, 0, width, split_y))
-    bottom = image.crop((0, split_y, width, height))
-    stretched_height = max(round(bottom.height * stretch_factor), 1)
-    output_height = split_y + stretched_height
+    end_y = min(
+        max(round(height * stretch_end_percent / 100), start_y + 1),
+        height,
+    )
+    top = image.crop((0, 0, width, start_y))
+    middle = image.crop((0, start_y, width, end_y))
+    bottom = image.crop((0, end_y, width, height))
+    stretched_height = max(round(middle.height * stretch_factor), 1)
+    output_height = top.height + stretched_height + bottom.height
     if width * output_height > MAX_OUTPUT_PIXELS:
-        raise ValueError("输出图片过大，请降低底部拉伸倍数")
+        raise ValueError("输出图片过大，请降低中间拉伸倍数")
 
-    stretched_bottom = bottom.resize(
+    stretched_middle = middle.resize(
         (width, stretched_height),
         Image.Resampling.LANCZOS,
     )
     output = Image.new(image.mode, (width, output_height))
-    if split_y:
+    if top.height:
         output.paste(top, (0, 0))
-    output.paste(stretched_bottom, (0, split_y))
+    output.paste(stretched_middle, (0, top.height))
+    if bottom.height:
+        output.paste(bottom, (0, top.height + stretched_height))
     return output
 
 
-def build_boundary_preview(image, fixed_top_percent):
+def build_stretch_region_preview(
+    image,
+    stretch_start_percent,
+    stretch_end_percent,
+):
     preview = image.copy()
-    split_y = min(
-        max(round(preview.height * fixed_top_percent / 100), 0),
+    start_y = min(
+        max(round(preview.height * stretch_start_percent / 100), 0),
+        preview.height - 1,
+    )
+    end_y = min(
+        max(round(preview.height * stretch_end_percent / 100), start_y + 1),
         preview.height - 1,
     )
     line_width = max(round(preview.width / 250), 3)
     draw = ImageDraw.Draw(preview)
-    draw.line(
-        [(0, split_y), (preview.width, split_y)],
-        fill=(255, 61, 61, 255) if preview.mode == "RGBA" else (255, 61, 61),
-        width=line_width,
+    colors = (
+        ((255, 61, 61, 255), (31, 191, 255, 255))
+        if preview.mode == "RGBA"
+        else ((255, 61, 61), (31, 191, 255))
     )
+    for y, color in ((start_y, colors[0]), (end_y, colors[1])):
+        draw.line(
+            [(0, y), (preview.width, y)],
+            fill=color,
+            width=line_width,
+        )
     return preview
 
 
