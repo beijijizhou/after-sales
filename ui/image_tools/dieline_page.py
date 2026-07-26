@@ -145,6 +145,7 @@ def render_dieline_composer():
         zoom,
         horizontal_shift,
         vertical_shift,
+        trim_transparent_artwork=use_reference_layout,
     )
     original_col, mask_col, result_col = st.columns(3)
     with original_col:

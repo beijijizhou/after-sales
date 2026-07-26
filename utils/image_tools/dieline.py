@@ -46,6 +46,7 @@ def compose_artwork_with_dieline(
     zoom=1.0,
     horizontal_shift=0,
     vertical_shift=0,
+    trim_transparent_artwork=False,
 ):
     if zoom < 1:
         raise ValueError("缩放比例不能小于 1")
@@ -64,6 +65,11 @@ def compose_artwork_with_dieline(
     target_height = mask_bbox[3] - mask_bbox[1]
 
     artwork = artwork.convert("RGBA")
+    if trim_transparent_artwork:
+        artwork_bbox = artwork.getchannel("A").getbbox()
+        if artwork_bbox is None:
+            raise ValueError("原图有效区域为空")
+        artwork = artwork.crop(artwork_bbox)
     base_scale = max(
         target_width / artwork.width,
         target_height / artwork.height,

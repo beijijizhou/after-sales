@@ -51,8 +51,8 @@ def process_batch(
             continue
 
         try:
+            material, model = template_key
             if template_key not in mask_cache:
-                material, model = template_key
                 mask_bytes, output_size = load_local_dieline_template(
                     material,
                     model,
@@ -71,6 +71,9 @@ def process_batch(
                 zoom,
                 horizontal_shift,
                 vertical_shift,
+                trim_transparent_artwork=(
+                    model == "iPhone 17 Pro Max"
+                ),
             )
             target_path.parent.mkdir(parents=True, exist_ok=True)
             result.save(
