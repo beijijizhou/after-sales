@@ -6,7 +6,7 @@ from PIL import Image, ImageChops, ImageOps
 from utils.image_tools.stretch import load_image
 
 
-def extract_colored_dieline_mask(template_bytes, rotate_to_portrait=True):
+def extract_colored_dieline_mask(template_bytes, rotate_to_portrait=False):
     with Image.open(BytesIO(template_bytes)) as source:
         template = ImageOps.exif_transpose(source).convert("RGB")
 
@@ -25,7 +25,7 @@ def extract_colored_dieline_mask(template_bytes, rotate_to_portrait=True):
     return mask
 
 
-def extract_green_dieline_mask(template_bytes, rotate_to_portrait=True):
+def extract_green_dieline_mask(template_bytes, rotate_to_portrait=False):
     return extract_colored_dieline_mask(
         template_bytes,
         rotate_to_portrait,

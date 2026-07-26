@@ -74,7 +74,10 @@ def import_dielines(source_root, output_root):
             model = format_model_name(source_path.stem)
             target_path = output_root / slug / f"{model_slug(model)}.png"
             try:
-                mask = extract_colored_dieline_mask(source_path.read_bytes())
+                mask = extract_colored_dieline_mask(
+                    source_path.read_bytes(),
+                    rotate_to_portrait=False,
+                )
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 mask.save(target_path, format="PNG", optimize=True)
                 material["models"][model] = {

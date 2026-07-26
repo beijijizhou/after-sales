@@ -149,7 +149,10 @@ def render_dieline_composer():
         horizontal_shift,
         vertical_shift,
     )
-    mask_col, result_col = st.columns(2)
+    original_col, mask_col, result_col = st.columns(3)
+    with original_col:
+        st.subheader("原图")
+        st.image(artwork, width="stretch")
     with mask_col:
         st.subheader("刀模识别")
         st.image(
