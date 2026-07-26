@@ -133,7 +133,7 @@ NAV_ITEMS = [
     ("production_data", "生产数据", "pages/7_生产数据.py"),
     ("inventory", "库存", "pages/4_库存.py"),
     ("container", "货柜安排", "pages/5_货柜安排.py"),
-    ("image_stretch", "图片拉伸", "pages/8_图片拉伸.py"),
+    ("image_stretch", "手机壳图片处理", "pages/8_图片拉伸.py"),
 ]
 
 AUTH_QUERY_KEY = "auth"

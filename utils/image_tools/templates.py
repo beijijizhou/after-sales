@@ -20,7 +20,7 @@ def get_dieline_materials():
 
 def get_dieline_models(material):
     details = _load_catalog()["materials"].get(material, {})
-    return sorted(details.get("models", {}), key=_model_sort_key)
+    return sorted(details.get("models", {}), key=model_sort_key)
 
 
 def load_local_dieline_template(material, model):
@@ -82,7 +82,7 @@ def _normalize_match_text(value):
     )
 
 
-def _model_sort_key(model):
+def model_sort_key(model):
     match = re.fullmatch(
         r"iPhone (\d+)(?: (Mini|Plus|Pro|Pro Max|Air)|e)?",
         model,
