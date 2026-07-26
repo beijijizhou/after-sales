@@ -1,3 +1,4 @@
+from hashlib import sha256
 from pathlib import Path
 
 import streamlit as st
@@ -89,10 +90,23 @@ def render_dieline_composer():
         return
 
     output_width, output_height = mask.size
+    mask_bbox = mask.getbbox()
+    if mask_bbox is None:
+        st.error("刀模有效区域为空")
+        return
+    print_width = mask_bbox[2] - mask_bbox[0]
+    print_height = mask_bbox[3] - mask_bbox[1]
+    print_width_cm = print_width / DIELINE_DPI[0] * 2.54
+    print_height_cm = print_height / DIELINE_DPI[1] * 2.54
     st.caption(
         f"刀模画布：{output_width} × {output_height} px"
-        "（18 × 9 cm，500 DPI，尺寸固定）"
+        "（18 × 9 cm，500 DPI，尺寸固定）｜"
+        f"实际印刷区域：{print_width_cm:.2f} × {print_height_cm:.2f} cm"
     )
+    control_key = sha256(
+        f"{material}|{model or 'custom'}".encode("utf-8")
+    ).hexdigest()[:12]
+    use_reference_layout = model == "iPhone 17 Pro Max"
     artwork = orient_artwork_to_output(
         artwork,
         (output_width, output_height),
@@ -101,8 +115,9 @@ def render_dieline_composer():
         "图片缩放",
         min_value=1.0,
         max_value=2.5,
-        value=1.1,
+        value=1.0 if use_reference_layout else 1.1,
         step=0.01,
+        key=f"dieline_zoom_{control_key}",
     )
 
     position_col1, position_col2 = st.columns(2)
@@ -112,13 +127,15 @@ def render_dieline_composer():
         max_value=100,
         value=0,
         help="负数向左，正数向右。",
+        key=f"dieline_horizontal_{control_key}",
     )
     vertical_shift = position_col2.slider(
         "主体上下位置",
         min_value=-100,
         max_value=100,
-        value=35,
+        value=0 if use_reference_layout else 35,
         help="负数向上，正数向下；猫头被摄像头缺口切到时向下调整。",
+        key=f"dieline_vertical_{control_key}",
     )
 
     result = compose_artwork_with_dieline(
