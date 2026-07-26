@@ -1,15 +1,16 @@
-from hashlib import sha256
 from pathlib import Path
 
 import streamlit as st
 
 from utils.image_tools import image_to_png_bytes
 from utils.image_tools.dieline import (
+    DIELINE_DPI,
     build_dieline_preview,
     compose_artwork_with_dieline,
     extract_green_dieline_mask,
     load_dieline_mask,
     load_artwork,
+    orient_artwork_to_output,
 )
 from utils.image_tools.templates import (
     get_dieline_materials,
@@ -51,10 +52,9 @@ def render_dieline_composer():
         key="dieline_artwork",
     )
     template_file = None
-    default_output_size = None
     if template_is_mask:
         try:
-            template_bytes, default_output_size = (
+            template_bytes, _ = (
                 load_local_dieline_template(material, model)
             )
         except Exception as error:
@@ -88,35 +88,15 @@ def render_dieline_composer():
         st.error(f"刀模读取失败：{error}")
         return
 
-    signature = sha256(
-        artwork_bytes + template_bytes
-    ).hexdigest()[:10]
-    default_width, default_height = (
-        default_output_size or artwork.size
+    output_width, output_height = mask.size
+    st.caption(
+        f"刀模画布：{output_width} × {output_height} px"
+        "（18 × 9 cm，500 DPI，尺寸固定）"
     )
-    if template_is_mask:
-        output_width, output_height = default_width, default_height
-        st.caption(
-            f"目标尺寸：{output_width} × {output_height} px（由刀模固定）"
-        )
-    else:
-        size_col1, size_col2 = st.columns(2)
-        output_width = size_col1.number_input(
-            "输出宽度",
-            min_value=100,
-            max_value=10000,
-            value=default_width,
-            step=1,
-            key=f"dieline_width_{signature}",
-        )
-        output_height = size_col2.number_input(
-            "输出高度",
-            min_value=100,
-            max_value=10000,
-            value=default_height,
-            step=1,
-            key=f"dieline_height_{signature}",
-        )
+    artwork = orient_artwork_to_output(
+        artwork,
+        (output_width, output_height),
+    )
     zoom = st.slider(
         "图片缩放",
         min_value=1.0,
@@ -151,7 +131,7 @@ def render_dieline_composer():
     )
     original_col, mask_col, result_col = st.columns(3)
     with original_col:
-        st.subheader("原图")
+        st.subheader("原图（摄像头朝左）")
         st.image(artwork, width="stretch")
     with mask_col:
         st.subheader("刀模识别")
@@ -168,7 +148,7 @@ def render_dieline_composer():
 
     st.download_button(
         "下载目标 PNG",
-        data=image_to_png_bytes(result),
+        data=image_to_png_bytes(result, dpi=DIELINE_DPI),
         file_name=(
             f"{Path(artwork_file.name).stem}_"
             f"{material}_{model or '自定义'}_套图.png"

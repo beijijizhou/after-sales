@@ -6,6 +6,9 @@ from PIL import Image, ImageChops, ImageOps
 from utils.image_tools.stretch import load_image
 
 
+DIELINE_DPI = (500, 500)
+
+
 def extract_colored_dieline_mask(template_bytes, rotate_to_portrait=False):
     with Image.open(BytesIO(template_bytes)) as source:
         template = ImageOps.exif_transpose(source).convert("RGB")
@@ -19,7 +22,6 @@ def extract_colored_dieline_mask(template_bytes, rotate_to_portrait=False):
     if bbox is None:
         raise ValueError("没有识别到彩色刀模区域")
 
-    mask = mask.crop(bbox)
     if rotate_to_portrait and mask.width > mask.height:
         mask = mask.transpose(Image.Transpose.ROTATE_270)
     return mask
@@ -51,33 +53,43 @@ def compose_artwork_with_dieline(
     if output_width <= 0 or output_height <= 0:
         raise ValueError("输出尺寸必须大于 0")
 
-    artwork = artwork.convert("RGBA")
-    base_scale = max(
-        output_width / artwork.width,
-        output_height / artwork.height,
-    )
-    scale = base_scale * zoom
-    scaled_size = (
-        max(round(artwork.width * scale), output_width),
-        max(round(artwork.height * scale), output_height),
-    )
-    artwork = artwork.resize(scaled_size, Image.Resampling.LANCZOS)
-
-    overflow_x = artwork.width - output_width
-    overflow_y = artwork.height - output_height
-    offset_x = round(
-        -overflow_x / 2 + horizontal_shift / 100 * overflow_x / 2
-    )
-    offset_y = round(
-        -overflow_y / 2 + vertical_shift / 100 * overflow_y / 2
-    )
-    canvas = Image.new("RGBA", (output_width, output_height))
-    canvas.paste(artwork, (offset_x, offset_y), artwork)
-
     fitted_mask = mask.resize(
         (output_width, output_height),
         Image.Resampling.LANCZOS,
     )
+    mask_bbox = fitted_mask.getbbox()
+    if mask_bbox is None:
+        raise ValueError("刀模有效区域为空")
+    target_width = mask_bbox[2] - mask_bbox[0]
+    target_height = mask_bbox[3] - mask_bbox[1]
+
+    artwork = artwork.convert("RGBA")
+    base_scale = max(
+        target_width / artwork.width,
+        target_height / artwork.height,
+    )
+    scale = base_scale * zoom
+    scaled_size = (
+        max(round(artwork.width * scale), target_width),
+        max(round(artwork.height * scale), target_height),
+    )
+    artwork = artwork.resize(scaled_size, Image.Resampling.LANCZOS)
+
+    overflow_x = artwork.width - target_width
+    overflow_y = artwork.height - target_height
+    offset_x = round(
+        mask_bbox[0]
+        - overflow_x / 2
+        + horizontal_shift / 100 * overflow_x / 2
+    )
+    offset_y = round(
+        mask_bbox[1]
+        - overflow_y / 2
+        + vertical_shift / 100 * overflow_y / 2
+    )
+    canvas = Image.new("RGBA", (output_width, output_height))
+    canvas.paste(artwork, (offset_x, offset_y), artwork)
+
     canvas.putalpha(ImageChops.multiply(canvas.getchannel("A"), fitted_mask))
     return canvas
 
@@ -93,3 +105,12 @@ def build_dieline_preview(mask, output_size):
 
 def load_artwork(image_bytes):
     return load_image(image_bytes).convert("RGBA")
+
+
+def orient_artwork_to_output(artwork, output_size):
+    output_width, output_height = output_size
+    artwork_is_portrait = artwork.height > artwork.width
+    output_is_landscape = output_width > output_height
+    if artwork_is_portrait and output_is_landscape:
+        return artwork.transpose(Image.Transpose.ROTATE_90)
+    return artwork

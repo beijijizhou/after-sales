@@ -12,8 +12,8 @@
         "iPhone 13 Pro": {
           "path": "acrylic_tpu/iphone_13_pro.png",
           "output_size": [
-            2893,
-            1413
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13pro",
@@ -23,8 +23,8 @@
         "iPhone 13 Pro Max": {
           "path": "acrylic_tpu/iphone_13_pro_max.png",
           "output_size": [
-            3167,
-            1537
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13promax",
@@ -34,8 +34,8 @@
         "iPhone 14 Plus": {
           "path": "acrylic_tpu/iphone_14_plus.png",
           "output_size": [
-            3172,
-            1535
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14plus",
@@ -45,8 +45,8 @@
         "iPhone 14 Pro": {
           "path": "acrylic_tpu/iphone_14_pro.png",
           "output_size": [
-            2908,
-            1411
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14pro",
@@ -56,8 +56,8 @@
         "iPhone 15 Plus": {
           "path": "acrylic_tpu/iphone_15_plus.png",
           "output_size": [
-            3172,
-            1535
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15plus",
@@ -67,8 +67,8 @@
         "iPhone 15 Pro": {
           "path": "acrylic_tpu/iphone_15_pro.png",
           "output_size": [
-            2905,
-            1402
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15pro",
@@ -78,8 +78,8 @@
         "iPhone 15 Pro Max": {
           "path": "acrylic_tpu/iphone_15_pro_max.png",
           "output_size": [
-            3160,
-            1524
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15promax",
@@ -89,8 +89,8 @@
         "iPhone 16": {
           "path": "acrylic_tpu/iphone_16.png",
           "output_size": [
-            2921,
-            1425
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16",
@@ -100,8 +100,8 @@
         "iPhone 16e": {
           "path": "acrylic_tpu/iphone_16e.png",
           "output_size": [
-            2889,
-            1408
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16E",
@@ -111,8 +111,8 @@
         "iPhone 16 Plus": {
           "path": "acrylic_tpu/iphone_16_plus.png",
           "output_size": [
-            3182,
-            1545
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16plus",
@@ -122,8 +122,8 @@
         "iPhone 16 Pro": {
           "path": "acrylic_tpu/iphone_16_pro.png",
           "output_size": [
-            2958,
-            1419
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16pro",
@@ -133,8 +133,8 @@
         "iPhone 16 Pro Max": {
           "path": "acrylic_tpu/iphone_16_pro_max.png",
           "output_size": [
-            3223,
-            1541
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16promax",
@@ -144,8 +144,8 @@
         "iPhone 17": {
           "path": "acrylic_tpu/iphone_17.png",
           "output_size": [
-            2961,
-            1423
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17",
@@ -155,8 +155,8 @@
         "iPhone 17 Air": {
           "path": "acrylic_tpu/iphone_17_air.png",
           "output_size": [
-            3082,
-            1486
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17air",
@@ -166,8 +166,8 @@
         "iPhone 17 Pro": {
           "path": "acrylic_tpu/iphone_17_pro.png",
           "output_size": [
-            2175,
-            1401
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17pro",
@@ -177,8 +177,8 @@
         "iPhone 17 Pro Max": {
           "path": "acrylic_tpu/iphone_17_pro_max.png",
           "output_size": [
-            2440,
-            1527
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17promax",
@@ -198,8 +198,8 @@
         "iPhone 13 Pro": {
           "path": "silicone/iphone_13_pro.png",
           "output_size": [
-            2893,
-            1413
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13pro",
@@ -209,8 +209,8 @@
         "iPhone 13 Pro Max": {
           "path": "silicone/iphone_13_pro_max.png",
           "output_size": [
-            3167,
-            1537
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13promax",
@@ -220,8 +220,8 @@
         "iPhone 14 Plus": {
           "path": "silicone/iphone_14_plus.png",
           "output_size": [
-            3172,
-            1535
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14plus",
@@ -231,8 +231,8 @@
         "iPhone 14 Pro": {
           "path": "silicone/iphone_14_pro.png",
           "output_size": [
-            2908,
-            1411
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14pro",
@@ -242,8 +242,8 @@
         "iPhone 15 Plus": {
           "path": "silicone/iphone_15_plus.png",
           "output_size": [
-            3172,
-            1535
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15plus",
@@ -253,8 +253,8 @@
         "iPhone 15 Pro": {
           "path": "silicone/iphone_15_pro.png",
           "output_size": [
-            2905,
-            1402
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15pro",
@@ -264,8 +264,8 @@
         "iPhone 15 Pro Max": {
           "path": "silicone/iphone_15_pro_max.png",
           "output_size": [
-            3160,
-            1524
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15promax",
@@ -275,8 +275,8 @@
         "iPhone 16": {
           "path": "silicone/iphone_16.png",
           "output_size": [
-            2921,
-            1425
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16",
@@ -286,8 +286,8 @@
         "iPhone 16e": {
           "path": "silicone/iphone_16e.png",
           "output_size": [
-            2889,
-            1408
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16E",
@@ -297,8 +297,8 @@
         "iPhone 16 Plus": {
           "path": "silicone/iphone_16_plus.png",
           "output_size": [
-            3182,
-            1545
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16plus",
@@ -308,8 +308,8 @@
         "iPhone 16 Pro": {
           "path": "silicone/iphone_16_pro.png",
           "output_size": [
-            2958,
-            1419
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16pro",
@@ -319,8 +319,8 @@
         "iPhone 16 Pro Max": {
           "path": "silicone/iphone_16_pro_max.png",
           "output_size": [
-            3223,
-            1541
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16promax",
@@ -330,8 +330,8 @@
         "iPhone 17": {
           "path": "silicone/iphone_17.png",
           "output_size": [
-            2961,
-            1423
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17",
@@ -341,8 +341,8 @@
         "iPhone 17 Air": {
           "path": "silicone/iphone_17_air.png",
           "output_size": [
-            3082,
-            1486
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17air",
@@ -352,8 +352,8 @@
         "iPhone 17 Pro": {
           "path": "silicone/iphone_17_pro.png",
           "output_size": [
-            2175,
-            1401
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17pro",
@@ -363,8 +363,8 @@
         "iPhone 17 Pro Max": {
           "path": "silicone/iphone_17_pro_max.png",
           "output_size": [
-            2440,
-            1527
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17promax",
@@ -384,8 +384,8 @@
         "iPhone 13": {
           "path": "matte_tpu/iphone_13.png",
           "output_size": [
-            2882,
-            1403
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone13",
@@ -395,8 +395,8 @@
         "iPhone 14": {
           "path": "matte_tpu/iphone_14.png",
           "output_size": [
-            2874,
-            1395
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone14",
@@ -406,8 +406,8 @@
         "iPhone 14 Plus": {
           "path": "matte_tpu/iphone_14_plus.png",
           "output_size": [
-            3153,
-            1523
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone14plus",
@@ -417,8 +417,8 @@
         "iPhone 14 Pro": {
           "path": "matte_tpu/iphone_14_pro.png",
           "output_size": [
-            2889,
-            1393
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone14pro",
@@ -428,8 +428,8 @@
         "iPhone 15": {
           "path": "matte_tpu/iphone_15.png",
           "output_size": [
-            2861,
-            1365
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone15",
@@ -439,8 +439,8 @@
         "iPhone 15 Plus": {
           "path": "matte_tpu/iphone_15_plus.png",
           "output_size": [
-            3125,
-            1490
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone15plus",
@@ -450,8 +450,8 @@
         "iPhone 16 Plus": {
           "path": "matte_tpu/iphone_16_plus.png",
           "output_size": [
-            3154,
-            1517
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone16plus",
@@ -461,8 +461,8 @@
         "iPhone 16 Pro": {
           "path": "matte_tpu/iphone_16_pro.png",
           "output_size": [
-            2930,
-            1392
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone16pro",
@@ -472,8 +472,8 @@
         "iPhone 17": {
           "path": "matte_tpu/iphone_17.png",
           "output_size": [
-            2934,
-            1396
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17",
@@ -483,8 +483,8 @@
         "iPhone 17 Air": {
           "path": "matte_tpu/iphone_17_air.png",
           "output_size": [
-            3065,
-            1460
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17air",
@@ -494,8 +494,8 @@
         "iPhone 17 Pro": {
           "path": "matte_tpu/iphone_17_pro.png",
           "output_size": [
-            2940,
-            1401
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17pro",
@@ -505,8 +505,8 @@
         "iPhone 17 Pro Max": {
           "path": "matte_tpu/iphone_17_pro_max.png",
           "output_size": [
-            3204,
-            1522
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17promax",
@@ -516,8 +516,8 @@
         "iPhone 13 Mini": {
           "path": "matte_tpu/iphone_13_mini.png",
           "output_size": [
-            2611,
-            1286
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13min",
@@ -527,8 +527,8 @@
         "iPhone 13 Pro": {
           "path": "matte_tpu/iphone_13_pro.png",
           "output_size": [
-            2882,
-            1402
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13pro",
@@ -538,8 +538,8 @@
         "iPhone 13 Pro Max": {
           "path": "matte_tpu/iphone_13_pro_max.png",
           "output_size": [
-            3161,
-            1532
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13promax",
@@ -549,8 +549,8 @@
         "iPhone 14 Pro Max": {
           "path": "matte_tpu/iphone_14_pro_max.png",
           "output_size": [
-            3150,
-            1514
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14promax",
@@ -560,8 +560,8 @@
         "iPhone 15 Pro": {
           "path": "matte_tpu/iphone_15_pro.png",
           "output_size": [
-            2841,
-            1345
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15pro",
@@ -571,8 +571,8 @@
         "iPhone 15 Pro Max": {
           "path": "matte_tpu/iphone_15_pro_max.png",
           "output_size": [
-            3103,
-            1467
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15promax",
@@ -582,8 +582,8 @@
         "iPhone 16": {
           "path": "matte_tpu/iphone_16.png",
           "output_size": [
-            2893,
-            1396
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16",
@@ -593,8 +593,8 @@
         "iPhone 16e": {
           "path": "matte_tpu/iphone_16e.png",
           "output_size": [
-            2871,
-            1391
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16E",
@@ -604,8 +604,8 @@
         "iPhone 16 Pro Max": {
           "path": "matte_tpu/iphone_16_pro_max.png",
           "output_size": [
-            3194,
-            1512
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16promax",
@@ -626,8 +626,8 @@
         "iPhone 13 Mini": {
           "path": "pc_large_hole_tpu/iphone_13_mini.png",
           "output_size": [
-            2558,
-            1232
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone13min",
@@ -637,8 +637,8 @@
         "iPhone 13 Pro": {
           "path": "pc_large_hole_tpu/iphone_13_pro.png",
           "output_size": [
-            2856,
-            1377
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone13pro",
@@ -648,8 +648,8 @@
         "iPhone 14": {
           "path": "pc_large_hole_tpu/iphone_14.png",
           "output_size": [
-            2860,
-            1379
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone14",
@@ -659,8 +659,8 @@
         "iPhone 14 Pro": {
           "path": "pc_large_hole_tpu/iphone_14_pro.png",
           "output_size": [
-            2871,
-            1375
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone14pro",
@@ -670,8 +670,8 @@
         "iPhone 16 Plus": {
           "path": "pc_large_hole_tpu/iphone_16_plus.png",
           "output_size": [
-            3068,
-            1432
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone16plus",
@@ -681,8 +681,8 @@
         "iPhone 17": {
           "path": "pc_large_hole_tpu/iphone_17.png",
           "output_size": [
-            2892,
-            1354
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17",
@@ -692,8 +692,8 @@
         "iPhone 17 Air": {
           "path": "pc_large_hole_tpu/iphone_17_air.png",
           "output_size": [
-            2577,
-            1411
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17air",
@@ -703,8 +703,8 @@
         "iPhone 17 Pro": {
           "path": "pc_large_hole_tpu/iphone_17_pro.png",
           "output_size": [
-            2111,
-            1303
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17pro",
@@ -714,8 +714,8 @@
         "iPhone 13": {
           "path": "pc_large_hole_tpu/iphone_13.png",
           "output_size": [
-            2858,
-            1378
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13",
@@ -725,8 +725,8 @@
         "iPhone 13 Pro Max": {
           "path": "pc_large_hole_tpu/iphone_13_pro_max.png",
           "output_size": [
-            3136,
-            1507
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13promax",
@@ -736,8 +736,8 @@
         "iPhone 14 Plus": {
           "path": "pc_large_hole_tpu/iphone_14_plus.png",
           "output_size": [
-            3136,
-            1507
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14plus",
@@ -747,8 +747,8 @@
         "iPhone 14 Pro Max": {
           "path": "pc_large_hole_tpu/iphone_14_pro_max.png",
           "output_size": [
-            3133,
-            1497
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14promax",
@@ -758,8 +758,8 @@
         "iPhone 15": {
           "path": "pc_large_hole_tpu/iphone_15.png",
           "output_size": [
-            2842,
-            1347
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15",
@@ -769,8 +769,8 @@
         "iPhone 15 Plus": {
           "path": "pc_large_hole_tpu/iphone_15_plus.png",
           "output_size": [
-            3102,
-            1467
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15plus",
@@ -780,8 +780,8 @@
         "iPhone 15 Pro": {
           "path": "pc_large_hole_tpu/iphone_15_pro.png",
           "output_size": [
-            2852,
-            1360
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15pro",
@@ -791,8 +791,8 @@
         "iPhone 15 Pro Max": {
           "path": "pc_large_hole_tpu/iphone_15_pro_max.png",
           "output_size": [
-            3083,
-            1446
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15promax",
@@ -802,8 +802,8 @@
         "iPhone 16": {
           "path": "pc_large_hole_tpu/iphone_16.png",
           "output_size": [
-            2842,
-            1347
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16",
@@ -813,8 +813,8 @@
         "iPhone 16 Pro": {
           "path": "pc_large_hole_tpu/iphone_16_pro.png",
           "output_size": [
-            2881,
-            1343
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16pro",
@@ -824,8 +824,8 @@
         "iPhone 16 Pro Max": {
           "path": "pc_large_hole_tpu/iphone_16_pro_max.png",
           "output_size": [
-            3139,
-            1457
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16promax",
@@ -835,8 +835,8 @@
         "iPhone 17 Pro Max": {
           "path": "pc_large_hole_tpu/iphone_17_pro_max.png",
           "output_size": [
-            2383,
-            1423
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17promax",
@@ -857,8 +857,8 @@
         "iPhone 13": {
           "path": "pc_precision_hole_tpu/iphone_13.png",
           "output_size": [
-            2858,
-            1378
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone13",
@@ -868,8 +868,8 @@
         "iPhone 13 Mini": {
           "path": "pc_precision_hole_tpu/iphone_13_mini.png",
           "output_size": [
-            2558,
-            1232
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone13min",
@@ -879,8 +879,8 @@
         "iPhone 13 Pro": {
           "path": "pc_precision_hole_tpu/iphone_13_pro.png",
           "output_size": [
-            2856,
-            1377
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone13pro",
@@ -890,8 +890,8 @@
         "iPhone 14": {
           "path": "pc_precision_hole_tpu/iphone_14.png",
           "output_size": [
-            2860,
-            1379
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone14",
@@ -901,8 +901,8 @@
         "iPhone 14 Pro": {
           "path": "pc_precision_hole_tpu/iphone_14_pro.png",
           "output_size": [
-            2871,
-            1375
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone14pro",
@@ -912,8 +912,8 @@
         "iPhone 16e": {
           "path": "pc_precision_hole_tpu/iphone_16e.png",
           "output_size": [
-            2860,
-            1379
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone16e",
@@ -923,8 +923,8 @@
         "iPhone 17": {
           "path": "pc_precision_hole_tpu/iphone_17.png",
           "output_size": [
-            2892,
-            1354
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17",
@@ -934,8 +934,8 @@
         "iPhone 17 Air": {
           "path": "pc_precision_hole_tpu/iphone_17_air.png",
           "output_size": [
-            2577,
-            1411
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17air",
@@ -945,8 +945,8 @@
         "iPhone 17 Pro": {
           "path": "pc_precision_hole_tpu/iphone_17_pro.png",
           "output_size": [
-            2111,
-            1303
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone17pro",
@@ -956,8 +956,8 @@
         "iPhone 6 Plus": {
           "path": "pc_precision_hole_tpu/iphone_6_plus.png",
           "output_size": [
-            3068,
-            1432
+            3543,
+            1772
           ],
           "aliases": [
             "iPhone6plus",
@@ -967,8 +967,8 @@
         "iPhone 13 Pro Max": {
           "path": "pc_precision_hole_tpu/iphone_13_pro_max.png",
           "output_size": [
-            3136,
-            1507
+            3543,
+            1772
           ],
           "aliases": [
             "iphone13promax",
@@ -978,8 +978,8 @@
         "iPhone 14 Plus": {
           "path": "pc_precision_hole_tpu/iphone_14_plus.png",
           "output_size": [
-            3136,
-            1507
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14plus",
@@ -989,8 +989,8 @@
         "iPhone 14 Pro Max": {
           "path": "pc_precision_hole_tpu/iphone_14_pro_max.png",
           "output_size": [
-            3133,
-            1497
+            3543,
+            1772
           ],
           "aliases": [
             "iphone14promax",
@@ -1000,8 +1000,8 @@
         "iPhone 15": {
           "path": "pc_precision_hole_tpu/iphone_15.png",
           "output_size": [
-            2842,
-            1347
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15",
@@ -1011,8 +1011,8 @@
         "iPhone 15 Plus": {
           "path": "pc_precision_hole_tpu/iphone_15_plus.png",
           "output_size": [
-            3102,
-            1467
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15plus",
@@ -1022,8 +1022,8 @@
         "iPhone 15 Pro": {
           "path": "pc_precision_hole_tpu/iphone_15_pro.png",
           "output_size": [
-            2852,
-            1360
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15pro",
@@ -1033,8 +1033,8 @@
         "iPhone 15 Pro Max": {
           "path": "pc_precision_hole_tpu/iphone_15_pro_max.png",
           "output_size": [
-            3083,
-            1446
+            3543,
+            1772
           ],
           "aliases": [
             "iphone15promax",
@@ -1044,8 +1044,8 @@
         "iPhone 16": {
           "path": "pc_precision_hole_tpu/iphone_16.png",
           "output_size": [
-            2842,
-            1347
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16",
@@ -1055,8 +1055,8 @@
         "iPhone 16 Pro": {
           "path": "pc_precision_hole_tpu/iphone_16_pro.png",
           "output_size": [
-            2881,
-            1343
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16pro",
@@ -1066,8 +1066,8 @@
         "iPhone 16 Pro Max": {
           "path": "pc_precision_hole_tpu/iphone_16_pro_max.png",
           "output_size": [
-            3139,
-            1457
+            3543,
+            1772
           ],
           "aliases": [
             "iphone16promax",
@@ -1077,8 +1077,8 @@
         "iPhone 17 Pro Max": {
           "path": "pc_precision_hole_tpu/iphone_17_pro_max.png",
           "output_size": [
-            2383,
-            1423
+            3543,
+            1772
           ],
           "aliases": [
             "iphone17promax",

@@ -87,7 +87,10 @@ def build_stretch_region_preview(
     return preview
 
 
-def image_to_png_bytes(image):
+def image_to_png_bytes(image, dpi=None):
     output = BytesIO()
-    image.save(output, format="PNG", optimize=True)
+    save_options = {"format": "PNG", "optimize": True}
+    if dpi is not None:
+        save_options["dpi"] = dpi
+    image.save(output, **save_options)
     return output.getvalue()

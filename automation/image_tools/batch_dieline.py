@@ -5,9 +5,11 @@ import sys
 from PIL import Image
 
 from utils.image_tools.dieline import (
+    DIELINE_DPI,
     compose_artwork_with_dieline,
     load_artwork,
     load_dieline_mask,
+    orient_artwork_to_output,
 )
 from utils.image_tools.templates import (
     load_local_dieline_template,
@@ -61,6 +63,7 @@ def process_batch(
                 )
             mask, output_size = mask_cache[template_key]
             artwork = load_artwork(source_path.read_bytes())
+            artwork = orient_artwork_to_output(artwork, output_size)
             result = compose_artwork_with_dieline(
                 artwork,
                 mask,
@@ -70,7 +73,12 @@ def process_batch(
                 vertical_shift,
             )
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            result.save(target_path, format="PNG", optimize=True)
+            result.save(
+                target_path,
+                format="PNG",
+                optimize=True,
+                dpi=DIELINE_DPI,
+            )
             results["processed"].append(relative_path)
         except (OSError, ValueError, Image.DecompressionBombError) as error:
             results["failed"].append((relative_path, str(error)))

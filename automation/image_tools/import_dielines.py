@@ -3,7 +3,10 @@ import json
 from pathlib import Path
 import re
 
-from utils.image_tools.dieline import extract_colored_dieline_mask
+from utils.image_tools.dieline import (
+    DIELINE_DPI,
+    extract_colored_dieline_mask,
+)
 
 
 MATERIALS = {
@@ -79,7 +82,12 @@ def import_dielines(source_root, output_root):
                     rotate_to_portrait=False,
                 )
                 target_path.parent.mkdir(parents=True, exist_ok=True)
-                mask.save(target_path, format="PNG", optimize=True)
+                mask.save(
+                    target_path,
+                    format="PNG",
+                    optimize=True,
+                    dpi=DIELINE_DPI,
+                )
                 material["models"][model] = {
                     "path": str(target_path.relative_to(output_root)),
                     "output_size": list(mask.size),
