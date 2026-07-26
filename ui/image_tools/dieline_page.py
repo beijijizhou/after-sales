@@ -8,64 +8,116 @@ from utils.image_tools.dieline import (
     build_dieline_preview,
     compose_artwork_with_dieline,
     extract_green_dieline_mask,
+    load_dieline_mask,
     load_artwork,
+)
+from utils.image_tools.templates import (
+    get_dieline_materials,
+    get_dieline_models,
+    load_local_dieline_template,
 )
 
 
 @st.cache_data(show_spinner=False)
-def _load_dieline_inputs(artwork_bytes, template_bytes):
+def _load_dieline_inputs(
+    artwork_bytes,
+    template_bytes,
+    template_is_mask,
+):
     return (
         load_artwork(artwork_bytes),
-        extract_green_dieline_mask(template_bytes),
+        (
+            load_dieline_mask(template_bytes)
+            if template_is_mask
+            else extract_green_dieline_mask(template_bytes)
+        ),
     )
 
 
 def render_dieline_composer():
-    st.caption("绿色区域会作为可打印范围，白色区域自动变为透明。")
-    artwork_col, template_col = st.columns(2)
-    artwork_file = artwork_col.file_uploader(
+    st.caption("先选择材质和型号，再上传原图生成对应的目标文件。")
+    material_options = [*get_dieline_materials(), "自定义上传"]
+    material = st.selectbox("手机壳材质", material_options)
+    template_is_mask = material != "自定义上传"
+    model = None
+    if template_is_mask:
+        model = st.selectbox(
+            "手机型号",
+            get_dieline_models(material),
+        )
+    artwork_file = st.file_uploader(
         "上传原始图片",
         type=["png", "jpg", "jpeg", "webp"],
         key="dieline_artwork",
     )
-    template_file = template_col.file_uploader(
-        "上传刀模",
-        type=["tif", "tiff", "png"],
-        key="dieline_template",
-    )
-    if artwork_file is None or template_file is None:
-        st.info("请同时上传未裁切的原始图片和绿色刀模文件。")
+    template_file = None
+    default_output_size = None
+    if template_is_mask:
+        try:
+            template_bytes, default_output_size = (
+                load_local_dieline_template(material, model)
+            )
+        except Exception as error:
+            st.error(f"内置刀模读取失败：{error}")
+            return
+    else:
+        template_file = st.file_uploader(
+            "上传彩色刀模",
+            type=["tif", "tiff", "png"],
+            key="dieline_template",
+        )
+        template_bytes = (
+            template_file.getvalue() if template_file is not None else None
+        )
+
+    if artwork_file is None:
+        st.info("请上传未裁切的原始图片。")
+        return
+    if template_bytes is None:
+        st.info("请上传绿色刀模文件。")
         return
 
     try:
         artwork_bytes = artwork_file.getvalue()
-        template_bytes = template_file.getvalue()
         artwork, mask = _load_dieline_inputs(
-            artwork_bytes, template_bytes
+            artwork_bytes,
+            template_bytes,
+            template_is_mask,
         )
     except Exception as error:
         st.error(f"刀模读取失败：{error}")
         return
 
-    signature = sha256(artwork_bytes + template_bytes).hexdigest()[:10]
-    size_col1, size_col2, zoom_col = st.columns(3)
-    output_width = size_col1.number_input(
-        "输出宽度",
-        min_value=100,
-        max_value=10000,
-        value=artwork.width,
-        step=1,
-        key=f"dieline_width_{signature}",
+    signature = sha256(
+        artwork_bytes + template_bytes
+    ).hexdigest()[:10]
+    default_width, default_height = (
+        default_output_size or artwork.size
     )
-    output_height = size_col2.number_input(
-        "输出高度",
-        min_value=100,
-        max_value=10000,
-        value=artwork.height,
-        step=1,
-        key=f"dieline_height_{signature}",
-    )
-    zoom = zoom_col.slider(
+    if template_is_mask:
+        output_width, output_height = default_width, default_height
+        st.caption(
+            f"目标尺寸：{output_width} × {output_height} px（由刀模固定）"
+        )
+    else:
+        size_col1, size_col2 = st.columns(2)
+        output_width = size_col1.number_input(
+            "输出宽度",
+            min_value=100,
+            max_value=10000,
+            value=default_width,
+            step=1,
+            key=f"dieline_width_{signature}",
+        )
+        output_height = size_col2.number_input(
+            "输出高度",
+            min_value=100,
+            max_value=10000,
+            value=default_height,
+            step=1,
+            key=f"dieline_height_{signature}",
+        )
+    zoom = st.slider(
         "图片缩放",
         min_value=1.0,
         max_value=2.5,
@@ -112,9 +164,12 @@ def render_dieline_composer():
         st.caption("确认猫头等主体没有进入顶部摄像头缺口。")
 
     st.download_button(
-        "下载套图 PNG",
+        "下载目标 PNG",
         data=image_to_png_bytes(result),
-        file_name=f"{Path(artwork_file.name).stem}_套刀模.png",
+        file_name=(
+            f"{Path(artwork_file.name).stem}_"
+            f"{material}_{model or '自定义'}_套图.png"
+        ),
         mime="image/png",
         width="stretch",
     )

@@ -6,28 +6,35 @@ from PIL import Image, ImageChops, ImageOps
 from utils.image_tools.stretch import load_image
 
 
-def extract_green_dieline_mask(template_bytes, rotate_to_portrait=True):
+def extract_colored_dieline_mask(template_bytes, rotate_to_portrait=True):
     with Image.open(BytesIO(template_bytes)) as source:
         template = ImageOps.exif_transpose(source).convert("RGB")
 
     pixels = np.asarray(template)
-    red = pixels[:, :, 0].astype(np.int16)
-    green = pixels[:, :, 1].astype(np.int16)
-    blue = pixels[:, :, 2].astype(np.int16)
-    selected = (
-        (green >= 70)
-        & (green - red >= 30)
-        & (green - blue >= 30)
-    )
+    highest = pixels.max(axis=2).astype(np.int16)
+    lowest = pixels.min(axis=2).astype(np.int16)
+    selected = (highest - lowest >= 18) & (lowest < 245)
     mask = Image.fromarray((selected * 255).astype(np.uint8), mode="L")
     bbox = mask.getbbox()
     if bbox is None:
-        raise ValueError("没有识别到绿色刀模区域")
+        raise ValueError("没有识别到彩色刀模区域")
 
     mask = mask.crop(bbox)
     if rotate_to_portrait and mask.width > mask.height:
         mask = mask.transpose(Image.Transpose.ROTATE_270)
     return mask
+
+
+def extract_green_dieline_mask(template_bytes, rotate_to_portrait=True):
+    return extract_colored_dieline_mask(
+        template_bytes,
+        rotate_to_portrait,
+    )
+
+
+def load_dieline_mask(mask_bytes):
+    with Image.open(BytesIO(mask_bytes)) as source:
+        return source.convert("L")
 
 
 def compose_artwork_with_dieline(
