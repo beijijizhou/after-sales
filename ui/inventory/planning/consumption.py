@@ -104,7 +104,7 @@ def render_reorder_forecast(
                     outbound_df["尺码"].isin(visible_sizes)
                 ]
             anomaly_df = build_demand_anomaly_table(
-                model_df, outbound_df, inventory_df
+                model_df, outbound_df, inventory_df, today
             )
         except Exception as anomaly_error:
             anomaly_df = pd.DataFrame()

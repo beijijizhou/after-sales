@@ -100,6 +100,7 @@ def build_period_model_comparison(
         result["平台生产日均"], result["15,000模型日耗"]
     )
     result["仓库有效天数"] = warehouse_days
+    result["仓库统计天数"] = int(days)
     result["平台有效天数"] = int(platform_days)
     result["_color"] = result["颜色"].map({"黑": 0, "白": 1}).fillna(99)
     result["_size"] = result["尺码"].map(
@@ -116,8 +117,12 @@ def _warehouse_average(outbound_df, current_date, days):
     columns = ["颜色", "尺码", "仓库出库日均"]
     if outbound_df.empty:
         return pd.DataFrame(columns=columns), 0
-    start_date = current_date - timedelta(days=int(days) - 1)
-    recent = outbound_df[outbound_df["日期"] >= start_date].copy()
+    end_date = current_date - timedelta(days=1)
+    start_date = end_date - timedelta(days=int(days) - 1)
+    recent = outbound_df[
+        (outbound_df["日期"] >= start_date)
+        & (outbound_df["日期"] <= end_date)
+    ].copy()
     recorded_days = int(recent["日期"].nunique()) if not recent.empty else 0
     if not recorded_days:
         return pd.DataFrame(columns=columns), 0
@@ -127,7 +132,7 @@ def _warehouse_average(outbound_df, current_date, days):
         .rename(columns={"实际出库": "仓库出库日均"})
     )
     average["仓库出库日均"] = (
-        average["仓库出库日均"] / recorded_days
+        average["仓库出库日均"] / int(days)
     )
     return average, recorded_days
 

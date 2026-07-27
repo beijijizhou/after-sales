@@ -57,7 +57,9 @@ def normalize_daily_outbound_history(movement_df):
     )
 
 
-def build_demand_anomaly_table(model_df, outbound_df, inventory_df):
+def build_demand_anomaly_table(
+    model_df, outbound_df, inventory_df, current_date=None
+):
     if model_df.empty or outbound_df.empty:
         return pd.DataFrame()
 
@@ -68,7 +70,15 @@ def build_demand_anomaly_table(model_df, outbound_df, inventory_df):
     model["基础日耗"] = pd.to_numeric(model["基础日耗"], errors="coerce").fillna(0)
     model_total = max(float(model["基础日耗"].sum()), 1)
     stock = build_stock_by_sku(inventory_df)
-    dates = sorted(outbound_df["日期"].dropna().unique())[-3:]
+    latest_complete_date = (
+        current_date - timedelta(days=1)
+        if current_date
+        else max(outbound_df["日期"])
+    )
+    dates = [
+        latest_complete_date - timedelta(days=offset)
+        for offset in [2, 1, 0]
+    ]
     totals = outbound_df.groupby("日期")["实际出库"].sum().to_dict()
 
     rows = []
@@ -113,9 +123,9 @@ def build_demand_anomaly_table(model_df, outbound_df, inventory_df):
             )
         rows.append({
             "颜色": color, "尺码": size, "当前库存": current_stock,
-            "最近出库日期": dates[-1] if dates else None,
-            "基础日耗": baseline, "最近出库": latest,
-            "近2次平均": two_average, "近3次平均": three_average,
+            "统计截止日期": latest_complete_date,
+            "基础日耗": baseline, "最近1日出库": latest,
+            "近2日日均": two_average, "近3日日均": three_average,
             "消耗倍数": round(latest / baseline, 2) if baseline else None,
             "占比偏离": round(share_ratio, 2) if expected_share else None,
             "异常类型": anomaly_type, "状态": status, "风险日耗": risk_rate,

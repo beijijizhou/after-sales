@@ -42,11 +42,17 @@ def render_demand_anomaly_monitor(anomaly_df):
             "颜色": st.column_config.TextColumn(t("颜色")),
             "尺码": st.column_config.TextColumn(t("尺码")),
             "当前库存": st.column_config.NumberColumn(t("当前库存"), format="%d"),
-            "最近出库日期": st.column_config.DateColumn(t("最近出库日期")),
+            "统计截止日期": st.column_config.DateColumn(t("统计截止日期")),
             "基础日耗": st.column_config.NumberColumn(t("基础日耗"), format="%d"),
-            "最近出库": st.column_config.NumberColumn(t("最近出库"), format="%d"),
-            "近2次平均": st.column_config.NumberColumn(t("近2次平均"), format="%d"),
-            "近3次平均": st.column_config.NumberColumn(t("近3次平均"), format="%d"),
+            "最近1日出库": st.column_config.NumberColumn(
+                t("最近1日出库"), format="%d"
+            ),
+            "近2日日均": st.column_config.NumberColumn(
+                t("近2日日均"), format="%d"
+            ),
+            "近3日日均": st.column_config.NumberColumn(
+                t("近3日日均"), format="%d"
+            ),
             "消耗倍数": st.column_config.NumberColumn(t("消耗倍数"), format="%.2f"),
             "占比偏离": st.column_config.NumberColumn(t("占比偏离"), format="%.2f"),
             "异常类型": st.column_config.TextColumn(t("异常类型")),
