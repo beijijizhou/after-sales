@@ -4,8 +4,10 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from automation.api.fangguo.auth import login_fangguo
 
-API_URL = "https://fangguo.com/fgapp/order/factory/trade/page"
+
+API_URL = "https://fangguo.com/fgapp/statistics/warehouse/stat/details1"
 NEW_YORK = ZoneInfo("America/New_York")
 PAGE_SIZE = 2_000
 
@@ -19,7 +21,6 @@ def fetch_fangguo_production_records(
     end_hour=23,
 ):
     report = report_progress or (lambda _message: None)
-    headers = _build_headers(credentials)
     if not 0 <= start_hour <= 23 or not 0 <= end_hour <= 23:
         raise ValueError("方果查询小时必须在 0 至 23 之间")
     start_at = datetime.combine(start_date, time(start_hour), NEW_YORK)
@@ -33,30 +34,42 @@ def fetch_fangguo_production_records(
     start_ms = _to_milliseconds(start_at)
     end_ms = _to_milliseconds(end_at)
 
-    report("1/3 正在连接方果生产接口")
-    first_page = _fetch_page(headers, 1, start_ms, end_ms, search_count=True)
+    report("1/4 正在登录方果工厂接口")
+    client, token = _authenticated_client(credentials)
+    headers = _build_headers(credentials, token)
+
+    report("2/4 正在统计方果生产数据")
+    first_page = _fetch_page(
+        client, headers, 1, start_ms, end_ms, end_date
+    )
     records = first_page.get("list") or []
     total = int(first_page.get("total") or len(records))
     page_count = max(1, ceil(total / PAGE_SIZE))
 
-    report(f"2/3 方果共有 {total:,} 单，正在接收生产项")
+    report(f"3/4 方果共有 {total:,} 个生产组合，正在接收数据")
     for page_no in range(2, page_count + 1):
-        page = _fetch_page(headers, page_no, start_ms, end_ms)
+        page = _fetch_page(
+            client, headers, page_no, start_ms, end_ms, end_date, total
+        )
         records.extend(page.get("list") or [])
 
     if len(records) < total:
         raise ValueError(
-            f"方果应返回 {total:,} 单，实际仅收到 {len(records):,} 单"
+            f"方果应返回 {total:,} 个组合，实际仅收到 {len(records):,} 个"
         )
-    report(f"3/3 方果数据接收完成：{len(records):,} 单")
+    report(f"4/4 方果数据接收完成：{len(records):,} 个生产组合")
     return records
 
 
-def _fetch_page(headers, page_no, start_ms, end_ms, search_count=False):
-    response = requests.post(
+def _fetch_page(
+    client, headers, page_no, start_ms, end_ms, end_date, total=0
+):
+    response = client.post(
         API_URL,
         headers=headers,
-        json=_build_payload(page_no, start_ms, end_ms, search_count),
+        json=_build_payload(
+            page_no, start_ms, end_ms, end_date, total
+        ),
         timeout=90,
     )
     response.raise_for_status()
@@ -66,8 +79,17 @@ def _fetch_page(headers, page_no, start_ms, end_ms, search_count=False):
     return payload.get("data") or {}
 
 
-def _build_headers(credentials):
+def _authenticated_client(credentials):
+    if credentials.get("username") and credentials.get("password"):
+        return login_fangguo(credentials)
     token = str(credentials.get("token") or "").strip()
+    if not token:
+        raise ValueError("方果配置需要账号密码或 token")
+    return requests.Session(), token
+
+
+def _build_headers(credentials, token):
+    token = str(token).strip()
     tenant_id = str(credentials.get("tenant_id") or "").strip()
     if not token or not tenant_id:
         raise ValueError("方果配置需要 token 和 tenant_id")
@@ -85,29 +107,42 @@ def _build_headers(credentials):
     }
 
 
-def _build_payload(page_no, start_ms, end_ms, search_count):
+def _build_payload(page_no, start_ms, end_ms, end_date, total):
     return {
         "pageNo": page_no,
         "pageSize": PAGE_SIZE,
-        "statusType": 1,
-        "pageType": 1,
-        "tidStrs": "",
-        "orderType": None,
-        "timeTypeQuery": 1,
-        "timeBegin": start_ms,
-        "timeEnd": end_ms,
-        "merchantIdList": [],
+        "total": total,
+        "date": _utc_date_milliseconds(end_date),
+        "startTime": start_ms,
+        "endTime": end_ms,
+        "dateType": 1,
+        "invitorId": "",
+        "dimension": 5,
+        "month": None,
+        "week": None,
+        "sort": 0,
+        "shopIdList": [],
         "storeIdList": [],
-        "channelCodeList": [],
-        "flagListQuery": [],
-        "cpNumStrs": "",
-        "buyerNickStrs": "",
-        "tradeIdStr": "",
-        "barcode": "",
-        "batchNo": "",
-        "searchCount": search_count,
+        "materialIdList": [],
+        "modelIdList": [],
+        "giftIdList": [],
+        "colorIdList": [],
+        "materialCodeList": [],
+        "modelCodeList": [],
+        "giftCodeList": [],
+        "colorCodeList": [],
+        "pictureCode": "",
+        "platformList": [],
+        "scopeFlag": True,
     }
 
 
 def _to_milliseconds(value):
     return int(value.timestamp() * 1_000)
+
+
+def _utc_date_milliseconds(value):
+    return int(
+        datetime.combine(value, time.min, ZoneInfo("UTC")).timestamp()
+        * 1_000
+    )

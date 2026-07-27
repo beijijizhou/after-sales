@@ -58,8 +58,10 @@ def save_cache_safely(
             extra_metadata=extra_metadata,
         )
         report(f"{platform} 已保存到本地缓存：{saved_at}")
+        return saved_at
     except Exception as error:
         report(f"{platform} 本地缓存保存失败：{error}")
+        return None
 
 
 def aggregate_missing(platform, data, metadata):

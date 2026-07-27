@@ -4,6 +4,7 @@ import pandas as pd
 
 from automation.api.fangguo import fetch_fangguo_production_records
 from automation.api.hansen import fetch_hansen_production_records
+from automation.api.humbird import fetch_humbird_production_records
 from automation.api.diy19 import DIY19_BASE_URLS, fetch_diy19_production_summary
 from automation.api.sds import fetch_sds_production_records
 from automation.playwright.errors import ProductionLoginRequired
@@ -13,6 +14,7 @@ from automation.playwright.s2b import download_s2b_workbook
 from utils.erp import parse_platform_workbook
 from utils.erp.fangguo_parser import parse_fangguo_records
 from utils.erp.hansen_parser import parse_hansen_records
+from utils.erp.humbird_parser import parse_humbird_records
 from utils.erp.diy19_parser import parse_diy19_records
 from utils.erp.sds_parser import parse_sds_records
 from utils.erp.time_range import filter_production_time
@@ -65,6 +67,25 @@ def load_production_data(
     start_hour=0,
     end_hour=23,
 ):
+    if platform in ERP_PLATFORM_NAMES:
+        records = fetch_humbird_production_records(
+            platform,
+            start_date,
+            end_date,
+            report_progress,
+        )
+        data = filter_production_time(
+            parse_humbird_records(records, platform),
+            start_date,
+            end_date,
+            start_hour,
+            end_hour,
+        )
+        return ProductionDataResult(
+            data=data,
+            source=f"{platform} ERP API / {len(records):,} 条",
+        )
+
     if platform in SDS_PLATFORM_PROFILES:
         if not credentials:
             profile = SDS_PLATFORM_PROFILES[platform]
@@ -130,12 +151,14 @@ def load_production_data(
             parse_fangguo_records(records),
             start_date,
             end_date,
-            start_hour,
-            end_hour,
+            0,
+            23,
         )
         return ProductionDataResult(
             data=data,
-            source=f"方果 API / {len(records):,} 单 / {len(data):,} 个生产项",
+            source=(
+                f"方果生产统计 API / {len(records):,} 个 SKU 日期组合"
+            ),
         )
 
     if platform in DIY19_BASE_URLS:

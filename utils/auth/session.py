@@ -3,6 +3,7 @@ import streamlit as st
 from db.supabase_client import supabase
 from utils.auth.constants import (
     AUTH_QUERY_KEY,
+    ALL_PERMISSIONS,
     PAGE_ACCESS,
     PUBLIC_PERMISSIONS,
     ROLE_ADMIN,
@@ -80,7 +81,10 @@ def set_current_user(user):
         "display_name": display_name,
         "role": role,
         "role_label": ROLE_LABELS.get(role, role),
-        **permissions,
+        **{
+            permission: permission in permissions
+            for permission in ALL_PERMISSIONS
+        },
     }
 
 

@@ -9,7 +9,42 @@ def load_inventory_dimensions(supabase):
         .select("department,category,brand,material,color,size")
         .execute()
     )
-    return pd.DataFrame(response.data)
+    inventory = pd.DataFrame(response.data)
+    try:
+        departments = pd.DataFrame(
+            supabase.table("inventory_departments")
+            .select("id,code")
+            .eq("is_active", True)
+            .execute()
+            .data
+        )
+        categories = pd.DataFrame(
+            supabase.table("inventory_categories")
+            .select("department_id,name")
+            .eq("is_active", True)
+            .execute()
+            .data
+        )
+    except Exception:
+        return inventory
+    if departments.empty:
+        return inventory
+    master = departments.rename(
+        columns={"code": "department"}
+    ).merge(
+        categories,
+        left_on="id",
+        right_on="department_id",
+        how="left",
+    ).rename(columns={"name": "category"})
+    for column in ["brand", "material", "color", "size"]:
+        master[column] = ""
+    columns = [
+        "department", "category", "brand", "material", "color", "size"
+    ]
+    return pd.concat(
+        [inventory, master[columns]], ignore_index=True
+    ).drop_duplicates().reset_index(drop=True)
 
 
 def load_inventory_departments(supabase):

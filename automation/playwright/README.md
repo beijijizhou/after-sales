@@ -1,4 +1,4 @@
-# Haloo Playwright
+# 蜂鸟 ERP 登录会话
 
 ## 第一次运行
 
@@ -8,21 +8,20 @@
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
-从 Haloo 工厂端登录入口打开，并采集已筛选订单页面：
+从 Haloo 工厂端登录入口打开专用 Chrome：
 
 ```bash
 .venv/bin/python -m automation.playwright.haloo_capture
 ```
 
-1. 脚本会优先连接已经打开的专用 Chrome，不会重复打开页面。
+1. 脚本会优先连接已经打开的专用 Chrome。
 2. 在 Chrome 中手动完成滑块验证和登录。
-3. 进入订单页面并筛选目标日期。
-4. 回到终端按 Enter。
+3. Haloo、莆田、隆丰分别登录一次后会保留各自会话。
 
-脚本结束后 Chrome 会继续保持打开。后续同步会自动寻找 URL 中包含
-`haloopod.merchant.hihumbird.com` 的标签页并直接复用。
+后续生产数据同步只复用登录状态，并直接调用 ERP 自带 API。正常同步不会
+点击筛选控件、切换页面或导出 Excel。登录失效时，系统才会提示重新登录。
 
-Chrome 登录状态保存在本机 `automation/playwright/.auth/`，页面截图和 HTML 保存在
-`output/automation/haloo/`。这两个目录都不会提交到 Git。
+Chrome 登录状态保存在本机 `automation/playwright/.auth/`。令牌只在浏览器
+内存中使用，不写入代码、缓存或日志。
 
-下一步根据采集页面确定订单表格、日期筛选和导出按钮的稳定定位方式。
+S2B 暂时仍使用原来的导出流程，后续会独立迁移到它自己的 API。

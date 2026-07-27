@@ -2,6 +2,7 @@ ROLE_VISITOR = "visitor"
 ROLE_SUPERVISOR = "supervisor"
 ROLE_WAREHOUSE = "warehouse"
 ROLE_AFTER_SALES = "after_sales"
+ROLE_FINANCE = "finance"
 ROLE_ADMIN = "admin"
 
 ROLE_LABELS = {
@@ -9,95 +10,71 @@ ROLE_LABELS = {
     ROLE_SUPERVISOR: "主管",
     ROLE_WAREHOUSE: "仓库",
     ROLE_AFTER_SALES: "售后",
+    ROLE_FINANCE: "财务",
     ROLE_ADMIN: "管理员",
 }
 
+PUBLIC_ACCESS = {
+    "can_view_app",
+    "can_register",
+    "can_view_qa",
+    "can_view_hotstamp",
+    "can_view_platform",
+    "can_view_operation_tracking",
+    "can_use_image_stretch",
+}
+PRODUCTION_ACCESS = {
+    "can_view_production_data",
+}
+INVENTORY_VIEW = {
+    "can_view_inventory",
+    "can_view_container",
+}
+INVENTORY_MANAGE = {
+    "can_edit_inventory",
+    "can_edit_container",
+    "can_manage_sku",
+}
+AFTER_SALES_MANAGE = {
+    "can_input_after_sales",
+    "can_mark_barcode_operations",
+}
+COST_VIEW = {
+    "can_view_cost",
+}
+COST_MANAGE = {
+    "can_manage_cost",
+}
+FINANCE_REPORTS = {
+    "can_view_finance_reports",
+}
+
+ALL_PERMISSIONS = set().union(
+    PUBLIC_ACCESS,
+    PRODUCTION_ACCESS,
+    INVENTORY_VIEW,
+    INVENTORY_MANAGE,
+    AFTER_SALES_MANAGE,
+    COST_VIEW,
+    COST_MANAGE,
+    FINANCE_REPORTS,
+)
+
 ROLE_PERMISSIONS = {
-    ROLE_VISITOR: {
-        "can_view_app": True,
-        "can_register": True,
-        "can_view_qa": True,
-        "can_view_hotstamp": True,
-        "can_view_platform": True,
-        "can_view_production_data": False,
-        "can_view_inventory": False,
-        "can_edit_inventory": False,
-        "can_view_container": False,
-        "can_edit_container": False,
-        "can_input_after_sales": False,
-        "can_mark_barcode_operations": False,
-        "can_view_operation_tracking": True,
-        "can_use_image_stretch": True,
-        "can_view_cost": False,
-    },
-    ROLE_SUPERVISOR: {
-        "can_view_app": True,
-        "can_register": True,
-        "can_view_qa": True,
-        "can_view_hotstamp": True,
-        "can_view_platform": True,
-        "can_view_production_data": True,
-        "can_view_inventory": True,
-        "can_edit_inventory": False,
-        "can_view_container": True,
-        "can_edit_container": False,
-        "can_input_after_sales": False,
-        "can_mark_barcode_operations": True,
-        "can_view_operation_tracking": True,
-        "can_use_image_stretch": True,
-        "can_view_cost": False,
-    },
-    ROLE_WAREHOUSE: {
-        "can_view_app": False,
-        "can_register": False,
-        "can_view_qa": False,
-        "can_view_hotstamp": False,
-        "can_view_platform": False,
-        "can_view_production_data": False,
-        "can_view_inventory": True,
-        "can_edit_inventory": True,
-        "can_view_container": True,
-        "can_edit_container": True,
-        "can_input_after_sales": False,
-        "can_mark_barcode_operations": False,
-        "can_view_operation_tracking": False,
-        "can_use_image_stretch": True,
-        "can_view_cost": False,
-    },
-    ROLE_AFTER_SALES: {
-        "can_view_app": True,
-        "can_register": True,
-        "can_view_qa": True,
-        "can_view_hotstamp": True,
-        "can_view_platform": True,
-        "can_view_production_data": True,
-        "can_view_inventory": True,
-        "can_edit_inventory": True,
-        "can_view_container": True,
-        "can_edit_container": True,
-        "can_input_after_sales": True,
-        "can_mark_barcode_operations": True,
-        "can_view_operation_tracking": True,
-        "can_use_image_stretch": True,
-        "can_view_cost": False,
-    },
-    ROLE_ADMIN: {
-        "can_view_app": True,
-        "can_register": True,
-        "can_view_qa": True,
-        "can_view_hotstamp": True,
-        "can_view_platform": True,
-        "can_view_production_data": True,
-        "can_view_inventory": True,
-        "can_edit_inventory": True,
-        "can_view_container": True,
-        "can_edit_container": True,
-        "can_input_after_sales": True,
-        "can_mark_barcode_operations": True,
-        "can_view_operation_tracking": True,
-        "can_use_image_stretch": True,
-        "can_view_cost": True,
-    },
+    ROLE_VISITOR: PUBLIC_ACCESS,
+    ROLE_SUPERVISOR: (
+        PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
+        | {"can_mark_barcode_operations"}
+    ),
+    ROLE_WAREHOUSE: (
+        INVENTORY_VIEW | INVENTORY_MANAGE | {"can_use_image_stretch"}
+    ),
+    ROLE_AFTER_SALES: (
+        PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
+        | INVENTORY_MANAGE | AFTER_SALES_MANAGE
+    ),
+    ROLE_FINANCE: INVENTORY_VIEW | COST_VIEW | FINANCE_REPORTS,
+    ROLE_ADMIN: ALL_PERMISSIONS,
 }
 
 PAGE_ACCESS = {
@@ -113,15 +90,7 @@ PAGE_ACCESS = {
     "image_stretch": "can_use_image_stretch",
 }
 
-PUBLIC_PERMISSIONS = {
-    "can_view_app",
-    "can_register",
-    "can_view_qa",
-    "can_view_hotstamp",
-    "can_view_platform",
-    "can_view_operation_tracking",
-    "can_use_image_stretch",
-}
+PUBLIC_PERMISSIONS = PUBLIC_ACCESS
 
 NAV_ITEMS = [
     ("operation_tracking", "问题件追踪", "app.py"),

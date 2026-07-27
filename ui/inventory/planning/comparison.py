@@ -12,6 +12,9 @@ from db.inventory.planning.consumption_comparison import (
 from db.inventory.planning.demand_anomaly import load_daily_outbound_history
 from db.inventory.core.constants import SIZE_COLUMNS
 from ui.inventory.i18n import t
+from ui.inventory.planning.accuracy import (
+    render_model_accuracy_summary,
+)
 
 
 def render_model_comparison(
@@ -31,6 +34,19 @@ def render_model_comparison(
         model_df, outbound_df, production.data, current_date, days,
         production.effective_days,
     )
+    render_model_comparison_result(
+        comparison_df,
+        production.effective_days,
+        production.start_date,
+        production.end_date,
+        requested_days=days,
+    )
+
+
+def render_model_comparison_result(
+    comparison_df, platform_days, start_date, end_date,
+    key_prefix="inventory", requested_days=None,
+):
     st.subheader(t("三种消耗模型对比"))
     st.caption(t(
         "15,000单是固定基准；仓库模型来自每日出库；平台模型只使用完整平台数据。"
@@ -42,14 +58,15 @@ def render_model_comparison(
     warehouse_days = int(comparison_df["仓库有效天数"].max())
     st.caption(
         f"{t('仓库有效天数')}：{warehouse_days}｜"
-        f"{t('平台有效天数')}：{production.effective_days}"
+        f"{t('平台有效天数')}：{platform_days}"
         + (
-            f"（{production.start_date} 至 {production.end_date}）"
-            if production.effective_days else ""
+            f"（{start_date} 至 {end_date}）"
+            if platform_days else ""
         )
     )
-    if production.effective_days < days:
+    if requested_days and platform_days < requested_days:
         st.warning(t("平台完整数据天数不足，平台模型仅供阶段性参考。"))
+    render_model_accuracy_summary(comparison_df)
 
     view = st.selectbox(
         t("查看模型"),
@@ -59,7 +76,7 @@ def render_model_comparison(
             t("仓库出库模型"),
             t("平台生产模型"),
         ],
-        key="inventory_consumption_model_view",
+        key=f"{key_prefix}_consumption_model_view",
     )
     if view != t("三模型总览"):
         field = {
@@ -88,6 +105,9 @@ def render_model_comparison(
             "平台生产日均": st.column_config.NumberColumn(
                 t("平台生产日均"), format="%.1f"
             ),
+            "三模型平均日耗": st.column_config.NumberColumn(
+                "三模型平均日耗", format="%.1f"
+            ),
             "仓库/模型": st.column_config.NumberColumn(
                 t("仓库/模型"), format="%.1f%%"
             ),
@@ -98,8 +118,6 @@ def render_model_comparison(
             "平台有效天数": st.column_config.NumberColumn(format="%d"),
         },
     )
-
-
 def render_consumption_models(
     supabase, department, category, order_quantity, current_date,
     visible_sizes=None,
@@ -128,11 +146,12 @@ def render_consumption_models(
 
 
 def _render_totals(df):
-    columns = st.columns(3)
+    columns = st.columns(4)
     values = [
         ("15,000模型日耗", "15,000模型"),
         ("仓库出库日均", "仓库出库模型"),
         ("平台生产日均", "平台生产模型"),
+        ("三模型平均日耗", "三模型平均"),
     ]
     for column, (field, label) in zip(columns, values):
         value = pd.to_numeric(df[field], errors="coerce").sum(min_count=1)

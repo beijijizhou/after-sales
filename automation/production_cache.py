@@ -56,6 +56,7 @@ def save_production_cache(
     start_hour=0,
     end_hour=23,
     extra_metadata=None,
+    saved_at=None,
 ):
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     key = _cache_key(platform, start_date, end_date, start_hour, end_hour)
@@ -63,7 +64,9 @@ def save_production_cache(
     metadata_path = CACHE_DIR / f"{key}.json"
     temporary_data = data_path.with_suffix(".parquet.tmp")
     temporary_metadata = metadata_path.with_suffix(".json.tmp")
-    saved_at = datetime.now(NEW_YORK).strftime("%Y-%m-%d %H:%M:%S")
+    saved_at = saved_at or datetime.now(NEW_YORK).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     data.to_parquet(temporary_data, index=False, compression="snappy")
     metadata = {
         "version": CACHE_VERSION,

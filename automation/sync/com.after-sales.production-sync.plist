@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.after-sales.production-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/hongzhonghu/Desktop/after-sales/.venv/bin/python</string>
+    <string>-m</string>
+    <string>automation.sync.daily</string>
+    <string>--days</string>
+    <string>7</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/hongzhonghu/Desktop/after-sales</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>0</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/hongzhonghu/Desktop/after-sales/.cache/production_data/daily-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/hongzhonghu/Desktop/after-sales/.cache/production_data/daily-sync-error.log</string>
+</dict>
+</plist>

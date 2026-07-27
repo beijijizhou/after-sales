@@ -1,5 +1,6 @@
 import streamlit as st
 
+from db.supabase_client import supabase
 from automation.production import (
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
@@ -19,6 +20,13 @@ from utils.erp.summary import SCOPE_OPTIONS
 from ui.production_data.controls import render_production_filters
 from ui.production_data.cache_state import sync_session_from_local_cache
 from ui.production_data.fetch import fetch_and_store_production_data
+from ui.production_data.inventory_review import (
+    render_colored_inventory_review,
+)
+from ui.production_data.model_review import (
+    render_black_white_model_review,
+)
+from ui.production_data.status import render_data_status
 
 
 def render_production_data_page():
@@ -76,6 +84,7 @@ def render_production_data_page():
     )
     source_file = source["file"]
     st.success(f"已读取：{platform} / {source_file}")
+    render_data_status(*selected_range, source)
 
     department_df = source_df[source_df["部门"] == department]
     filter_col, scope_col = st.columns(2)
@@ -116,11 +125,15 @@ def render_production_data_page():
     col4.metric("已取消件数", canceled_quantity)
     _render_date_range(report_df)
 
-    platform_tab, color_tab, material_tab, daily_tab, status_tab, detail_tab = st.tabs([
+    tab_names = [
         "平台汇总",
         _specification_tab_label(report_df),
         "材质", "每日数据", "生产状态", "生产项明细",
-    ])
+    ]
+    if department == "DTF":
+        tab_names.append("库存扣减检查")
+    tabs = st.tabs(tab_names)
+    platform_tab, color_tab, material_tab, daily_tab, status_tab, detail_tab = tabs[:6]
     with platform_tab:
         _render_table(build_platform_summary(report_df))
     with color_tab:
@@ -133,6 +146,21 @@ def render_production_data_page():
         _render_table(build_status_summary(department_df))
     with detail_tab:
         _render_table(report_df, height=520)
+    if department == "DTF":
+        with tabs[6]:
+            colored_tab, black_white_tab = st.tabs([
+                "彩色短袖扣减检查", "黑白短袖模型核对",
+            ])
+            with colored_tab:
+                render_colored_inventory_review(
+                    supabase, source["data"]
+                )
+            with black_white_tab:
+                render_black_white_model_review(
+                    supabase,
+                    source["data"],
+                    *selected_range,
+                )
 def _render_date_range(df):
     created = df["创建时间"].dropna()
     if created.empty:

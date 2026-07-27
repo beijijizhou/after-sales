@@ -32,7 +32,7 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
         "材质": options["材质"][0], "颜色": options["颜色"][0],
         "型号": options["型号"][0], "数量": 0, "备注": "",
     }])
-    show_cost = has_permission("can_view_cost") and action == "增加"
+    show_cost = has_permission("can_manage_cost") and action == "增加"
     if show_cost:
         template["成本"] = None
     columns = {
@@ -80,7 +80,7 @@ def render_model_sku_form(supabase, department, category):
         "日期": today, "品牌": "", "材质": "", "颜色": "白",
         "型号": "", "初始库存": 0,
     }])
-    if has_permission("can_view_cost"):
+    if has_permission("can_manage_cost"):
         template["成本"] = None
     columns = {
         "日期": st.column_config.DateColumn(t("日期"), required=True),

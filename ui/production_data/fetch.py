@@ -85,8 +85,7 @@ def fetch_and_store_production_data(
                 start_hour=start_hour,
                 end_hour=end_hour,
             )
-            store_production_data(platform, result.data, result.source)
-            save_cache_safely(
+            saved_at = save_cache_safely(
                 platform,
                 start_date,
                 end_date,
@@ -95,6 +94,9 @@ def fetch_and_store_production_data(
                 result.data,
                 result.source,
                 report,
+            )
+            store_production_data(
+                platform, result.data, result.source, saved_at
             )
             source, errors = result.source, {}
         status.update(
@@ -148,8 +150,7 @@ def _fetch_all(
         existing_results=existing_results,
     )
     for platform, result in batch.platform_results.items():
-        store_production_data(platform, result.data, result.source)
-        save_cache_safely(
+        saved_at = save_cache_safely(
             platform,
             start_date,
             end_date,
@@ -159,13 +160,15 @@ def _fetch_all(
             result.source,
             report,
         )
+        store_production_data(
+            platform, result.data, result.source, saved_at
+        )
     source = (
         f"{'部分数据 / ' if batch.errors else ''}"
         f"{len(batch.platform_results)} 个平台 / "
         f"{len(batch.data):,} 个衣服生产项"
     )
-    store_production_data(ALL_CLOTHING_PLATFORMS, batch.data, source)
-    save_cache_safely(
+    saved_at = save_cache_safely(
         ALL_CLOTHING_PLATFORMS,
         start_date,
         end_date,
@@ -179,6 +182,9 @@ def _fetch_all(
             "missing_platforms": sorted(batch.errors),
             "is_complete": not batch.errors,
         },
+    )
+    store_production_data(
+        ALL_CLOTHING_PLATFORMS, batch.data, source, saved_at
     )
     return source, batch.errors
 

@@ -1,17 +1,13 @@
 import streamlit as st
 
+from utils.auth import has_permission
 from ui.inventory.history.history import render_inventory_history
 from ui.inventory.i18n import t
 from ui.inventory.operations.forms import (
     render_adjust_form,
     render_inventory_unit_calculator,
-    render_new_sku_form,
 )
 from ui.inventory.operations.outbound import render_daily_outbound
-from ui.inventory.operations.sku_editor import (
-    render_sku_catalog,
-    render_sku_editor,
-)
 from ui.inventory.planning.comparison import render_consumption_models
 from ui.inventory.planning.consumption import (
     render_black_white_color_summary,
@@ -25,6 +21,7 @@ from ui.inventory.stock.table import (
     render_inventory_table,
     render_inventory_view_mode,
 )
+from ui.inventory.sku import render_sku_management
 
 
 def render_inventory_tabs(
@@ -126,39 +123,20 @@ def render_inventory_tabs(
         )
 
     with tabs[6]:
-        if can_edit:
-            operation_category = _select_operation_category(
-                category, raw_df, "sku_management_category"
+        sku_tab, sku_history_tab = st.tabs([
+            t("SKU 管理"), t("SKU 导入历史"),
+        ])
+        with sku_tab:
+            render_sku_management(
+                supabase,
+                department,
+                has_permission("can_manage_sku"),
             )
-            operation_raw_df = raw_df[
-                raw_df["category"] == operation_category
-            ].reset_index(drop=True) if operation_category else raw_df.iloc[0:0]
-            current_tab, create_tab, edit_tab = st.tabs([
-                t("现有 SKU"), t("新增 SKU"), t("修改 SKU"),
-            ])
-            with current_tab:
-                render_sku_catalog(operation_raw_df)
-            with create_tab:
-                if operation_category:
-                    operation_inventory_df = inventory_df[
-                        inventory_df["品类"] == operation_category
-                    ].reset_index(drop=True)
-                    render_new_sku_form(
-                        supabase, department, operation_category,
-                        operation_inventory_df,
-                    )
-            with edit_tab:
-                render_sku_editor(
-                    supabase, department, operation_raw_df
-                )
-            st.divider()
-        else:
-            render_sku_catalog(raw_df)
-            st.divider()
-        _render_history(
-            supabase, department, "sku", history_data, visible_sizes,
-            movement_types,
-        )
+        with sku_history_tab:
+            _render_history(
+                supabase, department, "sku", history_data, visible_sizes,
+                movement_types,
+            )
 
     if can_view_cost:
         with tabs[7]:

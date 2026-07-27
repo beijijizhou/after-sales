@@ -8,6 +8,7 @@ from ui.inventory.operations.adjustment_costs import (
     ROW_COLUMN,
     render_size_cost_editor,
 )
+from utils.auth import has_permission
 
 
 def build_inventory_cost_table(inventory_df):
@@ -88,7 +89,11 @@ def render_inventory_cost_summary(
         _render_cost_table(cost_df)
 
     _render_missing_costs(
-        supabase, department, category, raw_inventory_df
+        supabase,
+        department,
+        category,
+        raw_inventory_df,
+        has_permission("can_manage_cost"),
     )
 
 
@@ -111,7 +116,9 @@ def _render_cost_table(cost_df):
     )
 
 
-def _render_missing_costs(supabase, department, category, raw_df):
+def _render_missing_costs(
+    supabase, department, category, raw_df, can_manage_cost
+):
     missing_df = _missing_cost_inventory(raw_df)
     if missing_df.empty:
         return
@@ -119,15 +126,30 @@ def _render_missing_costs(supabase, department, category, raw_df):
     st.divider()
     st.subheader(t("未填写成本库存"))
     if _uses_models(missing_df):
+        if not can_manage_cost:
+            st.dataframe(
+                missing_df[
+                    ["品类", "品牌", "材质", "颜色", "size"]
+                ].drop_duplicates(),
+                hide_index=True,
+                width="stretch",
+            )
+            st.info(t("当前账号可以查看成本，但不能修改成本"))
+            return
         _render_missing_model_costs(
             supabase, department, category, missing_df, raw_df
         )
         return
     st.dataframe(
-        missing_df[["品牌", "材质"]].drop_duplicates().reset_index(drop=True),
+        missing_df[
+            ["品牌", "材质", "颜色"]
+        ].drop_duplicates().reset_index(drop=True),
         hide_index=True,
         width="stretch",
     )
+    if not can_manage_cost:
+        st.info(t("当前账号可以查看成本，但不能修改成本"))
+        return
     sku_df = missing_df[
         ["品类", "品牌", "材质", "颜色"]
     ].drop_duplicates().reset_index(drop=True)

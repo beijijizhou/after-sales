@@ -13,7 +13,12 @@ drop constraint if exists user_role_check;
 
 alter table public.users
 add constraint user_role_check
-check (role in ('visitor', 'supervisor', 'warehouse', 'after_sales', 'admin'));
+check (
+    role in (
+        'visitor', 'supervisor', 'warehouse',
+        'after_sales', 'finance', 'admin'
+    )
+);
 
 drop function if exists public.get_app_user_login(text);
 

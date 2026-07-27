@@ -44,7 +44,7 @@ def render_adjust_form(supabase, department, category, inventory_df):
     default_df = build_wide_adjustment_template()
     default_df.loc[0, "日期"] = current_date
     default_df.loc[0, "材质"] = "180g"
-    show_cost = has_permission("can_view_cost")
+    show_cost = has_permission("can_manage_cost")
     action = st.radio(
         t("操作"), ["增加", "扣减"], horizontal=True, format_func=t
     )
@@ -117,7 +117,7 @@ def render_new_sku_form(supabase, department, category, inventory_df=None):
     if saved_message:
         st.success(saved_message)
     form_version = st.session_state.get("new_sku_editor_version", 0)
-    can_view_cost = has_permission("can_view_cost")
+    can_view_cost = has_permission("can_manage_cost")
     show_cost = False
     if can_view_cost:
         with st.expander(t("内部字段"), expanded=False):

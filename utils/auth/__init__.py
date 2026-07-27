@@ -5,6 +5,7 @@ from utils.auth.constants import (
     PUBLIC_PERMISSIONS,
     ROLE_ADMIN,
     ROLE_AFTER_SALES,
+    ROLE_FINANCE,
     ROLE_LABELS,
     ROLE_SUPERVISOR,
     ROLE_VISITOR,

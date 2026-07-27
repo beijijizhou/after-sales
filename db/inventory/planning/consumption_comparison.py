@@ -31,9 +31,16 @@ def build_period_model_comparison(
         result["平台生产日均"] = pd.NA
     for column in ["仓库出库日均", "平台生产日均"]:
         result[column] = pd.to_numeric(result[column], errors="coerce")
+    if warehouse_days:
+        result["仓库出库日均"] = result["仓库出库日均"].fillna(0)
+    if platform_days:
+        result["平台生产日均"] = result["平台生产日均"].fillna(0)
     result["15,000模型日耗"] = pd.to_numeric(
         result["15,000模型日耗"], errors="coerce"
     ).fillna(0)
+    result["三模型平均日耗"] = result[
+        ["15,000模型日耗", "仓库出库日均", "平台生产日均"]
+    ].mean(axis=1, skipna=True)
     result["仓库/模型"] = _percentage(
         result["仓库出库日均"], result["15,000模型日耗"]
     )
@@ -76,3 +83,43 @@ def _warehouse_average(outbound_df, current_date, days):
 def _percentage(values, baseline):
     denominator = baseline.where(baseline > 0)
     return values / denominator * 100
+
+
+def build_model_accuracy_summary(comparison_df):
+    if comparison_df.empty:
+        return pd.DataFrame()
+    actual = pd.to_numeric(
+        comparison_df["平台生产日均"], errors="coerce"
+    )
+    valid = actual.notna()
+    if not valid.any():
+        return pd.DataFrame()
+
+    rows = []
+    for field, label in [
+        ("15,000模型日耗", "15,000模型"),
+        ("仓库出库日均", "仓库出库模型"),
+    ]:
+        predicted = pd.to_numeric(
+            comparison_df[field], errors="coerce"
+        )
+        comparable = valid & predicted.notna()
+        if not comparable.any():
+            continue
+        absolute_error = (
+            predicted[comparable] - actual[comparable]
+        ).abs().sum()
+        actual_total = actual[comparable].sum()
+        error_rate = (
+            float(absolute_error / actual_total * 100)
+            if actual_total > 0 else None
+        )
+        rows.append({
+            "模型": label,
+            "与平台数据偏差": error_rate,
+            "匹配度": max(0.0, 100.0 - error_rate)
+            if error_rate is not None else None,
+        })
+    return pd.DataFrame(rows).sort_values(
+        "与平台数据偏差", na_position="last"
+    ).reset_index(drop=True)
