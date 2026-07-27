@@ -4,7 +4,10 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from db.inventory.core.constants import SIZE_COLUMNS
-from db.inventory.core.packaging import get_units_per_package
+from db.inventory.core.packaging import (
+    get_units_per_package,
+    packaging_sku_key,
+)
 
 
 OUTBOUND_SPECS = {
@@ -66,7 +69,12 @@ def normalize_outbound_packages(source_df):
     return result_df.dropna(subset=["日期"])
 
 
-def convert_packages_to_adjustments(package_df):
+def convert_packages_to_adjustments(
+    package_df,
+    packaging_rules=None,
+    sku_packaging_rules=None,
+):
+    sku_packaging_rules = sku_packaging_rules or {}
     rows = []
     for _, source in package_df.iterrows():
         brand, material, package_type = OUTBOUND_SPECS[source["包装规格"]]
@@ -74,6 +82,21 @@ def convert_packages_to_adjustments(package_df):
             package_count = int(source[size])
             if package_count <= 0:
                 continue
+            units = sku_packaging_rules.get(
+                packaging_sku_key(
+                    brand,
+                    material,
+                    source["颜色"],
+                    size,
+                    package_type,
+                ),
+                get_units_per_package(
+                    brand,
+                    package_type,
+                    size,
+                    packaging_rules,
+                ),
+            )
             rows.append({
                 "日期": source["日期"],
                 "操作": "扣减",
@@ -81,9 +104,7 @@ def convert_packages_to_adjustments(package_df):
                 "材质": material,
                 "颜色": source["颜色"],
                 "尺码": size,
-                "数量": package_count * get_units_per_package(
-                    brand, package_type, size
-                ),
+                "数量": package_count * units,
                 "成本": pd.NA,
                 "备注": source.get("备注", "每日正常出货") or "每日正常出货",
             })

@@ -6,6 +6,7 @@ from db.inventory.container.tables import normalize_container_rows
 def load_inventory_containers(
     supabase, start_date=None, end_date=None, department=None, category=None,
     statuses=None, date_field="expected_arrival_date",
+    brands=None, materials=None, colors=None, sizes=None,
 ):
     columns = (
         "container_key,shipped_date,expected_arrival_date,actual_arrival_date,"
@@ -14,7 +15,8 @@ def load_inventory_containers(
     )
     query = supabase.table("inventory_container_imports").select(columns)
     query = apply_container_filters(
-        query, start_date, end_date, department, category, statuses, date_field
+        query, start_date, end_date, department, category, statuses, date_field,
+        brands, materials, colors, sizes,
     )
     try:
         response = (
@@ -36,7 +38,8 @@ def load_inventory_containers(
         legacy_columns
     )
     legacy_query = apply_container_filters(
-        legacy_query, start_date, end_date, department, category, statuses, date_field
+        legacy_query, start_date, end_date, department, category, statuses,
+        date_field, brands, materials, colors, sizes,
     )
     response = (
         legacy_query.order("expected_arrival_date", desc=False)
@@ -54,7 +57,8 @@ def load_inventory_containers(
 
 
 def apply_container_filters(
-    query, start_date, end_date, department, category, statuses, date_field
+    query, start_date, end_date, department, category, statuses, date_field,
+    brands=None, materials=None, colors=None, sizes=None,
 ):
     if start_date is not None:
         query = query.gte(date_field, start_date.isoformat())
@@ -66,14 +70,22 @@ def apply_container_filters(
         query = query.eq("category", category)
     if statuses:
         query = query.in_("status", statuses)
+    for column, values in [
+        ("brand", brands),
+        ("material", materials),
+        ("color", colors),
+        ("size", sizes),
+    ]:
+        if values:
+            query = query.in_(column, list(values))
     return query
 
 
 def load_container_dimensions(supabase):
     response = (
         supabase.table("inventory_container_imports")
-        .select("department,category")
-        .limit(1000)
+        .select("department,category,brand,material,color,size")
+        .limit(5000)
         .execute()
     )
     return pd.DataFrame(response.data)

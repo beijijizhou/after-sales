@@ -10,12 +10,12 @@ from ui.inventory.operations.forms import (
 from ui.inventory.operations.outbound import render_daily_outbound
 from ui.inventory.planning.comparison import render_consumption_models
 from ui.inventory.planning.consumption import (
-    render_black_white_color_summary,
     render_consumption_planning_inputs,
     render_reorder_forecast,
 )
 from ui.inventory.stock.cost_summary import render_inventory_cost_summary
 from ui.inventory.stock.incoming import render_incoming_inventory_forecast
+from ui.inventory.stock.summary import render_black_white_color_summary
 from ui.inventory.stock.table import (
     render_inventory_metrics,
     render_inventory_table,

@@ -14,26 +14,53 @@ from ui.inventory.container.events import (
     render_container_history,
     render_status_update,
 )
+from ui.inventory.container.filters import (
+    render_container_inventory_filters,
+)
 from ui.inventory.container.form import render_container_form
 from ui.inventory.container.tables import (
     render_container_dataframe,
     render_container_detail,
 )
-from ui.inventory.shared.filters import render_department_category_filters
+from ui.inventory.container.week import (
+    render_week_arrival_summary,
+    render_week_selector,
+)
 from utils.auth import has_permission
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
 
 
-def render_in_transit_table(supabase, department, category):
+def render_in_transit_table(
+    supabase, start_date, end_date, department, category,
+    brands, materials, colors, sizes,
+):
     st.subheader("在途货柜")
     st.caption("仅显示尚未到货或已经延迟的货柜")
     try:
         raw_df = load_inventory_containers(
-            supabase, department=department, category=category,
+            supabase, start_date, end_date, department, category,
             statuses=["未到货", "延迟"],
+            brands=brands, materials=materials, colors=colors, sizes=sizes,
         )
+        today = datetime.now(NY_TIMEZONE).date()
+        if start_date <= today <= end_date:
+            overdue_df = load_inventory_containers(
+                supabase,
+                end_date=start_date - timedelta(days=1),
+                department=department,
+                category=category,
+                statuses=["未到货", "延迟"],
+                brands=brands,
+                materials=materials,
+                colors=colors,
+                sizes=sizes,
+            )
+            raw_df = pd.concat(
+                [overdue_df, raw_df],
+                ignore_index=True,
+            ).drop_duplicates()
     except Exception as error:
         st.error(f"在途货柜加载失败：{error}")
         st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
@@ -41,16 +68,25 @@ def render_in_transit_table(supabase, department, category):
     display_df = build_container_display(
         raw_df, include_cost=has_permission("can_view_cost")
     )
+    render_week_arrival_summary(
+        raw_df,
+        "expected_arrival_date",
+        start_date,
+        roll_overdue_to=today if start_date <= today <= end_date else None,
+    )
     if display_df.empty:
         st.info("当前没有符合条件的在途货柜")
         return raw_df
     col1, col2, col3 = st.columns(3)
     col1.metric("在途总件数", int(display_df["总件数"].sum()))
     col2.metric("货柜数量", display_df["货柜记录ID"].nunique())
-    col3.metric("延迟货柜", display_df.loc[
-        display_df["状态"] == "延迟", "货柜记录ID"
-    ].nunique())
-    today = datetime.now(NY_TIMEZONE).date()
+    expected_dates = pd.to_datetime(
+        raw_df["expected_arrival_date"], errors="coerce"
+    ).dt.date
+    delayed_count = raw_df.loc[
+        expected_dates < today, "container_key"
+    ].nunique()
+    col3.metric("延迟货柜", delayed_count)
     progress_df = build_container_progress_summary(raw_df, today)
     _render_arrival_alerts(progress_df)
     selection_df = progress_df.drop(columns=["货柜记录ID"])
@@ -101,20 +137,16 @@ def _render_arrival_alerts(progress_df):
         st.warning(f"一周内到货提醒：{labels}")
 
 
-def render_arrival_history_table(supabase, department, category):
+def render_arrival_history_table(
+    supabase, start_date, end_date, department, category,
+    brands, materials, colors, sizes,
+):
     st.subheader("到货记录")
-    today = datetime.now(NY_TIMEZONE).date()
-    col1, col2 = st.columns(2)
-    start_date = col1.date_input(
-        "实际到货开始", value=today - timedelta(days=90), key="arrival_start"
-    )
-    end_date = col2.date_input(
-        "实际到货结束", value=today, key="arrival_end"
-    )
     try:
         raw_df = load_inventory_containers(
             supabase, start_date, end_date, department, category,
             statuses=["已到货"], date_field="actual_arrival_date",
+            brands=brands, materials=materials, colors=colors, sizes=sizes,
         )
     except Exception as error:
         st.error(f"到货历史加载失败：{error}")
@@ -122,6 +154,9 @@ def render_arrival_history_table(supabase, department, category):
         return pd.DataFrame()
     display_df = build_container_display(
         raw_df, include_cost=has_permission("can_view_cost")
+    )
+    render_week_arrival_summary(
+        raw_df, "actual_arrival_date", start_date
     )
     if display_df.empty:
         st.info("当前日期范围内没有已到货货柜")
@@ -139,19 +174,26 @@ def render_inventory_container_page(supabase):
         dimensions = load_container_dimensions(supabase)
     except Exception:
         dimensions = pd.DataFrame(columns=["department", "category"])
-    department, category = render_department_category_filters(
+    filters = render_container_inventory_filters(
         dimensions, key="container_shared"
     )
+    department, category, brands, materials, colors, sizes = filters
+    today = datetime.now(NY_TIMEZONE).date()
+    week_start, week_end = render_week_selector(today)
     transit_tab, create_tab, arrival_tab = st.tabs([
         "在途货柜", "新增货柜", "到货历史",
     ])
     with transit_tab:
-        render_in_transit_table(supabase, department, category)
+        render_in_transit_table(
+            supabase, week_start, week_end, *filters
+        )
     with create_tab:
         if has_permission("can_edit_container"):
             render_container_form(supabase, department, category)
         else:
             st.info("当前账号只能查看货柜安排，不能新增或修改")
     with arrival_tab:
-        arrived_df = render_arrival_history_table(supabase, department, category)
+        arrived_df = render_arrival_history_table(
+            supabase, week_start, week_end, *filters
+        )
         render_container_history(supabase, arrived_df)

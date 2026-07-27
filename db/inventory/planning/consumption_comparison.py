@@ -5,6 +5,58 @@ import pandas as pd
 from db.inventory.core.constants import SIZE_COLUMNS
 
 
+FORECAST_SOURCE_WEIGHTS = {
+    "15,000模型日耗": 0.60,
+    "平台生产日均": 0.30,
+    "仓库出库日均": 0.10,
+}
+
+
+def normalize_forecast_weights(source_weights=None):
+    weights = {
+        field: max(float(value), 0)
+        for field, value in (
+            source_weights or FORECAST_SOURCE_WEIGHTS
+        ).items()
+    }
+    total = sum(weights.values())
+    if total <= 0:
+        return FORECAST_SOURCE_WEIGHTS.copy()
+    return {
+        field: value / total
+        for field, value in weights.items()
+    }
+
+
+def build_prioritized_consumption_model(
+    comparison_df, source_weights=None
+):
+    columns = ["color", "size", "consumption_quantity"]
+    if comparison_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    source_weights = normalize_forecast_weights(source_weights)
+    rows = []
+    for row in comparison_df.to_dict("records"):
+        weighted_total = 0.0
+        available_weight = 0.0
+        for field, weight in source_weights.items():
+            value = pd.to_numeric(row.get(field), errors="coerce")
+            if pd.isna(value):
+                continue
+            weighted_total += max(float(value), 0) * weight
+            available_weight += weight
+        rows.append({
+            "color": row.get("颜色"),
+            "size": row.get("尺码"),
+            "consumption_quantity": (
+                round(weighted_total / available_weight)
+                if available_weight else 0
+            ),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
+
 def build_period_model_comparison(
     model_df, outbound_df, platform_df, current_date, days=14,
     platform_days=0,

@@ -16,14 +16,29 @@ TEXT = {
         "read_error": "文件读取失败",
         "caption": "尺码栏填写箱数或包数，系统会在确认前换算为件数。",
         "rules_title": "包装换算规则",
-        "rules": (
-            "- 普通 Box：每箱 **72 件**\n"
-            "- Men's Box：每箱 **100 件**\n"
-            "- Bag（S-L）：每包 **300 件**\n"
-            "- Bag（XL-3XL）：每包 **250 件**\n"
-            "- Bag（4XL-5XL）：每包 **200 件**"
-        ),
         "rules_help": "遇到尚未录入的新包装规格时，可以根据以上件数推算相应的箱数或包数。",
+        "rule_scope": "修改立即用于本次出库换算，不会写入数据库。",
+        "rule_package": "包装方式",
+        "rule_scope_column": "适用范围",
+        "rule_units": "每箱 / 每包件数",
+        "rule_reset": "恢复默认",
+        "rule_sku": "SKU",
+        "sku_rules_title": "SKU 特殊换算",
+        "sku_rules_help": "点击表格底部的加号新增一行，选择 SKU、包装方式和每箱 / 每包件数。",
+        "rule_labels": {
+            "standard_box": "普通 Box",
+            "mens_box": "Men's Box",
+            "bag_s_l": "Bag",
+            "bag_xl_3xl": "Bag",
+            "bag_4xl_5xl": "Bag",
+        },
+        "rule_scopes": {
+            "standard_box": "普通 SKU",
+            "mens_box": "Men's SKU",
+            "bag_s_l": "S-L",
+            "bag_xl_3xl": "XL-3XL",
+            "bag_4xl_5xl": "4XL-5XL",
+        },
         "empty": "填写箱数或包数后，这里会显示换算件数",
         "preview": "换算件数确认",
         "total": "本次仓库出货总件数",
@@ -40,14 +55,29 @@ TEXT = {
         "read_error": "Unable to read file",
         "caption": "Enter box or bag counts by size. Pieces are calculated before confirmation.",
         "rules_title": "Package Conversion Rules",
-        "rules": (
-            "- Standard Box: **72 pieces per box**\n"
-            "- Men's Box: **100 pieces per box**\n"
-            "- Bag (S-L): **300 pieces per bag**\n"
-            "- Bag (XL-3XL): **250 pieces per bag**\n"
-            "- Bag (4XL-5XL): **200 pieces per bag**"
-        ),
         "rules_help": "For a new package not yet listed, use these quantities to estimate the equivalent boxes or bags.",
+        "rule_scope": "Applies only to this page and is not saved to the database.",
+        "rule_package": "Package type",
+        "rule_scope_column": "Applies to",
+        "rule_units": "Pieces per box / bag",
+        "rule_reset": "Restore default",
+        "rule_sku": "SKU",
+        "sku_rules_title": "SKU-specific Conversions",
+        "sku_rules_help": "Add a row, then select the SKU, package type, and pieces per box or bag.",
+        "rule_labels": {
+            "standard_box": "Standard Box",
+            "mens_box": "Men's Box",
+            "bag_s_l": "Bag",
+            "bag_xl_3xl": "Bag",
+            "bag_4xl_5xl": "Bag",
+        },
+        "rule_scopes": {
+            "standard_box": "Standard SKU",
+            "mens_box": "Men's SKU",
+            "bag_s_l": "S-L",
+            "bag_xl_3xl": "XL-3XL",
+            "bag_4xl_5xl": "4XL-5XL",
+        },
         "empty": "Enter box or bag counts to preview the converted pieces.",
         "preview": "Confirm Converted Pieces",
         "total": "Total outbound pieces",
@@ -64,14 +94,29 @@ TEXT = {
         "read_error": "No se pudo leer el archivo",
         "caption": "Ingrese cajas o bolsas por talla. Las piezas se calculan antes de confirmar.",
         "rules_title": "Reglas de conversión de empaque",
-        "rules": (
-            "- Caja estándar: **72 piezas por caja**\n"
-            "- Caja Men's: **100 piezas por caja**\n"
-            "- Bolsa (S-L): **300 piezas por bolsa**\n"
-            "- Bolsa (XL-3XL): **250 piezas por bolsa**\n"
-            "- Bolsa (4XL-5XL): **200 piezas por bolsa**"
-        ),
         "rules_help": "Si aparece un empaque nuevo que aún no está listado, use estas cantidades para calcular cajas o bolsas equivalentes.",
+        "rule_scope": "Solo se aplica a esta página y no se guarda en la base de datos.",
+        "rule_package": "Tipo de empaque",
+        "rule_scope_column": "Se aplica a",
+        "rule_units": "Piezas por caja / bolsa",
+        "rule_reset": "Restaurar valor predeterminado",
+        "rule_sku": "SKU",
+        "sku_rules_title": "Conversiones específicas por SKU",
+        "sku_rules_help": "Agregue una fila y seleccione el SKU, el empaque y las piezas por caja o bolsa.",
+        "rule_labels": {
+            "standard_box": "Caja estándar",
+            "mens_box": "Caja Men's",
+            "bag_s_l": "Bolsa",
+            "bag_xl_3xl": "Bolsa",
+            "bag_4xl_5xl": "Bolsa",
+        },
+        "rule_scopes": {
+            "standard_box": "SKU estándar",
+            "mens_box": "SKU Men's",
+            "bag_s_l": "S-L",
+            "bag_xl_3xl": "XL-3XL",
+            "bag_4xl_5xl": "4XL-5XL",
+        },
         "empty": "Ingrese cajas o bolsas para ver las piezas convertidas.",
         "preview": "Confirmar piezas convertidas",
         "total": "Total de piezas de salida",

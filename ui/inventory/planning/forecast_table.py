@@ -4,7 +4,9 @@ from ui.inventory.i18n import t
 
 
 FORECAST_COLUMNS = [
-    "颜色", "库存基准日期", "当前日期", "最低剩余天数",
+    "颜色", "材质范围", "库存基准日期", "当前日期",
+    "库存基准总数", "预计当前库存", "预测日耗合计", "日耗依据",
+    "最低剩余天数",
     "预计最早耗尽日期", "低于14天尺码", "到货前需覆盖天数",
     "到货前缺口总数", "到货前缺口尺码",
 ]
@@ -21,6 +23,17 @@ def render_reorder_forecast_table(forecast_df):
         width="stretch",
         column_config={
             "颜色": st.column_config.TextColumn(t("颜色")),
+            "材质范围": st.column_config.TextColumn(t("材质范围")),
+            "库存基准总数": st.column_config.NumberColumn(
+                t("库存基准总数"), format="%d"
+            ),
+            "预计当前库存": st.column_config.NumberColumn(
+                t("预计当前库存"), format="%d"
+            ),
+            "预测日耗合计": st.column_config.NumberColumn(
+                t("预测日耗合计"), format="%d"
+            ),
+            "日耗依据": st.column_config.TextColumn(t("日耗依据")),
             "最低剩余天数": st.column_config.NumberColumn(
                 t("最低剩余天数"), format="%d"
             ),

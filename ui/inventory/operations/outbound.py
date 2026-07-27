@@ -10,6 +10,9 @@ from db.inventory.operations.outbound import (
 )
 from ui.inventory.operations.adjustment_preview import render_adjustment_preview_editor
 from ui.inventory.i18n import get_language
+from ui.inventory.operations.packaging_rules import (
+    render_packaging_rule_editor,
+)
 from ui.inventory.operations.outbound_i18n import (
     COLUMNS,
     COLORS,
@@ -57,8 +60,14 @@ def render_daily_outbound(supabase, department, category):
             return
 
     st.caption(text["caption"])
-    st.markdown(f"**{text['rules_title']}**\n\n{text['rules']}")
+    st.markdown(f"**{text['rules_title']}**")
     st.info(text["rules_help"])
+    packaging_rules, sku_packaging_rules = render_packaging_rule_editor(
+        supabase,
+        department,
+        category,
+        language,
+    )
     package_df = st.data_editor(
         template_df,
         hide_index=True,
@@ -71,7 +80,11 @@ def render_daily_outbound(supabase, department, category):
         ),
     )
     package_df = normalize_outbound_packages(to_internal_table(package_df, language))
-    adjustment_df = convert_packages_to_adjustments(package_df)
+    adjustment_df = convert_packages_to_adjustments(
+        package_df,
+        packaging_rules,
+        sku_packaging_rules,
+    )
     if adjustment_df.empty:
         st.info(text["empty"])
         return
