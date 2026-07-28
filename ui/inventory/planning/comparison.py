@@ -55,11 +55,9 @@ def render_model_comparison_result(
         st.info(t("暂无周期对比数据"))
         return
 
-    warehouse_days = int(comparison_df["仓库有效天数"].max())
-    warehouse_period = int(comparison_df["仓库统计天数"].max())
+    warehouse_intervals = int(comparison_df["仓库统计区间数"].max())
     st.caption(
-        f"{t('仓库日均统计周期')}：{warehouse_period} {t('天')}"
-        f"（{t('有记录天数')}：{warehouse_days}）｜"
+        f"{t('仓库有效出库区间')}：{warehouse_intervals}｜"
         f"{t('平台有效天数')}：{platform_days}"
         + (
             f"（{start_date} 至 {end_date}）"
@@ -116,8 +114,8 @@ def render_model_comparison_result(
             "平台/模型": st.column_config.NumberColumn(
                 t("平台/模型"), format="%.1f%%"
             ),
-            "仓库有效天数": st.column_config.NumberColumn(format="%d"),
-            "仓库统计天数": st.column_config.NumberColumn(format="%d"),
+            "仓库有效区间数": st.column_config.NumberColumn(format="%d"),
+            "仓库统计区间数": st.column_config.NumberColumn(format="%d"),
             "平台有效天数": st.column_config.NumberColumn(format="%d"),
         },
     )

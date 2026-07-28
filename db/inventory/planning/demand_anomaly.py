@@ -3,6 +3,9 @@ from datetime import timedelta
 import pandas as pd
 
 from db.inventory.core.constants import SIZE_COLUMNS
+from db.inventory.planning.warehouse_usage import (
+    build_warehouse_usage_intervals,
+)
 
 
 DAILY_OUTBOUND_PATTERN = "每日正常出货|每日出货|黑白短袖出库"
@@ -68,79 +71,75 @@ def build_demand_anomaly_table(
         "consumption_quantity": "基础日耗",
     }).copy()
     model["基础日耗"] = pd.to_numeric(model["基础日耗"], errors="coerce").fillna(0)
-    model_total = max(float(model["基础日耗"].sum()), 1)
     stock = build_stock_by_sku(inventory_df)
-    latest_complete_date = (
-        current_date - timedelta(days=1)
-        if current_date
-        else max(outbound_df["日期"])
+    intervals = build_warehouse_usage_intervals(
+        outbound_df, current_date
     )
-    dates = [
-        latest_complete_date - timedelta(days=offset)
-        for offset in [2, 1, 0]
-    ]
-    totals = outbound_df.groupby("日期")["实际出库"].sum().to_dict()
+    if intervals.empty:
+        return pd.DataFrame()
 
     rows = []
     for row in model.to_dict("records"):
         color, size = row["颜色"], row["尺码"]
         baseline = max(int(row["基础日耗"]), 0)
-        sku = outbound_df[
-            (outbound_df["颜色"] == color) & (outbound_df["尺码"] == size)
-        ].set_index("日期")["实际出库"].to_dict()
-        values = [int(sku.get(date, 0)) for date in dates]
-        signals = [
-            is_abnormal_day(value, baseline, totals.get(date, 0), baseline / model_total)
-            for date, value in zip(dates, values)
-        ]
-        latest = values[-1] if values else 0
-        two_values = values[-2:]
-        three_values = values[-3:]
-        two_average = round(sum(two_values) / len(two_values)) if two_values else 0
-        three_average = round(sum(three_values) / len(three_values)) if three_values else 0
-        two_high = len(signals) >= 2 and all(signals[-2:])
-        three_high = (
-            len(three_values) == 3 and baseline > 0
-            and sum(three_values) > baseline * 3 * 1.4
+        sku_intervals = intervals[
+            (intervals["颜色"] == color)
+            & (intervals["尺码"] == size)
+        ].sort_values("本次出库日期")
+        if sku_intervals.empty:
+            continue
+        latest = sku_intervals.iloc[-1]
+        latest_average = float(latest["区间日均"])
+        previous_average = (
+            float(sku_intervals.iloc[-2]["区间日均"])
+            if len(sku_intervals) >= 2 else None
         )
-        status = "爆单" if three_high else "持续偏高" if two_high else "观察" if signals and signals[-1] else "正常"
+        latest_high = baseline > 0 and latest_average >= baseline * 1.5
+        previous_high = (
+            baseline > 0
+            and previous_average is not None
+            and previous_average >= baseline * 1.5
+        )
+        status = (
+            "爆单"
+            if baseline > 0 and latest_average >= baseline * 2.5
+            else "持续偏高"
+            if latest_high and previous_high
+            else "观察"
+            if latest_high
+            else "正常"
+        )
         risk_rate = (
-            max(baseline, round(two_average * 0.6 + three_average * 0.4))
-            if two_high or three_high else baseline
+            max(
+                baseline,
+                round(
+                    latest_average
+                    if previous_average is None
+                    else latest_average * 0.7 + previous_average * 0.3
+                ),
+            )
+            if status != "正常" else baseline
         )
         current_stock = int(stock.get((color, size), 0))
-        latest_total = max(int(totals.get(dates[-1], 0)), 1) if dates else 1
-        expected_share = baseline / model_total
-        actual_share = latest / latest_total
-        share_ratio = actual_share / expected_share if expected_share else 0
-        total_ratio = latest_total / model_total
-        anomaly_type = "正常"
-        if signals and signals[-1]:
-            anomaly_type = (
-                "整体订单增加" if total_ratio >= 1.3 and share_ratio < 1.3
-                else "单品占比上升" if share_ratio >= 1.5
-                else "单品消耗上升"
-            )
+        usage_ratio = latest_average / baseline if baseline else None
         rows.append({
             "颜色": color, "尺码": size, "当前库存": current_stock,
-            "统计截止日期": latest_complete_date,
-            "基础日耗": baseline, "最近1日出库": latest,
-            "近2日日均": two_average, "近3日日均": three_average,
-            "消耗倍数": round(latest / baseline, 2) if baseline else None,
-            "占比偏离": round(share_ratio, 2) if expected_share else None,
-            "异常类型": anomaly_type, "状态": status, "风险日耗": risk_rate,
+            "上次出库日期": latest["上次出库日期"],
+            "本次出库日期": latest["本次出库日期"],
+            "出库间隔天数": int(latest["出库间隔天数"]),
+            "本次出库数量": int(latest["本次出库数量"]),
+            "区间日均": round(latest_average),
+            "上一区间日均": (
+                round(previous_average)
+                if previous_average is not None else None
+            ),
+            "基础日耗": baseline,
+            "消耗倍数": round(usage_ratio, 2) if usage_ratio else None,
+            "异常类型": "区间消耗偏高" if latest_high else "正常",
+            "状态": status, "风险日耗": risk_rate,
             "风险剩余天数": round(current_stock / risk_rate) if risk_rate else None,
         })
     return pd.DataFrame(rows)
-
-
-def is_abnormal_day(actual, baseline, total, expected_share):
-    if baseline <= 0:
-        return False
-    absolute_high = actual >= baseline * 1.5
-    actual_share = actual / total if total else 0
-    mix_high = actual >= 72 and expected_share > 0 and actual_share >= expected_share * 1.5
-    return absolute_high or mix_high
 
 
 def build_stock_by_sku(inventory_df):

@@ -14,6 +14,8 @@ from db.inventory.planning.consumption_comparison import (
 from db.inventory.planning.demand_anomaly import (
     build_demand_anomaly_table,
 )
+from ui.inventory.planning.anomaly import ANOMALY_COLUMNS
+from ui.inventory.planning.forecast_table import FORECAST_COLUMNS
 
 
 class InventoryBlackWhiteSummaryTests(unittest.TestCase):
@@ -116,13 +118,14 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
 
         self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 645)
 
-    def test_warehouse_average_uses_full_calendar_period(self):
+    def test_warehouse_average_uses_outbound_intervals(self):
         model = pd.DataFrame([{
             "color": "白",
             "size": "S",
             "consumption_quantity": 100,
         }])
         outbound = pd.DataFrame([
+            {"日期": date(2026, 7, 20), "颜色": "白", "尺码": "S", "实际出库": 100},
             {"日期": date(2026, 7, 25), "颜色": "白", "尺码": "S", "实际出库": 140},
             {"日期": date(2026, 7, 26), "颜色": "白", "尺码": "S", "实际出库": 140},
         ])
@@ -135,17 +138,21 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
             days=14,
         )
 
-        self.assertEqual(float(result.iloc[0]["仓库出库日均"]), 20)
-        self.assertEqual(int(result.iloc[0]["仓库有效天数"]), 2)
-        self.assertEqual(int(result.iloc[0]["仓库统计天数"]), 14)
+        self.assertAlmostEqual(
+            float(result.iloc[0]["仓库出库日均"]),
+            280 / 6,
+        )
+        self.assertEqual(int(result.iloc[0]["仓库有效区间数"]), 2)
+        self.assertEqual(int(result.iloc[0]["仓库统计区间数"]), 2)
 
-    def test_anomaly_averages_include_days_without_outbound(self):
+    def test_anomaly_uses_days_between_outbound_batches(self):
         model = pd.DataFrame([{
             "color": "白",
             "size": "S",
             "consumption_quantity": 100,
         }])
         outbound = pd.DataFrame([
+            {"日期": date(2026, 7, 20), "颜色": "白", "尺码": "S", "实际出库": 100},
             {"日期": date(2026, 7, 24), "颜色": "白", "尺码": "S", "实际出库": 300},
             {"日期": date(2026, 7, 26), "颜色": "白", "尺码": "S", "实际出库": 300},
         ])
@@ -162,9 +169,21 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
         )
 
         row = result.iloc[0]
-        self.assertEqual(int(row["近2日日均"]), 150)
-        self.assertEqual(int(row["近3日日均"]), 200)
-        self.assertEqual(row["统计截止日期"], date(2026, 7, 26))
+        self.assertEqual(row["上次出库日期"], date(2026, 7, 24))
+        self.assertEqual(row["本次出库日期"], date(2026, 7, 26))
+        self.assertEqual(int(row["出库间隔天数"]), 2)
+        self.assertEqual(int(row["区间日均"]), 150)
+        self.assertEqual(int(row["上一区间日均"]), 75)
+
+    def test_risk_columns_appear_before_calculation_columns(self):
+        self.assertLess(
+            ANOMALY_COLUMNS.index("状态"),
+            ANOMALY_COLUMNS.index("上次出库日期"),
+        )
+        self.assertLess(
+            FORECAST_COLUMNS.index("最低剩余天数"),
+            FORECAST_COLUMNS.index("库存基准日期"),
+        )
 
 
 if __name__ == "__main__":

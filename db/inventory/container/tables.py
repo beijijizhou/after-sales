@@ -5,6 +5,10 @@ import pandas as pd
 
 from db.inventory import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT, SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
+from db.inventory.container.model_tables import (
+    build_model_container_display,
+    uses_model_rows,
+)
 
 
 CONTAINER_STATUSES = ["未到货", "已到货", "延迟", "取消"]
@@ -133,6 +137,8 @@ def build_container_schedule_preview(df):
 
 
 def build_container_display(df, include_cost=False):
+    if uses_model_rows(df):
+        return build_model_container_display(df, include_cost)
     item_columns = _ordered_item_columns(df.get("size", []))
     columns = container_display_columns(include_cost, item_columns)
     if df.empty:
@@ -200,6 +206,7 @@ def get_container_item_columns(display_df):
         "货柜记录ID", "批次标识", "发货日期", "运输天数",
         "预计到货日期", "实际到货日期", "货柜号", "部门", "品类",
         "品牌", "材质", "颜色", "成本", "总件数", "状态", "备注",
+        "型号", "数量",
     }
     return [
         column for column in display_df.columns

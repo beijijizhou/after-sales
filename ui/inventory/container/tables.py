@@ -2,17 +2,46 @@ import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
 from db.inventory.container.packaging import build_container_packaging_summary
-from db.inventory.container.tables import get_container_item_columns
+from db.inventory.container.tables import (
+    build_container_display,
+    get_container_item_columns,
+)
+
+
+def render_container_records(raw_df, include_cost=False):
+    if raw_df.empty:
+        return
+    departments = (
+        raw_df["department"].fillna("").astype(str).str.strip()
+        if "department" in raw_df.columns
+        else None
+    )
+    if departments is None or departments.nunique() <= 1:
+        render_container_dataframe(
+            build_container_display(raw_df, include_cost)
+        )
+        return
+    for department in departments.drop_duplicates():
+        label = department or "未分类部门"
+        st.markdown(f"**{label}**")
+        department_df = raw_df[departments == department]
+        render_container_dataframe(
+            build_container_display(department_df, include_cost)
+        )
 
 
 def render_container_dataframe(display_df):
     table_df = display_df.drop(columns=["货柜记录ID"])
+    if "型号" in table_df.columns:
+        table_df = table_df.drop(columns=["总件数"])
     item_columns = get_container_item_columns(display_df)
     column_config = {
         "发货日期": st.column_config.DateColumn("发货日期"),
         "运输天数": st.column_config.NumberColumn("运输天数", format="%d 天"),
         "预计到货日期": st.column_config.DateColumn("预计到货日期"),
         "实际到货日期": st.column_config.DateColumn("实际到货日期"),
+        "型号": st.column_config.TextColumn("型号"),
+        "数量": st.column_config.NumberColumn("数量", format="%d"),
         **{
             item: st.column_config.NumberColumn(
                 _item_label(item), format="%d"
@@ -45,9 +74,16 @@ def render_container_detail(display_df, container_key):
     item_columns = get_container_item_columns(display_df)
     front = ["部门", "品类", "品牌", "材质", "颜色", "备注"]
     cost = ["成本"] if "成本" in detail_df.columns else []
-    detail_df = detail_df[[*front, *cost, *item_columns, "总件数"]]
+    if "型号" in detail_df.columns:
+        detail_df = detail_df[[
+            *front[:-1], *cost, "型号", "数量", "备注",
+        ]]
+    else:
+        detail_df = detail_df[[*front, *cost, *item_columns, "总件数"]]
     config = {
         "备注": st.column_config.TextColumn("备注", width="large"),
+        "型号": st.column_config.TextColumn("型号"),
+        "数量": st.column_config.NumberColumn("数量", format="%d"),
         **{
             item: st.column_config.NumberColumn(
                 _item_label(item), format="%d"

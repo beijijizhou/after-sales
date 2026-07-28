@@ -1,8 +1,9 @@
-from datetime import timedelta
-
 import pandas as pd
 
 from db.inventory.core.constants import SIZE_COLUMNS
+from db.inventory.planning.warehouse_usage import (
+    build_warehouse_interval_average,
+)
 
 
 FORECAST_SOURCE_WEIGHTS = {
@@ -71,7 +72,7 @@ def build_period_model_comparison(
         .groupby(["颜色", "尺码"], as_index=False)["15,000模型日耗"]
         .sum()
     )
-    warehouse, warehouse_days = _warehouse_average(
+    warehouse, warehouse_intervals = build_warehouse_interval_average(
         outbound_df, current_date, days
     )
     result = model.merge(warehouse, on=["颜色", "尺码"], how="left")
@@ -83,7 +84,7 @@ def build_period_model_comparison(
         result["平台生产日均"] = pd.NA
     for column in ["仓库出库日均", "平台生产日均"]:
         result[column] = pd.to_numeric(result[column], errors="coerce")
-    if warehouse_days:
+    if warehouse_intervals:
         result["仓库出库日均"] = result["仓库出库日均"].fillna(0)
     if platform_days:
         result["平台生产日均"] = result["平台生产日均"].fillna(0)
@@ -99,8 +100,10 @@ def build_period_model_comparison(
     result["平台/模型"] = _percentage(
         result["平台生产日均"], result["15,000模型日耗"]
     )
-    result["仓库有效天数"] = warehouse_days
-    result["仓库统计天数"] = int(days)
+    result["仓库有效区间数"] = result.get(
+        "仓库区间数", pd.Series(0, index=result.index)
+    ).fillna(0).astype(int)
+    result["仓库统计区间数"] = int(warehouse_intervals)
     result["平台有效天数"] = int(platform_days)
     result["_color"] = result["颜色"].map({"黑": 0, "白": 1}).fillna(99)
     result["_size"] = result["尺码"].map(
@@ -111,30 +114,6 @@ def build_period_model_comparison(
         .drop(columns=["_color", "_size"])
         .reset_index(drop=True)
     )
-
-
-def _warehouse_average(outbound_df, current_date, days):
-    columns = ["颜色", "尺码", "仓库出库日均"]
-    if outbound_df.empty:
-        return pd.DataFrame(columns=columns), 0
-    end_date = current_date - timedelta(days=1)
-    start_date = end_date - timedelta(days=int(days) - 1)
-    recent = outbound_df[
-        (outbound_df["日期"] >= start_date)
-        & (outbound_df["日期"] <= end_date)
-    ].copy()
-    recorded_days = int(recent["日期"].nunique()) if not recent.empty else 0
-    if not recorded_days:
-        return pd.DataFrame(columns=columns), 0
-    average = (
-        recent.groupby(["颜色", "尺码"], as_index=False)["实际出库"]
-        .sum()
-        .rename(columns={"实际出库": "仓库出库日均"})
-    )
-    average["仓库出库日均"] = (
-        average["仓库出库日均"] / int(days)
-    )
-    return average, recorded_days
 
 
 def _percentage(values, baseline):

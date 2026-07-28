@@ -5,6 +5,12 @@ from ui.inventory.i18n import t
 
 
 STATUS_ORDER = {"爆单": 0, "持续偏高": 1, "观察": 2, "正常": 3}
+ANOMALY_COLUMNS = [
+    "颜色", "尺码", "状态", "异常类型", "风险剩余天数",
+    "风险日耗", "当前库存", "区间日均", "上一区间日均",
+    "基础日耗", "消耗倍数", "上次出库日期", "本次出库日期",
+    "出库间隔天数", "本次出库数量",
+]
 
 
 def render_demand_anomaly_monitor(anomaly_df):
@@ -32,6 +38,10 @@ def render_demand_anomaly_monitor(anomaly_df):
     ).drop(columns=["_order"])
     display_df["状态"] = display_df["状态"].map(t)
     display_df["异常类型"] = display_df["异常类型"].map(t)
+    display_df = display_df[[
+        column for column in ANOMALY_COLUMNS
+        if column in display_df.columns
+    ]]
     styled_df = display_df.style.apply(highlight_anomaly, axis=1)
 
     st.dataframe(
@@ -42,19 +52,22 @@ def render_demand_anomaly_monitor(anomaly_df):
             "颜色": st.column_config.TextColumn(t("颜色")),
             "尺码": st.column_config.TextColumn(t("尺码")),
             "当前库存": st.column_config.NumberColumn(t("当前库存"), format="%d"),
-            "统计截止日期": st.column_config.DateColumn(t("统计截止日期")),
+            "上次出库日期": st.column_config.DateColumn(t("上次出库日期")),
+            "本次出库日期": st.column_config.DateColumn(t("本次出库日期")),
+            "出库间隔天数": st.column_config.NumberColumn(
+                t("出库间隔天数"), format="%d"
+            ),
+            "本次出库数量": st.column_config.NumberColumn(
+                t("本次出库数量"), format="%d"
+            ),
+            "区间日均": st.column_config.NumberColumn(
+                t("区间日均"), format="%d"
+            ),
+            "上一区间日均": st.column_config.NumberColumn(
+                t("上一区间日均"), format="%d"
+            ),
             "基础日耗": st.column_config.NumberColumn(t("基础日耗"), format="%d"),
-            "最近1日出库": st.column_config.NumberColumn(
-                t("最近1日出库"), format="%d"
-            ),
-            "近2日日均": st.column_config.NumberColumn(
-                t("近2日日均"), format="%d"
-            ),
-            "近3日日均": st.column_config.NumberColumn(
-                t("近3日日均"), format="%d"
-            ),
             "消耗倍数": st.column_config.NumberColumn(t("消耗倍数"), format="%.2f"),
-            "占比偏离": st.column_config.NumberColumn(t("占比偏离"), format="%.2f"),
             "异常类型": st.column_config.TextColumn(t("异常类型")),
             "状态": st.column_config.TextColumn(t("状态")),
             "风险日耗": st.column_config.NumberColumn(t("风险日耗"), format="%d"),

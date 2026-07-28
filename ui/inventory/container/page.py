@@ -19,8 +19,8 @@ from ui.inventory.container.filters import (
 )
 from ui.inventory.container.form import render_container_form
 from ui.inventory.container.tables import (
-    render_container_dataframe,
     render_container_detail,
+    render_container_records,
 )
 from ui.inventory.container.week import (
     render_week_arrival_summary,
@@ -112,7 +112,12 @@ def render_in_transit_table(
     selected_rows = selection.selection.rows
     if selected_rows:
         container_key = progress_df.iloc[selected_rows[0]]["货柜记录ID"]
-        render_container_detail(display_df, container_key)
+        target_raw_df = raw_df[raw_df["container_key"] == container_key]
+        target_display_df = build_container_display(
+            target_raw_df,
+            include_cost=has_permission("can_view_cost"),
+        )
+        render_container_detail(target_display_df, container_key)
         if has_permission("can_edit_container"):
             render_status_update(supabase, raw_df, container_key)
     return raw_df
@@ -152,19 +157,17 @@ def render_arrival_history_table(
         st.error(f"到货历史加载失败：{error}")
         st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
         return pd.DataFrame()
-    display_df = build_container_display(
-        raw_df, include_cost=has_permission("can_view_cost")
-    )
-    render_week_arrival_summary(
-        raw_df, "actual_arrival_date", start_date
-    )
-    if display_df.empty:
+    if raw_df.empty:
         st.info("当前日期范围内没有已到货货柜")
         return raw_df
     col1, col2 = st.columns(2)
-    col1.metric("已到货总件数", int(display_df["总件数"].sum()))
-    col2.metric("到货柜数", display_df["货柜记录ID"].nunique())
-    render_container_dataframe(display_df)
+    quantities = pd.to_numeric(raw_df["quantity"], errors="coerce").fillna(0)
+    col1.metric("已到货总件数", int(quantities.sum()))
+    col2.metric("到货柜数", raw_df["container_key"].nunique())
+    render_container_records(
+        raw_df,
+        include_cost=has_permission("can_view_cost"),
+    )
     return raw_df
 
 
@@ -179,11 +182,11 @@ def render_inventory_container_page(supabase):
     )
     department, category, brands, materials, colors, sizes = filters
     today = datetime.now(NY_TIMEZONE).date()
-    week_start, week_end = render_week_selector(today)
     transit_tab, create_tab, arrival_tab = st.tabs([
         "在途货柜", "新增货柜", "到货历史",
     ])
     with transit_tab:
+        week_start, week_end = render_week_selector(today)
         render_in_transit_table(
             supabase, week_start, week_end, *filters
         )
@@ -193,7 +196,23 @@ def render_inventory_container_page(supabase):
         else:
             st.info("当前账号只能查看货柜安排，不能新增或修改")
     with arrival_tab:
+        arrival_start, arrival_end = _render_arrival_date_range(today)
         arrived_df = render_arrival_history_table(
-            supabase, week_start, week_end, *filters
+            supabase, arrival_start, arrival_end, *filters
         )
         render_container_history(supabase, arrived_df)
+
+
+def _render_arrival_date_range(today):
+    selected = st.date_input(
+        "实际到货日期",
+        value=(today - timedelta(days=30), today),
+        max_value=today,
+        key="container_arrival_history_dates",
+    )
+    if isinstance(selected, (tuple, list)):
+        if len(selected) >= 2:
+            return selected[0], selected[1]
+        if len(selected) == 1:
+            return selected[0], selected[0]
+    return selected, selected

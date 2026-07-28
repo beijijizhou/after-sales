@@ -35,6 +35,13 @@ INVENTORY_MANAGE = {
     "can_edit_container",
     "can_manage_sku",
 }
+CONSUMABLE_VIEW = {
+    "can_view_consumables",
+}
+CONSUMABLE_MANAGE = {
+    "can_edit_consumables",
+    "can_manage_consumable_sku",
+}
 AFTER_SALES_MANAGE = {
     "can_input_after_sales",
     "can_mark_barcode_operations",
@@ -54,6 +61,8 @@ ALL_PERMISSIONS = set().union(
     PRODUCTION_ACCESS,
     INVENTORY_VIEW,
     INVENTORY_MANAGE,
+    CONSUMABLE_VIEW,
+    CONSUMABLE_MANAGE,
     AFTER_SALES_MANAGE,
     COST_VIEW,
     COST_MANAGE,
@@ -63,17 +72,21 @@ ALL_PERMISSIONS = set().union(
 ROLE_PERMISSIONS = {
     ROLE_VISITOR: PUBLIC_ACCESS,
     ROLE_SUPERVISOR: (
-        PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
+        PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW | CONSUMABLE_VIEW
         | {"can_mark_barcode_operations"}
     ),
     ROLE_WAREHOUSE: (
-        INVENTORY_VIEW | INVENTORY_MANAGE | {"can_use_image_stretch"}
+        INVENTORY_VIEW | INVENTORY_MANAGE | CONSUMABLE_VIEW
+        | CONSUMABLE_MANAGE | {"can_use_image_stretch"}
     ),
     ROLE_AFTER_SALES: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
-        | INVENTORY_MANAGE | AFTER_SALES_MANAGE
+        | INVENTORY_MANAGE | CONSUMABLE_VIEW | CONSUMABLE_MANAGE
+        | AFTER_SALES_MANAGE
     ),
-    ROLE_FINANCE: INVENTORY_VIEW | COST_VIEW | FINANCE_REPORTS,
+    ROLE_FINANCE: (
+        INVENTORY_VIEW | CONSUMABLE_VIEW | COST_VIEW | FINANCE_REPORTS
+    ),
     ROLE_ADMIN: ALL_PERMISSIONS,
 }
 
@@ -85,6 +98,7 @@ PAGE_ACCESS = {
     "platform": "can_view_platform",
     "production_data": "can_view_production_data",
     "inventory": "can_view_inventory",
+    "consumables": "can_view_consumables",
     "container": "can_view_container",
     "operation_tracking": "can_view_operation_tracking",
     "image_stretch": "can_use_image_stretch",
@@ -101,6 +115,7 @@ NAV_ITEMS = [
     ("platform", "平台", "pages/3_平台.py"),
     ("production_data", "生产数据", "pages/7_生产数据.py"),
     ("inventory", "库存", "pages/4_库存.py"),
+    ("consumables", "耗材库存", "pages/9_耗材库存.py"),
     ("container", "货柜安排", "pages/5_货柜安排.py"),
     ("image_stretch", "手机壳图片处理", "pages/8_图片拉伸.py"),
 ]
