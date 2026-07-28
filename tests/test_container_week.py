@@ -33,6 +33,13 @@ class ContainerWeekTests(unittest.TestCase):
             "本周｜07/27（周一）- 08/02（周日）",
         )
 
+    def test_planning_week_can_hide_weekdays(self):
+        start = date(2026, 7, 27)
+
+        label = week_label(start, start, show_weekdays=False)
+
+        self.assertEqual(label, "本周｜07/27 - 08/02")
+
     def test_container_filters_are_applied_to_database_query(self):
         query = QueryRecorder()
 

@@ -3,6 +3,7 @@ import unittest
 import pandas as pd
 
 from ui.consumables.operations.entry import _normalize_entry_rows
+from ui.consumables.operations.stock_tables import _normalize_initialization
 from ui.consumables.stock import build_latest_costs, filter_items
 from utils.auth.constants import ROLE_PERMISSIONS
 
@@ -44,6 +45,47 @@ class ConsumableInventoryTests(unittest.TestCase):
         ])
 
         self.assertEqual(build_latest_costs(movements)["item-1"], 1.5678)
+
+    def test_initialization_records_difference_from_current_stock(self):
+        edited = pd.DataFrame([{
+            "耗材 SKU": "墨水｜蓝色",
+            "当前库存": 20,
+            "目标库存": 35,
+            "备注": "首次盘点",
+        }])
+        labels = {
+            "墨水｜蓝色": {
+                "id": "item-1",
+                "current_quantity": 20,
+            }
+        }
+
+        rows, preview = _normalize_initialization(
+            edited, labels, include_cost=False
+        )
+
+        self.assertEqual(rows[0]["quantity"], 15)
+        self.assertEqual(preview.iloc[0]["库存差额"], 15)
+
+    def test_initialization_can_reduce_incorrect_opening_stock(self):
+        edited = pd.DataFrame([{
+            "耗材 SKU": "墨水｜蓝色",
+            "当前库存": 20,
+            "目标库存": 8,
+            "备注": "",
+        }])
+        labels = {
+            "墨水｜蓝色": {
+                "id": "item-1",
+                "current_quantity": 20,
+            }
+        }
+
+        rows, _ = _normalize_initialization(
+            edited, labels, include_cost=False
+        )
+
+        self.assertEqual(rows[0]["quantity"], -12)
 
     def test_filters_keep_matching_active_sku(self):
         items = pd.DataFrame([

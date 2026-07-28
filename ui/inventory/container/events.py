@@ -45,20 +45,38 @@ def render_status_update(supabase, raw_df, container_key):
     container_no = target["container_no"].dropna().astype(str).str.strip()
     label = container_no.iloc[0] if not container_no.empty else container_key
     st.subheader(f"确认到货｜{label}")
-    effective_date = st.date_input(
+    now = datetime.now(NY_TIMEZONE)
+    arrival_date = st.date_input(
         "实际到货日期",
-        value=datetime.now(NY_TIMEZONE).date(),
-        key="container_status_date",
+        value=now.date(),
+        max_value=now.date(),
+        key=f"container_status_date_{container_key}",
     )
-    note = st.text_input("备注", key="container_status_note")
+    arrival_time = st.time_input(
+        "实际到货时间（纽约）",
+        value=now.time().replace(second=0, microsecond=0),
+        key=f"container_status_time_{container_key}",
+    )
+    note = st.text_input(
+        "备注",
+        key=f"container_status_note_{container_key}",
+    )
     if not st.button("确认已到货", width="stretch"):
         return
     try:
+        arrival_at = datetime.combine(
+            arrival_date,
+            arrival_time,
+            tzinfo=NY_TIMEZONE,
+        )
+        if arrival_at > datetime.now(NY_TIMEZONE):
+            st.error("实际到货时间不能晚于当前纽约时间")
+            return
         update_container_status(
             supabase,
             container_key,
             "已到货",
-            effective_date,
+            arrival_at,
             get_current_operator_name(),
             note,
         )
@@ -66,7 +84,16 @@ def render_status_update(supabase, raw_df, container_key):
         st.rerun()
     except Exception as error:
         st.error(f"货柜状态保存失败：{error}")
-        st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
+        if "actual_arrival_at" in str(error):
+            st.info(
+                "请先在 Supabase SQL Editor 运行 "
+                "sql/add_container_actual_arrival_time.sql"
+            )
+        else:
+            st.info(
+                "请先在 Supabase SQL Editor 运行 "
+                "sql/inventory_container_history.sql"
+            )
 
 
 def render_container_history(supabase, raw_df):
@@ -92,6 +119,12 @@ def render_container_history(supabase, raw_df):
         width="stretch",
         column_config={
             "事件日期": st.column_config.DateColumn("事件日期"),
+            "实际到货时间（纽约）": st.column_config.TextColumn(
+                "实际到货时间（纽约）"
+            ),
+            "确认时间（纽约）": st.column_config.TextColumn(
+                "确认时间（纽约）"
+            ),
             "备注": st.column_config.TextColumn("备注", width="large"),
         },
     )

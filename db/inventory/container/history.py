@@ -2,22 +2,40 @@ import pandas as pd
 
 
 def load_container_events(supabase, container_key=None):
-    query = supabase.table("inventory_container_events").select(
+    columns = (
         "container_key,container_no,event_type,effective_date,previous_status,"
-        "new_status,operated_by,note,created_at"
+        "new_status,operated_by,note,actual_arrival_at,created_at"
     )
+    query = supabase.table("inventory_container_events").select(columns)
     if container_key:
         query = query.eq("container_key", container_key)
+    try:
+        response = (
+            query.order("effective_date", desc=True)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return pd.DataFrame(response.data)
+    except Exception as error:
+        if "actual_arrival_at" not in str(error):
+            raise
+    legacy_query = supabase.table("inventory_container_events").select(
+        columns.replace("actual_arrival_at,", "")
+    )
+    if container_key:
+        legacy_query = legacy_query.eq("container_key", container_key)
     response = (
-        query.order("effective_date", desc=True)
+        legacy_query.order("effective_date", desc=True)
         .order("created_at", desc=True)
         .execute()
     )
-    return pd.DataFrame(response.data)
+    result = pd.DataFrame(response.data)
+    result["actual_arrival_at"] = None
+    return result
 
 
 def update_container_status(
-    supabase, container_key, new_status, effective_date, operated_by, note=""
+    supabase, container_key, new_status, arrival_at, operated_by, note=""
 ):
     current = (
         supabase.table("inventory_container_imports")
@@ -31,12 +49,14 @@ def update_container_status(
 
     previous_status = current.data[0].get("status")
     container_no = current.data[0].get("container_no")
-    actual_date = effective_date.isoformat() if new_status == "已到货" else None
+    actual_date = arrival_at.date().isoformat() if new_status == "已到货" else None
+    actual_time = arrival_at.isoformat() if new_status == "已到货" else None
     (
         supabase.table("inventory_container_imports")
         .update({
             "status": new_status,
             "actual_arrival_date": actual_date,
+            "actual_arrival_at": actual_time,
         })
         .eq("container_key", container_key)
         .execute()
@@ -46,7 +66,8 @@ def update_container_status(
         "container_key": container_key,
         "container_no": container_no,
         "event_type": event_type,
-        "effective_date": effective_date.isoformat(),
+        "effective_date": arrival_at.date().isoformat(),
+        "actual_arrival_at": actual_time,
         "previous_status": previous_status,
         "new_status": new_status,
         "operated_by": operated_by,
@@ -57,8 +78,8 @@ def update_container_status(
 
 def build_container_history_display(df):
     columns = [
-        "事件日期", "记录时间（纽约）", "货柜号", "事件", "原状态",
-        "新状态", "操作人", "备注",
+        "事件日期", "实际到货时间（纽约）", "确认时间（纽约）",
+        "货柜号", "事件", "原状态", "新状态", "操作人", "备注",
     ]
     if df.empty:
         return pd.DataFrame(columns=columns)
@@ -70,8 +91,16 @@ def build_container_history_display(df):
     display["created_at"] = created.dt.tz_convert("America/New_York").dt.strftime(
         "%Y-%m-%d %H:%M:%S"
     )
+    arrival = pd.to_datetime(
+        display["actual_arrival_at"], errors="coerce", utc=True
+    )
+    display["actual_arrival_at"] = arrival.dt.tz_convert(
+        "America/New_York"
+    ).dt.strftime("%Y-%m-%d %H:%M:%S")
     display = display.rename(columns={
-        "effective_date": "事件日期", "created_at": "记录时间（纽约）",
+        "effective_date": "事件日期",
+        "actual_arrival_at": "实际到货时间（纽约）",
+        "created_at": "确认时间（纽约）",
         "container_no": "货柜号", "event_type": "事件",
         "previous_status": "原状态", "new_status": "新状态",
         "operated_by": "操作人", "note": "备注",

@@ -9,9 +9,10 @@ from utils.auth import get_current_operator_name
 
 
 def render_movement_entry(
-    supabase, department_code, items_df, can_edit, show_cost
+    supabase, department_code, items_df, can_edit, show_cost,
+    movement_options=None, title="每日耗材入库 / 领用",
 ):
-    st.subheader("每日耗材入库 / 领用")
+    st.subheader(title)
     st.caption("领用代表部门内部消耗，不会进入衣服的仓库每日出货记录。")
     if not can_edit:
         st.info("当前账号只有查看权限，不能登记耗材出入库。")
@@ -21,11 +22,23 @@ def render_movement_entry(
         st.warning("请先在“SKU 管理”中建立并启用耗材 SKU。")
         return
 
+    movement_options = movement_options or ["入库", "领用"]
     operation_col, date_col = st.columns(2)
-    movement_label = operation_col.segmented_control(
-        "操作类型", ["入库", "领用"], default="领用",
-        key="consumable_movement_type",
+    movement_label = (
+        movement_options[0]
+        if len(movement_options) == 1
+        else operation_col.segmented_control(
+            "操作类型", movement_options, default=movement_options[-1],
+            key="consumable_movement_type",
+        )
     )
+    if len(movement_options) == 1:
+        operation_col.text_input(
+            "操作类型",
+            value=movement_label,
+            disabled=True,
+            key=f"consumable_fixed_type_{movement_label}",
+        )
     movement_date = date_col.date_input(
         "出入库日期",
         value=datetime.now(ZoneInfo("America/New_York")).date(),

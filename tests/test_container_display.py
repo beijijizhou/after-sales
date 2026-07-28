@@ -12,6 +12,7 @@ def container_row(department, material, item, quantity):
         "shipped_date": date(2026, 6, 5),
         "expected_arrival_date": date(2026, 7, 20),
         "actual_arrival_date": date(2026, 7, 28),
+        "actual_arrival_at": "2026-07-28T15:30:00-04:00",
         "container_no": "9柜",
         "department": department,
         "category": "牌类" if department == "UV" else "黑白短袖",
@@ -36,6 +37,10 @@ class ContainerDisplayTests(unittest.TestCase):
 
         self.assertEqual(display["型号"].tolist(), ["1040", "YUAN"])
         self.assertEqual(display["数量"].tolist(), [20_000, 20_100])
+        self.assertEqual(
+            display.loc[0, "实际到货时间（纽约）"],
+            "2026-07-28 15:30:00",
+        )
         self.assertNotIn("S", display.columns)
         self.assertNotIn("5XL", display.columns)
 

@@ -22,10 +22,12 @@ from ui.inventory.container.tables import (
     render_container_detail,
     render_container_records,
 )
-from ui.inventory.container.week import (
-    render_week_arrival_summary,
-    render_week_selector,
+from ui.inventory.container.today import (
+    container_tab_names,
+    load_today_arrivals,
+    render_today_arrivals,
 )
+from ui.inventory.container.week import render_week_selector
 from utils.auth import has_permission
 
 
@@ -37,7 +39,10 @@ def render_in_transit_table(
     brands, materials, colors, sizes,
 ):
     st.subheader("在途货柜")
-    st.caption("仅显示尚未到货或已经延迟的货柜")
+    st.caption(
+        "仅显示尚未到货或已经延迟的货柜；即使未到预计日期，"
+        "也可以提前手动确认实际到货。"
+    )
     try:
         raw_df = load_inventory_containers(
             supabase, start_date, end_date, department, category,
@@ -67,12 +72,6 @@ def render_in_transit_table(
         return pd.DataFrame()
     display_df = build_container_display(
         raw_df, include_cost=has_permission("can_view_cost")
-    )
-    render_week_arrival_summary(
-        raw_df,
-        "expected_arrival_date",
-        start_date,
-        roll_overdue_to=today if start_date <= today <= end_date else None,
     )
     if display_df.empty:
         st.info("当前没有符合条件的在途货柜")
@@ -182,20 +181,35 @@ def render_inventory_container_page(supabase):
     )
     department, category, brands, materials, colors, sizes = filters
     today = datetime.now(NY_TIMEZONE).date()
-    transit_tab, create_tab, arrival_tab = st.tabs([
-        "在途货柜", "新增货柜", "到货历史",
-    ])
-    with transit_tab:
-        week_start, week_end = render_week_selector(today)
+    try:
+        today_arrivals_df = load_today_arrivals(
+            supabase, today, *filters
+        )
+        today_arrivals_error = None
+    except Exception as error:
+        today_arrivals_df = pd.DataFrame()
+        today_arrivals_error = error
+    tab_names = container_tab_names(not today_arrivals_df.empty)
+    tabs = dict(zip(tab_names, st.tabs(tab_names)))
+    with tabs["在途货柜"]:
+        week_start, week_end = render_week_selector(
+            today,
+            show_weekdays=False,
+        )
         render_in_transit_table(
             supabase, week_start, week_end, *filters
         )
-    with create_tab:
+    with tabs["今日到货"]:
+        render_today_arrivals(
+            today_arrivals_df,
+            load_error=today_arrivals_error,
+        )
+    with tabs["新增货柜"]:
         if has_permission("can_edit_container"):
             render_container_form(supabase, department, category)
         else:
             st.info("当前账号只能查看货柜安排，不能新增或修改")
-    with arrival_tab:
+    with tabs["到货历史"]:
         arrival_start, arrival_end = _render_arrival_date_range(today)
         arrived_df = render_arrival_history_table(
             supabase, arrival_start, arrival_end, *filters

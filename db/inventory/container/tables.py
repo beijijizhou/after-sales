@@ -147,6 +147,9 @@ def build_container_display(df, include_cost=False):
     display = df.copy()
     for column in ["shipped_date", "expected_arrival_date", "actual_arrival_date"]:
         display[column] = pd.to_datetime(display[column], errors="coerce").dt.date
+    display["actual_arrival_at"] = _format_ny_datetime(
+        display.get("actual_arrival_at")
+    )
     missing_arrival = date(1900, 1, 1)
     display["actual_arrival_date"] = display["actual_arrival_date"].fillna(
         missing_arrival
@@ -155,7 +158,8 @@ def build_container_display(df, include_cost=False):
         display[column] = display[column].fillna("")
     display["department"] = display["department"].fillna(DEFAULT_DEPARTMENT)
     index = [
-        "container_key", "shipped_date", "expected_arrival_date", "actual_arrival_date",
+        "container_key", "shipped_date", "expected_arrival_date",
+        "actual_arrival_date", "actual_arrival_at",
         "container_no", "department",
         "category", "brand", "material", "color",
         *(["unit_cost"] if include_cost else []), "status", "note",
@@ -180,6 +184,7 @@ def build_container_display(df, include_cost=False):
     pivot = pivot.rename(columns={
         "shipped_date": "发货日期", "expected_arrival_date": "预计到货日期",
         "actual_arrival_date": "实际到货日期", "container_key": "货柜记录ID",
+        "actual_arrival_at": "实际到货时间（纽约）",
         "container_no": "货柜号", "department": "部门", "category": "品类",
         "brand": "品牌", "material": "材质", "color": "颜色",
         "unit_cost": "成本", "status": "状态", "note": "备注",
@@ -195,7 +200,7 @@ def container_display_columns(include_cost, item_columns=None):
     item_columns = item_columns or SIZE_COLUMNS
     return [
         "货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期",
-        "实际到货日期", "货柜号",
+        "实际到货日期", "实际到货时间（纽约）", "货柜号",
         "部门", "品类", "品牌", "材质", "颜色", *cost,
         *item_columns, "总件数", "状态", "备注",
     ]
@@ -204,7 +209,8 @@ def container_display_columns(include_cost, item_columns=None):
 def get_container_item_columns(display_df):
     metadata = {
         "货柜记录ID", "批次标识", "发货日期", "运输天数",
-        "预计到货日期", "实际到货日期", "货柜号", "部门", "品类",
+        "预计到货日期", "实际到货日期", "实际到货时间（纽约）",
+        "货柜号", "部门", "品类",
         "品牌", "材质", "颜色", "成本", "总件数", "状态", "备注",
         "型号", "数量",
     }
@@ -222,3 +228,12 @@ def _ordered_item_columns(values):
     preferred = [*SIZE_COLUMNS, *UV_MODEL_ORDER]
     ordered = [value for value in preferred if value in available]
     return [*ordered, *sorted(available - set(ordered))] or SIZE_COLUMNS
+
+
+def _format_ny_datetime(values):
+    if values is None:
+        return ""
+    parsed = pd.to_datetime(values, errors="coerce", utc=True)
+    return parsed.dt.tz_convert("America/New_York").dt.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    ).fillna("")

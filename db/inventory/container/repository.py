@@ -10,23 +10,26 @@ def load_inventory_containers(
 ):
     columns = (
         "container_key,shipped_date,expected_arrival_date,actual_arrival_date,"
+        "actual_arrival_at,"
         "container_no,department,category,"
         "brand,material,color,size,quantity,unit_cost,status,note,created_at"
     )
-    query = supabase.table("inventory_container_imports").select(columns)
-    query = apply_container_filters(
-        query, start_date, end_date, department, category, statuses, date_field,
-        brands, materials, colors, sizes,
-    )
     try:
-        response = (
-            query.order("expected_arrival_date", desc=False)
-            .order("created_at", desc=False)
-            .execute()
+        return _execute_container_query(
+            supabase, columns, start_date, end_date, department, category,
+            statuses, date_field, brands, materials, colors, sizes,
         )
-        return pd.DataFrame(response.data)
     except Exception as error:
         message = str(error)
+        if "actual_arrival_at" in message:
+            compatible_columns = columns.replace("actual_arrival_at,", "")
+            result = _execute_container_query(
+                supabase, compatible_columns, start_date, end_date,
+                department, category, statuses, date_field, brands,
+                materials, colors, sizes,
+            )
+            result["actual_arrival_at"] = None
+            return result
         if "container_key" not in message and "actual_arrival_date" not in message:
             raise
 
@@ -34,26 +37,35 @@ def load_inventory_containers(
         "id,shipped_date,expected_arrival_date,container_no,department,category,"
         "brand,material,color,size,quantity,unit_cost,status,note,created_at"
     )
-    legacy_query = supabase.table("inventory_container_imports").select(
-        legacy_columns
+    result = _execute_container_query(
+        supabase, legacy_columns, start_date, end_date, department, category,
+        statuses, date_field, brands, materials, colors, sizes,
     )
-    legacy_query = apply_container_filters(
-        legacy_query, start_date, end_date, department, category, statuses,
-        date_field, brands, materials, colors, sizes,
-    )
-    response = (
-        legacy_query.order("expected_arrival_date", desc=False)
-        .order("created_at", desc=False)
-        .execute()
-    )
-    result = pd.DataFrame(response.data)
     if result.empty:
         return result
     normalized_no = result["container_no"].fillna("").astype(str).str.upper()
     normalized_no = normalized_no.str.replace(r"\s+", "", regex=True)
     result["container_key"] = normalized_no.where(normalized_no != "", result["id"])
     result["actual_arrival_date"] = None
+    result["actual_arrival_at"] = None
     return result.drop(columns=["id"])
+
+
+def _execute_container_query(
+    supabase, columns, start_date, end_date, department, category,
+    statuses, date_field, brands, materials, colors, sizes,
+):
+    query = supabase.table("inventory_container_imports").select(columns)
+    query = apply_container_filters(
+        query, start_date, end_date, department, category, statuses,
+        date_field, brands, materials, colors, sizes,
+    )
+    response = (
+        query.order("expected_arrival_date", desc=False)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return pd.DataFrame(response.data)
 
 
 def apply_container_filters(

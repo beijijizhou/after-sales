@@ -12,7 +12,7 @@ def week_bounds(anchor_date):
     return start, start + timedelta(days=6)
 
 
-def render_week_selector(today):
+def render_week_selector(today, show_weekdays=True):
     current_start, _ = week_bounds(today)
     options = [
         current_start + timedelta(weeks=offset)
@@ -24,18 +24,24 @@ def render_week_selector(today):
         "查看周",
         options,
         index=26,
-        format_func=lambda value: week_label(value, current_start),
+        format_func=lambda value: week_label(
+            value, current_start, show_weekdays
+        ),
         key="container_week_anchor",
     )
-    st.caption(
-        f"{'本周' if start == current_start else '所选周'}："
+    range_label = (
         f"{start:%Y-%m-%d}（周一）至 "
         f"{start + timedelta(days=6):%Y-%m-%d}（周日）"
+        if show_weekdays
+        else f"{start:%Y-%m-%d} 至 {start + timedelta(days=6):%Y-%m-%d}"
+    )
+    st.caption(
+        f"{'本周' if start == current_start else '所选周'}：{range_label}"
     )
     return start, start + timedelta(days=6)
 
 
-def week_label(start, current_start):
+def week_label(start, current_start, show_weekdays=True):
     end = start + timedelta(days=6)
     calendar = start.isocalendar()
     prefix = (
@@ -43,10 +49,12 @@ def week_label(start, current_start):
         if start == current_start
         else f"{calendar.year}年第{calendar.week}周"
     )
-    return (
-        f"{prefix}｜{start:%m/%d}（周一）- "
-        f"{end:%m/%d}（周日）"
-    )
+    if show_weekdays:
+        return (
+            f"{prefix}｜{start:%m/%d}（周一）- "
+            f"{end:%m/%d}（周日）"
+        )
+    return f"{prefix}｜{start:%m/%d} - {end:%m/%d}"
 
 
 def render_week_arrival_summary(

@@ -8,7 +8,9 @@ from db.consumables import (
     load_departments,
 )
 from ui.consumables.operations import (
+    render_daily_issue_table,
     render_history,
+    render_inventory_initialization,
     render_movement_entry,
     render_reversals,
 )
@@ -62,25 +64,40 @@ def render_consumables_page(supabase):
     can_manage_sku = has_permission("can_manage_consumable_sku")
     latest_costs = build_latest_costs(movements)
 
-    tabs = st.tabs([
-        "当前库存", "每日入库 / 领用", "出入库历史", "撤销", "SKU 管理",
+    stock_tab, issue_tab, operation_tab, history_tab, sku_tab = st.tabs([
+        "当前库存", "每日扣减", "库存操作", "历史记录", "SKU 管理",
     ])
-    with tabs[0]:
+    with stock_tab:
         render_stock(filtered_items, latest_costs, show_cost)
-    with tabs[1]:
-        render_movement_entry(
-            supabase, department_code, filtered_items, can_edit, show_cost
+    with issue_tab:
+        render_daily_issue_table(
+            supabase, department_code, filtered_items, can_edit
         )
-    with tabs[2]:
-        render_history(
-            filtered_batches, filtered_movements, items, show_cost
-        )
-    with tabs[3]:
-        render_reversals(
-            supabase, filtered_batches, filtered_movements, items,
-            can_edit, show_cost,
-        )
-    with tabs[4]:
+    with operation_tab:
+        inbound_tab, initialization_tab = st.tabs([
+            "耗材入库", "库存初始化",
+        ])
+        with inbound_tab:
+            render_movement_entry(
+                supabase, department_code, filtered_items, can_edit,
+                show_cost, movement_options=["入库"], title="耗材入库",
+            )
+        with initialization_tab:
+            render_inventory_initialization(
+                supabase, department_code, filtered_items, can_edit, show_cost
+            )
+    with history_tab:
+        movement_tab, reversal_tab = st.tabs(["出入库历史", "撤销"])
+        with movement_tab:
+            render_history(
+                filtered_batches, filtered_movements, items, show_cost
+            )
+        with reversal_tab:
+            render_reversals(
+                supabase, filtered_batches, filtered_movements, items,
+                can_edit, show_cost,
+            )
+    with sku_tab:
         render_sku_management(
             supabase, department_id, filtered_items, can_manage_sku
         )

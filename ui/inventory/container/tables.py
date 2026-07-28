@@ -40,6 +40,9 @@ def render_container_dataframe(display_df):
         "运输天数": st.column_config.NumberColumn("运输天数", format="%d 天"),
         "预计到货日期": st.column_config.DateColumn("预计到货日期"),
         "实际到货日期": st.column_config.DateColumn("实际到货日期"),
+        "实际到货时间（纽约）": st.column_config.TextColumn(
+            "实际到货时间（纽约）"
+        ),
         "型号": st.column_config.TextColumn("型号"),
         "数量": st.column_config.NumberColumn("数量", format="%d"),
         **{
@@ -68,7 +71,7 @@ def render_container_detail(display_df, container_key):
     st.subheader(f"{container_no} 明细")
     hidden = [
         "货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期",
-        "实际到货日期", "货柜号", "状态",
+        "实际到货日期", "实际到货时间（纽约）", "货柜号", "状态",
     ]
     detail_df = detail_df.drop(columns=hidden)
     item_columns = get_container_item_columns(display_df)

@@ -4,6 +4,7 @@ create table if not exists public.inventory_container_imports (
     shipped_date date not null,
     expected_arrival_date date not null,
     actual_arrival_date date,
+    actual_arrival_at timestamptz,
     container_no text,
     department text not null default 'DTF',
     category text,
@@ -26,6 +27,7 @@ alter table public.inventory_container_imports
 add column if not exists container_key text,
 add column if not exists shipped_date date,
 add column if not exists actual_arrival_date date,
+add column if not exists actual_arrival_at timestamptz,
 add column if not exists department text,
 add column if not exists brand text,
 add column if not exists material text,
@@ -95,6 +97,7 @@ create table if not exists public.inventory_container_events (
     effective_date date not null,
     previous_status text,
     new_status text,
+    actual_arrival_at timestamptz,
     operated_by text not null default 'system',
     note text,
     created_at timestamptz not null default now()
