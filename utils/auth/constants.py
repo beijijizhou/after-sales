@@ -1,5 +1,6 @@
 ROLE_VISITOR = "visitor"
 ROLE_SUPERVISOR = "supervisor"
+ROLE_PRODUCER = "producer"
 ROLE_WAREHOUSE = "warehouse"
 ROLE_AFTER_SALES = "after_sales"
 ROLE_FINANCE = "finance"
@@ -8,6 +9,7 @@ ROLE_ADMIN = "admin"
 ROLE_LABELS = {
     ROLE_VISITOR: "游客",
     ROLE_SUPERVISOR: "主管",
+    ROLE_PRODUCER: "生产人员",
     ROLE_WAREHOUSE: "仓库",
     ROLE_AFTER_SALES: "售后",
     ROLE_FINANCE: "财务",
@@ -42,6 +44,9 @@ CONSUMABLE_MANAGE = {
     "can_edit_consumables",
     "can_manage_consumable_sku",
 }
+CONSUMABLE_REPORT = {
+    "can_report_consumables",
+}
 AFTER_SALES_MANAGE = {
     "can_input_after_sales",
     "can_mark_barcode_operations",
@@ -55,6 +60,9 @@ COST_MANAGE = {
 FINANCE_REPORTS = {
     "can_view_finance_reports",
 }
+FINANCE_DASHBOARD = {
+    "can_view_finance_dashboard",
+}
 
 ALL_PERMISSIONS = set().union(
     PUBLIC_ACCESS,
@@ -63,10 +71,12 @@ ALL_PERMISSIONS = set().union(
     INVENTORY_MANAGE,
     CONSUMABLE_VIEW,
     CONSUMABLE_MANAGE,
+    CONSUMABLE_REPORT,
     AFTER_SALES_MANAGE,
     COST_VIEW,
     COST_MANAGE,
     FINANCE_REPORTS,
+    FINANCE_DASHBOARD,
 )
 
 ROLE_PERMISSIONS = {
@@ -74,6 +84,10 @@ ROLE_PERMISSIONS = {
     ROLE_SUPERVISOR: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW | CONSUMABLE_VIEW
         | {"can_mark_barcode_operations"}
+    ),
+    ROLE_PRODUCER: (
+        PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
+        | CONSUMABLE_VIEW | CONSUMABLE_REPORT
     ),
     ROLE_WAREHOUSE: (
         INVENTORY_VIEW | INVENTORY_MANAGE | CONSUMABLE_VIEW
@@ -100,6 +114,7 @@ PAGE_ACCESS = {
     "inventory": "can_view_inventory",
     "consumables": "can_view_consumables",
     "container": "can_view_container",
+    "finance": "can_view_finance_dashboard",
     "operation_tracking": "can_view_operation_tracking",
     "image_stretch": "can_use_image_stretch",
 }
@@ -117,6 +132,7 @@ NAV_ITEMS = [
     ("inventory", "库存", "pages/4_库存.py"),
     ("consumables", "耗材库存", "pages/9_耗材库存.py"),
     ("container", "货柜安排", "pages/5_货柜安排.py"),
+    ("finance", "财务", "pages/10_财务.py"),
     ("image_stretch", "手机壳图片处理", "pages/8_图片拉伸.py"),
 ]
 

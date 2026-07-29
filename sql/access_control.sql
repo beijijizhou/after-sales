@@ -15,7 +15,7 @@ alter table public.users
 add constraint user_role_check
 check (
     role in (
-        'visitor', 'supervisor', 'warehouse',
+        'visitor', 'supervisor', 'producer', 'warehouse',
         'after_sales', 'finance', 'admin'
     )
 );

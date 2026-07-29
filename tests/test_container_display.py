@@ -4,6 +4,7 @@ from datetime import date
 import pandas as pd
 
 from db.inventory.container.tables import build_container_display
+from ui.inventory.container.tables import calculate_container_totals
 
 
 def container_row(department, material, item, quantity):
@@ -53,6 +54,24 @@ class ContainerDisplayTests(unittest.TestCase):
 
         self.assertEqual(display.loc[0, "S"], 72)
         self.assertNotIn("型号", display.columns)
+
+    def test_container_totals_include_every_cost_group(self):
+        source = pd.DataFrame([
+            {
+                **container_row("DTF", "160g", "L", 19_008),
+                "unit_cost": 1.38,
+            },
+            {
+                **container_row("DTF", "160g", "4XL", 3_500),
+                "unit_cost": 1.88,
+            },
+        ])
+        display = build_container_display(source, include_cost=True)
+
+        quantity, cost = calculate_container_totals(display)
+
+        self.assertEqual(quantity, 22_508)
+        self.assertAlmostEqual(cost, 32_811.04)
 
 
 if __name__ == "__main__":

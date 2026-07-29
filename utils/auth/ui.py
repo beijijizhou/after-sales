@@ -1,6 +1,8 @@
+from importlib import reload
+
 import streamlit as st
 
-from utils.auth.constants import NAV_ITEMS, PAGE_ACCESS, PUBLIC_PERMISSIONS
+import utils.auth.constants as auth_constants
 from utils.auth.session import (
     clear_persistent_login,
     get_current_user,
@@ -80,6 +82,7 @@ def render_user_badge():
 
 
 def render_navigation():
+    constants = reload(auth_constants)
     st.markdown(
         """
         <style>
@@ -92,8 +95,8 @@ def render_navigation():
     )
 
     with st.sidebar:
-        for page_key, label, path in NAV_ITEMS:
-            permission = PAGE_ACCESS.get(page_key)
+        for page_key, label, path in constants.NAV_ITEMS:
+            permission = constants.PAGE_ACCESS.get(page_key)
             if permission and has_permission(permission):
                 st.page_link(path, label=label)
 
@@ -108,9 +111,13 @@ def require_login():
 
 
 def require_page_access(page_key):
+    constants = reload(auth_constants)
     render_navigation()
-    required_permission = PAGE_ACCESS.get(page_key)
-    if required_permission not in PUBLIC_PERMISSIONS and not get_current_user():
+    required_permission = constants.PAGE_ACCESS.get(page_key)
+    if (
+        required_permission not in constants.PUBLIC_PERMISSIONS
+        and not get_current_user()
+    ):
         render_login()
     if required_permission and not has_permission(required_permission):
         st.error("当前账号没有权限查看这个页面")

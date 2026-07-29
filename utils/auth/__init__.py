@@ -7,6 +7,7 @@ from utils.auth.constants import (
     ROLE_AFTER_SALES,
     ROLE_FINANCE,
     ROLE_LABELS,
+    ROLE_PRODUCER,
     ROLE_SUPERVISOR,
     ROLE_VISITOR,
     ROLE_WAREHOUSE,

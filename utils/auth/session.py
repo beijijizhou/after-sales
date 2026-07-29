@@ -72,12 +72,13 @@ def load_user(username):
 
 def set_current_user(user):
     role = user.get("role") or ROLE_VISITOR
+    username = str(user["username"]).strip()
     permissions = ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS[ROLE_VISITOR])
     display_name = str(
         user.get("display_name") or user["username"]
     ).strip()
     st.session_state["current_user"] = {
-        "username": user["username"],
+        "username": username,
         "display_name": display_name,
         "role": role,
         "role_label": ROLE_LABELS.get(role, role),

@@ -113,6 +113,18 @@ class ConsumableInventoryTests(unittest.TestCase):
             "can_manage_consumable_sku", ROLE_PERMISSIONS["after_sales"]
         )
 
+    def test_producer_can_report_consumables_without_warehouse_access(self):
+        permissions = ROLE_PERMISSIONS["producer"]
+
+        self.assertIn("can_report_consumables", permissions)
+        self.assertIn("can_view_consumables", permissions)
+        self.assertIn("can_view_production_data", permissions)
+        self.assertNotIn("can_view_cost", permissions)
+        self.assertNotIn("can_edit_consumables", permissions)
+        self.assertNotIn("can_edit_inventory", permissions)
+        self.assertNotIn("can_manage_sku", permissions)
+        self.assertNotIn("can_edit_container", permissions)
+
 
 if __name__ == "__main__":
     unittest.main()

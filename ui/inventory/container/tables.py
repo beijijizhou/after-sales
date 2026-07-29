@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
@@ -69,6 +70,13 @@ def render_container_detail(display_df, container_key):
         return
     container_no = detail_df["货柜号"].iloc[0] or detail_df["批次标识"].iloc[0]
     st.subheader(f"{container_no} 明细")
+    total_quantity, total_cost = calculate_container_totals(detail_df)
+    if total_cost is None:
+        st.metric("总数量", f"{total_quantity:,} 件")
+    else:
+        quantity_col, cost_col = st.columns(2)
+        quantity_col.metric("总数量", f"{total_quantity:,} 件")
+        cost_col.metric("总成本", f"${total_cost:,.2f}")
     hidden = [
         "货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期",
         "实际到货日期", "实际到货时间（纽约）", "货柜号", "状态",
@@ -104,6 +112,21 @@ def render_container_detail(display_df, container_key):
     )
     packaging_df = build_container_packaging_summary(display_df, container_key)
     render_packaging_check(packaging_df)
+
+
+def calculate_container_totals(detail_df):
+    if detail_df.empty:
+        return 0, None
+    quantities = pd.to_numeric(
+        detail_df["总件数"], errors="coerce"
+    ).fillna(0)
+    total_quantity = int(quantities.sum())
+    if "成本" not in detail_df.columns:
+        return total_quantity, None
+    unit_costs = pd.to_numeric(
+        detail_df["成本"], errors="coerce"
+    ).fillna(0)
+    return total_quantity, float((quantities * unit_costs).sum())
 
 
 def render_packaging_check(packaging_df, title="箱装核对"):

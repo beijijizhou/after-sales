@@ -1,4 +1,4 @@
--- Create or update the supervisor login account.
+-- Create or update the producer login account.
 -- Username: damo
 -- Password: damo
 
@@ -14,7 +14,7 @@ set
     department = coalesce(nullif(department, ''), '主管'),
     employee_id = coalesce(nullif(employee_id, ''), 'damo_id'),
     password = 'damo',
-    role = 'supervisor',
+    role = 'producer',
     is_active = true
 where user_name = 'damo';
 
@@ -33,7 +33,7 @@ select
     'damo_id',
     '主管',
     'damo',
-    'supervisor',
+    'producer',
     true
 where not exists (
     select 1

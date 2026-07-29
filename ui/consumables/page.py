@@ -61,6 +61,7 @@ def render_consumables_page(supabase):
     )
     show_cost = is_admin()
     can_edit = has_permission("can_edit_consumables")
+    can_report = can_edit or has_permission("can_report_consumables")
     can_manage_sku = has_permission("can_manage_consumable_sku")
     latest_costs = build_latest_costs(movements)
 
@@ -71,7 +72,7 @@ def render_consumables_page(supabase):
         render_stock(filtered_items, latest_costs, show_cost)
     with issue_tab:
         render_daily_issue_table(
-            supabase, department_code, filtered_items, can_edit
+            supabase, department_code, filtered_items, can_report
         )
     with operation_tab:
         inbound_tab, initialization_tab = st.tabs([
