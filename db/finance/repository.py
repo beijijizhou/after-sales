@@ -10,8 +10,8 @@ def load_inventory_finance_month(supabase, start_date, end_date):
         lambda start, end: (
             supabase.table("inventory_cost_lots")
             .select(
-                "id,received_quantity,unit_cost,source_type,movement_date,"
-                "reversed_at,"
+                "id,inbound_movement_id,received_quantity,unit_cost,"
+                "source_type,movement_date,reversed_at,"
                 "inventory_items!"
                 "inventory_cost_lots_inventory_item_id_fkey!inner"
                 f"({ITEM_FIELDS})"
@@ -94,6 +94,46 @@ def load_container_finance_month(supabase, start_date, end_date):
     return result
 
 
+def update_inbound_lot_cost(supabase, cost_lot_id, unit_cost):
+    unit_cost = float(unit_cost)
+    if unit_cost <= 0:
+        raise ValueError("批次成本必须大于 0")
+
+    response = (
+        supabase.table("inventory_cost_lots")
+        .select("id,inbound_movement_id,reversed_at")
+        .eq("id", cost_lot_id)
+        .single()
+        .execute()
+    )
+    lot = response.data
+    if not lot or lot.get("reversed_at"):
+        raise ValueError("找不到有效的入库成本批次")
+
+    (
+        supabase.table("inventory_cost_lots")
+        .update({"unit_cost": unit_cost})
+        .eq("id", cost_lot_id)
+        .execute()
+    )
+    (
+        supabase.table("inventory_cost_allocations")
+        .update({"unit_cost": unit_cost})
+        .eq("cost_lot_id", cost_lot_id)
+        .is_("reversed_at", "null")
+        .execute()
+    )
+    movement_id = lot.get("inbound_movement_id")
+    if movement_id:
+        (
+            supabase.table("inventory_movements")
+            .update({"unit_cost": unit_cost, "成本": unit_cost})
+            .eq("id", movement_id)
+            .execute()
+        )
+    return True
+
+
 def _fetch_pages(fetch_page):
     rows = []
     offset = 0
@@ -109,9 +149,9 @@ def _normalize_cost_rows(
     rows, relation, quantity_column, direction, date_column
 ):
     columns = [
-        "date", "direction", "department", "category", "brand", "material",
-        "color", "size", "quantity", "unit_cost", "amount", "source_type",
-        "missing_cost",
+        "record_id", "movement_id", "date", "direction", "department",
+        "category", "brand", "material", "color", "size", "quantity",
+        "unit_cost", "amount", "source_type", "missing_cost",
     ]
     if not rows:
         return pd.DataFrame(columns=columns)
@@ -119,6 +159,8 @@ def _normalize_cost_rows(
     normalized = pd.json_normalize(rows, sep=".")
     relation_prefix = f"{relation}."
     result = pd.DataFrame({
+        "record_id": normalized["id"],
+        "movement_id": normalized.get("inbound_movement_id"),
         "date": normalized[date_column],
         "direction": direction,
         "department": normalized[f"{relation_prefix}department"],

@@ -1,6 +1,7 @@
 from utils.auth.constants import (
     AUTH_QUERY_KEY,
     NAV_ITEMS,
+    NAV_SECTIONS,
     PAGE_ACCESS,
     PUBLIC_PERMISSIONS,
     ROLE_ADMIN,

@@ -121,19 +121,29 @@ PAGE_ACCESS = {
 
 PUBLIC_PERMISSIONS = PUBLIC_ACCESS
 
+NAV_SECTIONS = [
+    (None, [
+        ("operation_tracking", "问题件追踪", "app.py"),
+        ("app", "售后查询", "pages/6_售后查询.py"),
+        ("register", "注册", "pages/0_注册.py"),
+        ("qa", "质检", "pages/1_质检.py"),
+        ("hotstamp", "烫印", "pages/2_烫印.py"),
+        ("platform", "平台", "pages/3_平台.py"),
+        ("production_data", "生产数据", "pages/7_生产数据.py"),
+    ]),
+    ("库存", [
+        ("inventory", "生产库存", "pages/4_库存.py"),
+        ("consumables", "耗材库存", "pages/9_耗材库存.py"),
+        ("container", "货柜安排", "pages/5_货柜安排.py"),
+    ]),
+    (None, [
+        ("finance", "财务", "pages/10_财务.py"),
+        ("image_stretch", "手机壳图片处理", "pages/8_图片拉伸.py"),
+    ]),
+]
+
 NAV_ITEMS = [
-    ("operation_tracking", "问题件追踪", "app.py"),
-    ("app", "售后查询", "pages/6_售后查询.py"),
-    ("register", "注册", "pages/0_注册.py"),
-    ("qa", "质检", "pages/1_质检.py"),
-    ("hotstamp", "烫印", "pages/2_烫印.py"),
-    ("platform", "平台", "pages/3_平台.py"),
-    ("production_data", "生产数据", "pages/7_生产数据.py"),
-    ("inventory", "库存", "pages/4_库存.py"),
-    ("consumables", "耗材库存", "pages/9_耗材库存.py"),
-    ("container", "货柜安排", "pages/5_货柜安排.py"),
-    ("finance", "财务", "pages/10_财务.py"),
-    ("image_stretch", "手机壳图片处理", "pages/8_图片拉伸.py"),
+    item for _, section_items in NAV_SECTIONS for item in section_items
 ]
 
 AUTH_QUERY_KEY = "auth"

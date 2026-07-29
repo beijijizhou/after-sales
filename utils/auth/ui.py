@@ -95,9 +95,23 @@ def render_navigation():
     )
 
     with st.sidebar:
-        for page_key, label, path in constants.NAV_ITEMS:
-            permission = constants.PAGE_ACCESS.get(page_key)
-            if permission and has_permission(permission):
+        for section_title, section_items in constants.NAV_SECTIONS:
+            visible_items = [
+                (page_key, label, path)
+                for page_key, label, path in section_items
+                if (
+                    constants.PAGE_ACCESS.get(page_key)
+                    and has_permission(constants.PAGE_ACCESS[page_key])
+                )
+            ]
+            if not visible_items:
+                continue
+            if section_title:
+                with st.expander(section_title, expanded=True):
+                    for _, label, path in visible_items:
+                        st.page_link(path, label=label)
+                continue
+            for _, label, path in visible_items:
                 st.page_link(path, label=label)
 
     render_user_badge()

@@ -9,7 +9,8 @@ from db.finance.summary import (
     build_finance_overview,
 )
 from db.finance.repository import _normalize_cost_rows
-from utils.auth.constants import ROLE_PERMISSIONS
+from ui.finance.cost_editor import find_cost_changes
+from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
 
 
 class FinanceSummaryTests(unittest.TestCase):
@@ -75,6 +76,8 @@ class FinanceSummaryTests(unittest.TestCase):
 
     def test_inbound_date_comes_from_cost_lot(self):
         rows = [{
+            "id": "lot-a",
+            "inbound_movement_id": "movement-a",
             "received_quantity": 10,
             "unit_cost": 1.3,
             "source_type": "bulk",
@@ -107,6 +110,36 @@ class FinanceSummaryTests(unittest.TestCase):
                 self.assertNotIn(
                     "can_view_finance_dashboard", permissions
                 )
+
+    def test_cost_editor_only_returns_changed_positive_costs(self):
+        original = pd.DataFrame([
+            {"批次ID": "a", "单位成本": None},
+            {"批次ID": "b", "单位成本": 1.3},
+            {"批次ID": "c", "单位成本": 2.0},
+        ])
+        edited = pd.DataFrame([
+            {"批次ID": "a", "单位成本": 2.12},
+            {"批次ID": "b", "单位成本": 1.3},
+            {"批次ID": "c", "单位成本": 0},
+        ])
+        self.assertEqual(find_cost_changes(original, edited), [("a", 2.12)])
+
+    def test_inventory_navigation_is_grouped(self):
+        inventory_section = next(
+            items for title, items in NAV_SECTIONS if title == "库存"
+        )
+        self.assertEqual(
+            [label for _, label, _ in inventory_section],
+            ["生产库存", "耗材库存", "货柜安排"],
+        )
+        independent = [
+            label
+            for title, items in NAV_SECTIONS
+            if title is None
+            for _, label, _ in items
+        ]
+        self.assertIn("财务", independent)
+        self.assertIn("手机壳图片处理", independent)
 
 
 if __name__ == "__main__":

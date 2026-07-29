@@ -12,6 +12,7 @@ from db.finance import (
     load_container_finance_month,
     load_inventory_finance_month,
 )
+from ui.finance.cost_editor import render_inbound_cost_editor
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -34,7 +35,7 @@ def render_finance_page(supabase):
         "商品库存月报", "货柜采购",
     ])
     with inventory_tab:
-        _render_inventory_report(finance_df, month)
+        _render_inventory_report(supabase, finance_df, month)
     with container_tab:
         _render_container_report(container_df, month)
 
@@ -61,7 +62,7 @@ def _month_range(month):
     return month, date(total // 12, total % 12 + 1, 1)
 
 
-def _render_inventory_report(finance_df, month):
+def _render_inventory_report(supabase, finance_df, month):
     st.caption(
         f"{month.year}年{month.month}月 · 金额为库存成本，不是销售额"
     )
@@ -80,6 +81,8 @@ def _render_inventory_report(finance_df, month):
         st.warning(
             f"有 {missing:,} 件尚未填写成本，金额汇总暂未包含这些件数。"
         )
+
+    render_inbound_cost_editor(supabase, finance_df)
 
     summary = build_department_summary(finance_df)
     st.subheader("部门及品类汇总")
