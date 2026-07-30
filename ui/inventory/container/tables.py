@@ -109,7 +109,9 @@ def _render_container_summary_table(raw_df):
     )
 
 
-def render_container_detail(display_df, container_key):
+def render_container_detail(
+    display_df, container_key, editable_cost=False
+):
     detail_df = display_df[display_df["货柜记录ID"] == container_key].copy()
     if detail_df.empty:
         return
@@ -150,13 +152,30 @@ def render_container_detail(display_df, container_key):
     }
     if "成本" in detail_df.columns:
         config["成本"] = st.column_config.NumberColumn(
-            "成本", format="%.4f"
+            "成本", min_value=0.0, step=0.0001, format="%.4f",
+            disabled=not editable_cost,
         )
-    st.dataframe(
-        detail_df, hide_index=True, width="stretch", column_config=config
-    )
+    if editable_cost and "成本" in detail_df.columns:
+        edited_detail_df = st.data_editor(
+            detail_df,
+            hide_index=True,
+            width="stretch",
+            column_config=config,
+            disabled=[
+                column for column in detail_df.columns
+                if column != "成本"
+            ],
+            key=f"container_detail_cost_editor_{container_key}",
+        )
+    else:
+        st.dataframe(
+            detail_df, hide_index=True, width="stretch",
+            column_config=config,
+        )
+        edited_detail_df = detail_df
     packaging_df = build_container_packaging_summary(display_df, container_key)
     render_packaging_check(packaging_df)
+    return edited_detail_df
 
 
 def calculate_container_totals(detail_df):

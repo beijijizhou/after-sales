@@ -8,6 +8,10 @@ from ui.inventory.container.tables import (
     render_container_detail,
     render_container_inventory_summary,
 )
+from ui.inventory.container.cost_editor import (
+    auto_save_container_costs,
+    can_edit_container_cost,
+)
 from utils.auth import get_current_operator_name, has_permission
 
 
@@ -77,11 +81,15 @@ def render_pending_container_posting(supabase, raw_df):
     row = summary.iloc[selected.selection.rows[0]]
     container_key = row["货柜记录ID"]
     target = raw_df[raw_df["container_key"] == container_key]
-    render_container_detail(
+    edited_detail_df = render_container_detail(
         build_container_display(
             target, include_cost=has_permission("can_view_cost")
         ),
         container_key,
+        editable_cost=can_edit_container_cost(),
+    )
+    auto_save_container_costs(
+        supabase, raw_df, container_key, edited_detail_df
     )
     if not has_permission("can_edit_container"):
         st.info("当前账号可以查看，但不能确认入库")

@@ -9,7 +9,7 @@ def load_inventory_containers(
     brands=None, materials=None, colors=None, sizes=None,
 ):
     columns = (
-        "container_key,shipped_date,expected_arrival_date,actual_arrival_date,"
+        "id,container_key,shipped_date,expected_arrival_date,actual_arrival_date,"
         "actual_arrival_at,"
         "container_no,department,category,"
         "brand,material,color,size,quantity,unit_cost,status,note,created_at"

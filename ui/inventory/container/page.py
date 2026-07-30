@@ -14,6 +14,10 @@ from ui.inventory.container.events import (
     render_container_history,
     render_status_update,
 )
+from ui.inventory.container.cost_editor import (
+    auto_save_container_costs,
+    can_edit_container_cost,
+)
 from ui.inventory.container.filters import (
     render_container_inventory_filters,
 )
@@ -128,7 +132,14 @@ def render_in_transit_table(
             target_raw_df,
             include_cost=has_permission("can_view_cost"),
         )
-        render_container_detail(target_display_df, container_key)
+        edited_detail_df = render_container_detail(
+            target_display_df,
+            container_key,
+            editable_cost=can_edit_container_cost(),
+        )
+        auto_save_container_costs(
+            supabase, raw_df, container_key, edited_detail_df
+        )
         if has_permission("can_edit_container"):
             render_status_update(supabase, raw_df, container_key)
     return raw_df
