@@ -1,4 +1,4 @@
--- UV 牌类期初库存。型号沿用 inventory_items.size 字段。
+-- UV 铁板画期初库存。型号沿用 inventory_items.size 字段。
 -- 只导入尚不存在的 SKU；重复运行不会覆盖后续库存变化。
 
 begin;
@@ -20,7 +20,7 @@ inserted as (
         unit_cost, quantity, 品牌, 材质, 成本
     )
     select
-        'UV', '牌类', '', material, '白', model,
+        'UV', '铁板画', '', material, '白', model,
         0, quantity, '', material, 0
     from desired
     on conflict do nothing

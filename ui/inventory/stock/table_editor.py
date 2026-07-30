@@ -112,7 +112,7 @@ def build_inline_adjustments(original_df, edited_df):
                 "尺码": size,
                 "数量": abs(difference),
                 "成本": pd.NA,
-                "备注": "库存明细直接编辑",
+                "备注": "临时库存调整｜库存明细直接编辑",
             })
     return pd.DataFrame(rows)
 
@@ -135,7 +135,7 @@ def build_model_inline_adjustments(original_df, edited_df):
             "尺码": original.get("型号", ""),
             "数量": abs(difference),
             "成本": pd.NA,
-            "备注": "库存明细直接编辑",
+            "备注": "临时库存调整｜库存明细直接编辑",
         })
     return pd.DataFrame(rows)
 

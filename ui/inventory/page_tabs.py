@@ -3,11 +3,10 @@ import streamlit as st
 from utils.auth import has_permission
 from ui.inventory.history.history import render_inventory_history
 from ui.inventory.i18n import t
-from ui.inventory.operations.forms import (
-    render_adjust_form,
-    render_inventory_unit_calculator,
+from ui.inventory.operations.pages import (
+    render_daily_outbound_operation,
+    render_temporary_movement_operation,
 )
-from ui.inventory.operations.outbound import render_daily_outbound
 from ui.inventory.planning.comparison import render_consumption_models
 from ui.inventory.planning.consumption import (
     render_consumption_planning_inputs,
@@ -22,6 +21,9 @@ from ui.inventory.stock.table import (
     render_inventory_view_mode,
 )
 from ui.inventory.sku import render_sku_management
+from ui.inventory.sku.initialization import (
+    render_inventory_initialization,
+)
 
 
 def render_inventory_tabs(
@@ -29,16 +31,11 @@ def render_inventory_tabs(
     inventory_date, selected_date, current_date, visible_sizes, can_edit,
     can_view_cost, history_data, movement_types, filter_title,
 ):
-    tab_names = [
-        t("库存明细"), t("点货预测"), t("消耗模型"),
-        t("仓库每日出货及历史"),
-        t("临时出入库及历史"), t("撤销"), t("SKU 管理"),
-    ]
-    if can_view_cost:
-        tab_names.append(t("库存成本"))
-    tabs = st.tabs(tab_names)
+    tab_keys = inventory_tab_keys(department, can_view_cost)
+    tab_names = [t(name) for name in tab_keys]
+    tabs = dict(zip(tab_keys, st.tabs(tab_names)))
 
-    with tabs[0]:
+    with tabs["库存明细"]:
         view_mode = render_inventory_view_mode(category, inventory_df)
         editable = can_edit and selected_date == current_date
         if view_mode == "整体黑白统计":
@@ -63,74 +60,61 @@ def render_inventory_tabs(
             )
             render_inventory_metrics(inventory_df)
 
-    with tabs[1]:
+    with tabs["点货预测"]:
         order_quantity, arrival_date, buffer_days = (
             render_consumption_planning_inputs(category)
         )
-        render_reorder_forecast(
+        forecast_usage_df = render_reorder_forecast(
             supabase, department, category, inventory_df, order_quantity,
             arrival_date, buffer_days, inventory_date, visible_sizes,
         )
         if selected_date == current_date:
             render_incoming_inventory_forecast(
-                supabase, department, category, raw_df, current_date
+                supabase, department, category, raw_df, current_date,
+                forecast_usage_df,
             )
-    with tabs[2]:
+    with tabs["消耗模型"]:
         render_consumption_models(
             supabase, department, category, order_quantity,
-            current_date, visible_sizes,
+            current_date, visible_sizes, raw_df,
         )
 
-    with tabs[3]:
-        if can_edit:
-            operation_category = _select_operation_category(
-                category, raw_df, "daily_outbound_category"
+    if "仓库每日出货" in tabs:
+        with tabs["仓库每日出货"]:
+            render_daily_outbound_operation(
+                supabase, department, category, raw_df, can_edit,
             )
-            if operation_category:
-                render_daily_outbound(
-                    supabase, department, operation_category
-                )
-                st.divider()
+
+    with tabs["临时库存调整"]:
+        render_temporary_movement_operation(
+            supabase, department, category, raw_df, inventory_df, can_edit,
+        )
+
+    with tabs["库存流水"]:
         _render_history(
-            supabase, department, "daily", history_data, visible_sizes,
+            supabase, department, "all", history_data, visible_sizes,
             movement_types,
         )
 
-    with tabs[4]:
-        if can_edit:
-            operation_category = _select_operation_category(
-                category, raw_df, "temporary_movement_category"
-            )
-            if operation_category:
-                operation_inventory_df = inventory_df[
-                    inventory_df["品类"] == operation_category
-                ].reset_index(drop=True)
-                render_inventory_unit_calculator()
-                render_adjust_form(
-                    supabase, department, operation_category,
-                    operation_inventory_df,
-                )
-                st.divider()
-        _render_history(
-            supabase, department, "regular", history_data, visible_sizes,
-            movement_types,
-        )
-
-    with tabs[5]:
+    with tabs["撤销"]:
         _render_history(
             supabase, department, "undo", history_data, visible_sizes,
             movement_types,
         )
 
-    with tabs[6]:
-        sku_tab, sku_history_tab = st.tabs([
-            t("SKU 管理"), t("SKU 导入历史"),
+    with tabs["SKU 管理"]:
+        sku_tab, initialization_tab, sku_history_tab = st.tabs([
+            t("SKU 管理"), t("待初始化库存"), t("SKU 导入历史"),
         ])
         with sku_tab:
             render_sku_management(
                 supabase,
                 department,
                 has_permission("can_manage_sku"),
+            )
+        with initialization_tab:
+            render_inventory_initialization(
+                supabase, department, category, can_edit,
             )
         with sku_history_tab:
             _render_history(
@@ -139,10 +123,22 @@ def render_inventory_tabs(
             )
 
     if can_view_cost:
-        with tabs[7]:
+        with tabs["库存成本"]:
             render_inventory_cost_summary(
                 supabase, department, category, current_cost_df, raw_df
             )
+
+
+def inventory_tab_keys(department, can_view_cost=False):
+    keys = ["库存明细", "点货预测", "消耗模型"]
+    if department == "DTF":
+        keys.append("仓库每日出货")
+    keys.extend([
+        "临时库存调整", "库存流水", "撤销", "SKU 管理",
+    ])
+    if can_view_cost:
+        keys.append("库存成本")
+    return keys
 
 
 def _render_history(
@@ -153,26 +149,6 @@ def _render_history(
         visible_sizes=visible_sizes,
         movement_types=movement_types,
     )
-
-
-def _select_operation_category(category, raw_df, key):
-    if category:
-        return category
-    if raw_df.empty or "category" not in raw_df.columns:
-        st.info(t("当前没有可操作的库存品类"))
-        return ""
-    category_order = {value: index for index, value in enumerate([
-        "黑白短袖", "彩色短袖", "卫衣",
-    ])}
-    options = sorted({
-        str(value).strip() for value in raw_df["category"].dropna()
-        if str(value).strip()
-    }, key=lambda value: (category_order.get(value, 99), value))
-    if not options:
-        st.info(t("当前没有可操作的库存品类"))
-        return ""
-    st.caption(t("当前查看全部品类，请选择本次库存操作的目标品类"))
-    return st.selectbox(t("操作品类"), options, key=key, format_func=t)
 
 
 def _select_current_inventory_date(current_date):

@@ -5,6 +5,7 @@ from db.inventory import SIZE_COLUMNS
 from db.inventory.container.packaging import build_container_packaging_summary
 from db.inventory.container.tables import (
     build_container_display,
+    build_container_inventory_summary,
     get_container_item_columns,
 )
 
@@ -61,6 +62,50 @@ def render_container_dataframe(display_df):
     st.dataframe(
         table_df, hide_index=True, width="stretch",
         column_config=column_config,
+    )
+
+
+def render_container_inventory_summary(raw_df, title):
+    if raw_df.empty:
+        return
+    st.subheader(title)
+    st.caption(
+        "已合并当前筛选范围内的货柜、品牌和材质；"
+        "可用页面顶部筛选器缩小范围。"
+    )
+    departments = raw_df.get(
+        "department", pd.Series("", index=raw_df.index)
+    ).fillna("").astype(str).str.strip()
+    department_names = departments.drop_duplicates().tolist()
+    for department in department_names:
+        rows = raw_df[departments == department]
+        if len(department_names) > 1:
+            st.markdown(f"**{department or '未分类部门'}**")
+        _render_container_summary_table(rows)
+
+
+def _render_container_summary_table(raw_df):
+    display_df = build_container_display(raw_df, include_cost=False)
+    summary_df = build_container_inventory_summary(display_df)
+    if summary_df.empty:
+        return
+    item_columns = [
+        column for column in summary_df.columns
+        if column not in {"材质", "颜色", "总件数"}
+    ]
+    st.dataframe(
+        summary_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "总件数": st.column_config.NumberColumn("总件数", format="%d"),
+            **{
+                item: st.column_config.NumberColumn(
+                    _item_label(item), format="%d"
+                )
+                for item in item_columns
+            },
+        },
     )
 
 

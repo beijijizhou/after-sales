@@ -105,9 +105,9 @@ def parse_adjustment_file(uploaded_file):
 
 def apply_adjustment_rows(
     supabase, department, category, df, created_by="system",
-    source_type="bulk",
+    source_type="bulk", batch_id=None,
 ):
-    batch_id = str(uuid4())
+    batch_id = str(batch_id or uuid4())
     records = []
     for row in df.to_dict("records"):
         quantity_change = int(row["数量"]) if row["操作"] == "增加" else -int(row["数量"])

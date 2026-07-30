@@ -8,7 +8,7 @@ from db.inventory.planning.warehouse_usage import (
 )
 
 
-DAILY_OUTBOUND_PATTERN = "每日正常出货|每日出货|黑白短袖出库"
+DAILY_OUTBOUND_PATTERN = "仓库每日出货|每日正常出货|每日出货|黑白短袖出库"
 
 
 def load_daily_outbound_history(

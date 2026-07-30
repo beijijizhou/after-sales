@@ -28,7 +28,7 @@ class FinanceSummaryTests(unittest.TestCase):
             },
             {
                 "date": "2026-07-02", "direction": "出库",
-                "department": "UV", "category": "牌类",
+                "department": "UV", "category": "铁板画",
                 "quantity": 5, "amount": 0, "missing_cost": True,
             },
         ])

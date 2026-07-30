@@ -28,19 +28,17 @@ def render_sku_management(
         return
 
     department_codes = active_departments["code"].tolist()
-    default_index = (
-        department_codes.index(selected_department)
-        if selected_department in department_codes else 0
-    )
-    department_code = st.selectbox(
-        t("SKU 所属部门"),
-        department_codes,
-        index=default_index,
-        key="sku_management_department",
+    department_code = (
+        selected_department
+        if selected_department in department_codes
+        else department_codes[0]
     )
     department = active_departments[
         active_departments["code"] == department_code
     ].iloc[0].to_dict()
+    st.caption(
+        f"{t('SKU 所属部门')}：{department_code}"
+    )
 
     if not can_manage:
         _render_catalog(supabase, department_code)

@@ -39,7 +39,12 @@ def render_inventory_table(
 
     col1, col2 = st.columns(2)
     col1.metric(t("当前日期"), current_date.isoformat())
-    col2.metric(t("库存日期"), inventory_date.isoformat())
+    col2.metric(t("库存数据截至"), inventory_date.isoformat())
+    if inventory_date < current_date:
+        days = (current_date - inventory_date).days
+        st.warning(
+            t("该部门库存账已经 {days} 天没有更新").format(days=days)
+        )
     display_df = render_inventory_table_filters(inventory_df, visible_sizes)
     column_config = {
         "总库存": st.column_config.NumberColumn(

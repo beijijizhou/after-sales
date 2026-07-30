@@ -10,6 +10,7 @@ from db.inventory import (
     get_inventory_last_updated,
     load_inventory_dimensions,
     load_inventory_items,
+    load_latest_inventory_movement_date,
     load_inventory_movements,
     load_inventory_snapshot,
 )
@@ -18,7 +19,14 @@ from ui.inventory.history.history import (
     filter_inventory_history_data,
     load_inventory_history_data,
 )
-from ui.inventory.i18n import render_language_selector, t
+from ui.inventory.i18n import get_language, render_language_selector, t
+from ui.inventory.operations.outbound_feedback import (
+    render_saved_outbound_audit_feedback,
+)
+from ui.inventory.operations.outbound_i18n import TEXT as OUTBOUND_TEXT
+from ui.inventory.operations.outbound_status import (
+    render_daily_outbound_alert,
+)
 from ui.inventory.page_tabs import render_inventory_tabs
 from ui.inventory.shared import (
     build_inventory_filter_title,
@@ -34,6 +42,9 @@ def render_inventory_summary(supabase):
     saved_message = st.session_state.pop("inventory_saved_message", None)
     if saved_message:
         st.success(saved_message)
+    render_saved_outbound_audit_feedback(
+        OUTBOUND_TEXT[get_language()]
+    )
     try:
         dimensions_df = load_inventory_dimensions(supabase)
     except Exception as error:
@@ -51,6 +62,9 @@ def render_inventory_summary(supabase):
     filter_title = build_inventory_filter_title(
         category, brands, materials, colors, selected_sizes
     )
+    can_edit = has_permission("can_edit_inventory")
+    if department == "DTF" and can_edit:
+        render_daily_outbound_alert(supabase, department)
     st.session_state["inventory_today"] = datetime.now(ZoneInfo("America/New_York")).date()
 
     try:
@@ -92,15 +106,23 @@ def render_inventory_summary(supabase):
             if can_view_cost else None
         )
         current_date = st.session_state["inventory_today"]
+        # The as-of date describes the department ledger, not the current
+        # display filters. Filtering a quiet SKU must not move the ledger back.
+        latest_movement_date = load_latest_inventory_movement_date(
+            supabase, department
+        )
         inventory_date = (
             selected_date
             if selected_date < current_date
-            else get_inventory_last_updated(raw_df) or selected_date
+            else (
+                latest_movement_date
+                or get_inventory_last_updated(raw_df)
+                or selected_date
+            )
         )
         if inventory_df.empty:
             st.warning(t("暂无库存数据"))
 
-        can_edit = has_permission("can_edit_inventory")
         history_data = load_inventory_history_data(supabase, department)
         history_data = filter_inventory_history_data(
             history_data, category, brands, materials, colors, selected_sizes

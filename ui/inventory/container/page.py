@@ -18,9 +18,18 @@ from ui.inventory.container.filters import (
     render_container_inventory_filters,
 )
 from ui.inventory.container.form import render_container_form
+from ui.inventory.container.history_view import (
+    render_arrival_date_range,
+    render_arrival_history_table,
+)
+from ui.inventory.container.posting import (
+    load_pending_containers,
+    render_pending_container_posting,
+)
+from ui.inventory.container.progress_view import render_arrival_alerts
 from ui.inventory.container.tables import (
     render_container_detail,
-    render_container_records,
+    render_container_inventory_summary,
 )
 from ui.inventory.container.today import (
     container_tab_names,
@@ -46,7 +55,7 @@ def render_in_transit_table(
     try:
         raw_df = load_inventory_containers(
             supabase, start_date, end_date, department, category,
-            statuses=["未到货", "延迟"],
+            statuses=["未到货", "延迟", "在途"],
             brands=brands, materials=materials, colors=colors, sizes=sizes,
         )
         today = datetime.now(NY_TIMEZONE).date()
@@ -56,7 +65,7 @@ def render_in_transit_table(
                 end_date=start_date - timedelta(days=1),
                 department=department,
                 category=category,
-                statuses=["未到货", "延迟"],
+                statuses=["未到货", "延迟", "在途"],
                 brands=brands,
                 materials=materials,
                 colors=colors,
@@ -86,8 +95,11 @@ def render_in_transit_table(
         expected_dates < today, "container_key"
     ].nunique()
     col3.metric("延迟货柜", delayed_count)
+    render_container_inventory_summary(
+        raw_df, "在途货柜库存汇总"
+    )
     progress_df = build_container_progress_summary(raw_df, today)
-    _render_arrival_alerts(progress_df)
+    render_arrival_alerts(progress_df)
     selection_df = progress_df.drop(columns=["货柜记录ID"])
     selection = st.dataframe(
         selection_df,
@@ -120,56 +132,6 @@ def render_in_transit_table(
         if has_permission("can_edit_container"):
             render_status_update(supabase, raw_df, container_key)
     return raw_df
-
-
-def _render_arrival_alerts(progress_df):
-    delayed = progress_df[progress_df["剩余天数"] < 0]
-    arriving = progress_df[
-        progress_df["剩余天数"].between(0, 7, inclusive="both")
-    ]
-    if not delayed.empty:
-        labels = "；".join(
-            f"{row['货柜号']}（已延迟{abs(int(row['剩余天数']))}天）"
-            for _, row in delayed.iterrows()
-        )
-        st.error(f"延迟到货提醒：{labels}")
-    if not arriving.empty:
-        labels = "；".join(
-            f"{row['货柜号']}（{int(row['剩余天数'])}天）"
-            for _, row in arriving.iterrows()
-        )
-        st.warning(f"一周内到货提醒：{labels}")
-
-
-def render_arrival_history_table(
-    supabase, start_date, end_date, department, category,
-    brands, materials, colors, sizes,
-):
-    st.subheader("到货记录")
-    try:
-        raw_df = load_inventory_containers(
-            supabase, start_date, end_date, department, category,
-            statuses=["已到货"], date_field="actual_arrival_date",
-            brands=brands, materials=materials, colors=colors, sizes=sizes,
-        )
-    except Exception as error:
-        st.error(f"到货历史加载失败：{error}")
-        st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
-        return pd.DataFrame()
-    if raw_df.empty:
-        st.info("当前日期范围内没有已到货货柜")
-        return raw_df
-    col1, col2 = st.columns(2)
-    quantities = pd.to_numeric(raw_df["quantity"], errors="coerce").fillna(0)
-    col1.metric("已到货总件数", int(quantities.sum()))
-    col2.metric("到货柜数", raw_df["container_key"].nunique())
-    render_container_records(
-        raw_df,
-        include_cost=has_permission("can_view_cost"),
-    )
-    return raw_df
-
-
 def render_inventory_container_page(supabase):
     st.title("货柜安排")
     try:
@@ -189,7 +151,16 @@ def render_inventory_container_page(supabase):
     except Exception as error:
         today_arrivals_df = pd.DataFrame()
         today_arrivals_error = error
-    tab_names = container_tab_names(not today_arrivals_df.empty)
+    try:
+        pending_df = load_pending_containers(supabase, *filters)
+        pending_error = None
+    except Exception as error:
+        pending_df = pd.DataFrame()
+        pending_error = error
+    tab_names = container_tab_names(
+        not today_arrivals_df.empty,
+        not pending_df.empty,
+    )
     tabs = dict(zip(tab_names, st.tabs(tab_names)))
     with tabs["在途货柜"]:
         week_start, week_end = render_week_selector(
@@ -199,34 +170,24 @@ def render_inventory_container_page(supabase):
         render_in_transit_table(
             supabase, week_start, week_end, *filters
         )
-    with tabs["今日到货"]:
+    with tabs["今日到柜"]:
         render_today_arrivals(
             today_arrivals_df,
             load_error=today_arrivals_error,
         )
+    with tabs["待确认入库"]:
+        if pending_error is not None:
+            st.error(f"待入库货柜加载失败：{pending_error}")
+        else:
+            render_pending_container_posting(supabase, pending_df)
     with tabs["新增货柜"]:
         if has_permission("can_edit_container"):
             render_container_form(supabase, department, category)
         else:
             st.info("当前账号只能查看货柜安排，不能新增或修改")
-    with tabs["到货历史"]:
-        arrival_start, arrival_end = _render_arrival_date_range(today)
+    with tabs["到柜及入库历史"]:
+        arrival_start, arrival_end = render_arrival_date_range(today)
         arrived_df = render_arrival_history_table(
             supabase, arrival_start, arrival_end, *filters
         )
         render_container_history(supabase, arrived_df)
-
-
-def _render_arrival_date_range(today):
-    selected = st.date_input(
-        "实际到货日期",
-        value=(today - timedelta(days=30), today),
-        max_value=today,
-        key="container_arrival_history_dates",
-    )
-    if isinstance(selected, (tuple, list)):
-        if len(selected) >= 2:
-            return selected[0], selected[1]
-        if len(selected) == 1:
-            return selected[0], selected[0]
-    return selected, selected

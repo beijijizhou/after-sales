@@ -80,12 +80,12 @@ def render_reorder_forecast(
     visible_sizes=None,
 ):
     if category != "黑白短袖":
-        return DEFAULT_ORDER_QUANTITY
+        return pd.DataFrame()
 
     color_df = build_color_inventory_table(inventory_df)
     if color_df.empty:
         st.info(t("暂无可预测库存数据"))
-        return order_quantity
+        return pd.DataFrame()
 
     source_weights = render_forecast_model_controls()
     try:
@@ -148,7 +148,7 @@ def render_reorder_forecast(
     except Exception as e:
         st.info(t("暂无点货预测数据"))
         st.caption(str(e))
-        return order_quantity
+        return pd.DataFrame()
 
     st.subheader(t("点货预测表"))
     st.caption(t("库存按当前筛选材质合计，并合并同材质下的全部所选品牌。"))
@@ -167,4 +167,4 @@ def render_reorder_forecast(
         st.warning(f"{t('异常消耗加载失败')}: {anomaly_error_message}")
     st.caption(t("异常出库仅用于提醒，不直接替代点货预测日耗。"))
     render_demand_anomaly_monitor(anomaly_df)
-    return order_quantity
+    return forecast_model_df

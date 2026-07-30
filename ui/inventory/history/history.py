@@ -13,6 +13,11 @@ from ui.inventory.history.history_tables import (
     render_movement_table,
     render_sku_import_table,
 )
+from ui.inventory.history.history_filters import (
+    filter_batches_by_movement_type,
+    filter_batches_by_outbound_kind,
+    filter_history_batches,
+)
 from utils.auth import get_current_operator_name, has_permission
 from ui.inventory.i18n import t
 from ui.inventory.shared import filter_inventory_rows
@@ -105,32 +110,6 @@ def filter_inventory_history_data(
     return movement_df, sku_import_df, batch_df
 
 
-def filter_history_batches(batch_df, mode):
-    normal_df = batch_df[batch_df["记录类别"] == "库存表格记录"]
-    daily_mask = normal_df["备注"].fillna("").str.contains(
-        "每日正常出货|每日出货|黑白短袖出库", regex=True
-    )
-    if mode == "daily":
-        return normal_df[daily_mask]
-    if mode == "regular":
-        return normal_df[(normal_df["类型"] != "新增 SKU") & ~daily_mask]
-    if mode == "sku":
-        return normal_df[normal_df["类型"] == "新增 SKU"]
-    return normal_df[normal_df["类型"] != "新增 SKU"]
-
-
-def filter_batches_by_movement_type(batch_df, movement_types):
-    if batch_df.empty or not movement_types:
-        return batch_df
-    return batch_df[
-        batch_df["类型"].fillna("").apply(
-            lambda value: any(
-                movement_type in value for movement_type in movement_types
-            )
-        )
-    ]
-
-
 def render_inventory_history(
     supabase, department, mode, history_data=None, visible_sizes=None,
     movement_types=None,
@@ -143,6 +122,16 @@ def render_inventory_history(
         return
 
     selected_df = filter_history_batches(batch_df, mode)
+    if mode == "all":
+        outbound_kind = st.selectbox(
+            t("出库记录类型"),
+            ["全部流水", "历史出库", "每日出库", "临时出库"],
+            format_func=t,
+            key="inventory_ledger_outbound_kind",
+        )
+        selected_df = filter_batches_by_outbound_kind(
+            selected_df, outbound_kind
+        )
     if mode != "sku":
         selected_df = filter_batches_by_movement_type(
             selected_df, movement_types

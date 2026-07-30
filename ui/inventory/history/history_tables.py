@@ -26,6 +26,12 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
     movement_df["quantity_change"] = pd.to_numeric(
         movement_df["quantity_change"], errors="coerce"
     ).fillna(0).astype(int)
+    movement_df["display_quantity"] = movement_df[
+        "quantity_change"
+    ].abs()
+    movement_df["operation"] = movement_df[
+        "quantity_change"
+    ].map(lambda value: "增加" if value > 0 else "扣减")
     movement_df["reason"] = movement_df.get("reason", "").fillna("").astype(str)
     if "created_by" not in movement_df.columns:
         movement_df["created_by"] = "a"
@@ -40,7 +46,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
         }).fillna("")
     )
     index_columns = [
-        "movement_date", "department", "category", "brand", "material",
+        "movement_date", "operation", "department", "category", "brand", "material",
         "color", "source_type", "created_by", "reason",
     ]
     display_df = (
@@ -48,13 +54,14 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
         .pivot_table(
             index=index_columns,
             columns="size",
-            values="quantity_change",
+            values="display_quantity",
             aggfunc="sum",
             fill_value=0,
         )
         .reset_index()
         .rename(columns={
             "movement_date": "日期",
+            "operation": "操作",
             "department": "部门",
             "category": "品类",
             "brand": "品牌",
@@ -72,7 +79,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
         display_df[size] = pd.to_numeric(display_df[size], errors="coerce").fillna(0).astype(int)
     display_df["合计"] = display_df[sizes].sum(axis=1)
     return display_df[[
-        "日期", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
+        "日期", "操作", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
         "操作人",
         *sizes, "合计", "备注",
     ]]
@@ -91,6 +98,7 @@ def render_movement_table(movement_df, visible_sizes=None):
         width="stretch",
         column_config={
             "日期": st.column_config.DateColumn(t("日期")),
+            "操作": st.column_config.TextColumn(t("操作")),
             "部门": st.column_config.TextColumn(t("部门")),
             "品类": st.column_config.TextColumn(t("品类")),
             "品牌": st.column_config.TextColumn(t("品牌")),

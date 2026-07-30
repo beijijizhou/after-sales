@@ -34,48 +34,6 @@ def load_container_events(supabase, container_key=None):
     return result
 
 
-def update_container_status(
-    supabase, container_key, new_status, arrival_at, operated_by, note=""
-):
-    current = (
-        supabase.table("inventory_container_imports")
-        .select("container_no,status")
-        .eq("container_key", container_key)
-        .limit(1)
-        .execute()
-    )
-    if not current.data:
-        raise ValueError("未找到货柜记录")
-
-    previous_status = current.data[0].get("status")
-    container_no = current.data[0].get("container_no")
-    actual_date = arrival_at.date().isoformat() if new_status == "已到货" else None
-    actual_time = arrival_at.isoformat() if new_status == "已到货" else None
-    (
-        supabase.table("inventory_container_imports")
-        .update({
-            "status": new_status,
-            "actual_arrival_date": actual_date,
-            "actual_arrival_at": actual_time,
-        })
-        .eq("container_key", container_key)
-        .execute()
-    )
-    event_type = "到货" if new_status == "已到货" else "状态变更"
-    event = {
-        "container_key": container_key,
-        "container_no": container_no,
-        "event_type": event_type,
-        "effective_date": arrival_at.date().isoformat(),
-        "actual_arrival_at": actual_time,
-        "previous_status": previous_status,
-        "new_status": new_status,
-        "operated_by": operated_by,
-        "note": note.strip() or None,
-    }
-    return supabase.table("inventory_container_events").insert(event).execute().data
-
-
 def build_container_history_display(df):
     columns = [
         "事件日期", "实际到货时间（纽约）", "确认时间（纽约）",

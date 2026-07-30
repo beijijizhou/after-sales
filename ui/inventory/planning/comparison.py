@@ -10,6 +10,13 @@ from db.inventory.planning.consumption_comparison import (
     build_period_model_comparison,
 )
 from db.inventory.planning.demand_anomaly import load_daily_outbound_history
+from db.inventory.planning.uv_consumption import (
+    UV_CONSUMPTION_LOOKBACK_DAYS,
+    UV_DAILY_ORDERS_SPREADSHEET_URL,
+    build_uv_container_coverage,
+    load_uv_consumption_history,
+)
+from db.inventory.container.repository import load_inventory_containers
 from db.inventory.core.constants import SIZE_COLUMNS
 from ui.inventory.i18n import t
 from ui.inventory.planning.accuracy import (
@@ -121,8 +128,13 @@ def render_model_comparison_result(
     )
 def render_consumption_models(
     supabase, department, category, order_quantity, current_date,
-    visible_sizes=None,
+    visible_sizes=None, inventory_df=None,
 ):
+    if department == "UV":
+        render_uv_consumption_model(
+            supabase, category, current_date, visible_sizes, inventory_df
+        )
+        return
     if category != "黑白短袖":
         st.info(t("当前品类暂无消耗模型"))
         return
@@ -143,6 +155,63 @@ def render_consumption_models(
         return
     render_model_comparison(
         model_df, outbound_df, current_date, category
+    )
+
+
+def render_uv_consumption_model(
+    supabase, category, current_date, visible_sizes=None, inventory_df=None
+):
+    try:
+        model_df = load_uv_consumption_history(supabase, current_date)
+        if category:
+            model_df = model_df[model_df["品类"] == category]
+        if visible_sizes:
+            model_df = model_df[model_df["型号"].isin(visible_sizes)]
+        containers = load_inventory_containers(
+            supabase,
+            department="UV",
+            category=category or None,
+            statuses=["在途", "未到货", "延迟", "已到柜", "已到货"],
+        )
+        coverage_df = build_uv_container_coverage(
+            model_df, inventory_df, containers
+        )
+    except Exception as error:
+        st.error(f"{t('消耗模型加载失败')}：{error}")
+        return
+    st.subheader("UV 每日消耗与货柜")
+    st.caption(
+        f"每日消耗按 Google Sheets 最近 {UV_CONSUMPTION_LOOKBACK_DAYS} 天"
+        "的有效数据日计算，并按品类、材质、颜色、型号连接当前库存和最近货柜。"
+    )
+    st.link_button("打开 UV 每日订单表", UV_DAILY_ORDERS_SPREADSHEET_URL)
+    if model_df.empty:
+        st.info("最近 14 天暂无已同步的 UV 每日消耗数据")
+        return
+    daily_total = float(model_df["每日消耗"].sum())
+    effective_days = int(model_df["有效数据天数"].max())
+    daily_col, days_col = st.columns(2)
+    daily_col.metric("一天消耗", f"{daily_total:,.1f} 件")
+    days_col.metric("计算所用有效天数", f"{effective_days} 天")
+    if effective_days < UV_CONSUMPTION_LOOKBACK_DAYS:
+        st.warning(
+            f"最近 14 天中只有 {effective_days} 天已同步；"
+            "当前日均仅按这些有效日期计算。"
+        )
+    st.dataframe(
+        coverage_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "每日消耗": st.column_config.NumberColumn(format="%.1f"),
+            "当前库存": st.column_config.NumberColumn(format="%d"),
+            "当前可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
+            "预计到货日期": st.column_config.DateColumn(),
+            "货柜数量": st.column_config.NumberColumn(format="%d"),
+            "到货后可撑天数": st.column_config.NumberColumn(
+                format="%.1f 天"
+            ),
+        },
     )
 
 

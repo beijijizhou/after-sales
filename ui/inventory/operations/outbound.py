@@ -8,8 +8,18 @@ from db.inventory.operations.outbound import (
     convert_packages_to_adjustments,
     normalize_outbound_packages,
 )
+from db.inventory.operations.outbound_audit import (
+    audit_outbound_batch,
+    find_outbound_inventory_issues,
+    load_outbound_inventory,
+)
 from ui.inventory.operations.adjustment_preview import render_adjustment_preview_editor
 from ui.inventory.i18n import get_language
+from ui.inventory.operations.outbound_feedback import (
+    render_outbound_audit,
+    render_outbound_preview_summary,
+    store_outbound_audit_feedback,
+)
 from ui.inventory.operations.packaging_rules import (
     render_packaging_rule_editor,
 )
@@ -85,6 +95,8 @@ def render_daily_outbound(supabase, department, category):
         packaging_rules,
         sku_packaging_rules,
     )
+    if not adjustment_df.empty:
+        adjustment_df["备注"] = "仓库每日出货"
     if adjustment_df.empty:
         st.info(text["empty"])
         return
@@ -104,21 +116,75 @@ def render_daily_outbound(supabase, department, category):
     if adjustment_df.empty:
         st.warning(text["empty"])
         return
-    total = int(adjustment_df["数量"].sum())
-    st.metric(text["total"], f"{total:,}")
-    if not st.button(text["confirm"], width="stretch"):
+    total = render_outbound_preview_summary(adjustment_df, text)
+    try:
+        inventory_df = load_outbound_inventory(
+            supabase, department, category
+        )
+        inventory_issues = find_outbound_inventory_issues(
+            adjustment_df, inventory_df
+        )
+    except Exception as error:
+        st.error(f"{text['inventory_check_error']}: {error}")
+        return
+    if not inventory_issues.empty:
+        st.error(text["inventory_issue"])
+        st.dataframe(
+            inventory_issues,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "数量": st.column_config.NumberColumn(
+                    text["outbound_quantity"], format="%d"
+                ),
+                "当前库存": st.column_config.NumberColumn(
+                    text["current_inventory"], format="%d"
+                ),
+                "缺口": st.column_config.NumberColumn(
+                    text["shortage"], format="%d"
+                ),
+            },
+        )
+        st.info(text["inventory_issue_help"])
+        return
+    st.warning(text["unsaved"])
+    if not st.button(
+        text["confirm"], width="stretch", type="primary"
+    ):
+        return
+
+    username = get_current_operator_name()
+    try:
+        batch_id = apply_adjustment_rows(
+            supabase,
+            department,
+            category,
+            adjustment_df,
+            username,
+            source_type="daily_outbound",
+        )
+    except Exception as error:
+        st.error(f"{text['save_error']}: {error}")
         return
 
     try:
-        username = get_current_operator_name()
-        apply_adjustment_rows(supabase, department, category, adjustment_df, username)
-        st.session_state["inventory_saved_message"] = (
-            f"{total:,} {text['saved']}"
+        audit, mismatches = audit_outbound_batch(
+            supabase, batch_id, adjustment_df
         )
-        st.session_state["daily_outbound_version"] = version + 1
-        st.rerun()
     except Exception as error:
-        st.error(f"{text['save_error']}: {error}")
+        st.error(f"{text['audit_failed']}: {error}")
+        return
+
+    render_outbound_audit(audit, mismatches, text)
+    if not audit["passed"]:
+        return
+
+    store_outbound_audit_feedback(audit)
+    st.session_state["inventory_saved_message"] = (
+        f"{total:,} {text['saved']}"
+    )
+    st.session_state["daily_outbound_version"] = version + 1
+    st.rerun()
 
 
 def build_package_column_config(language):

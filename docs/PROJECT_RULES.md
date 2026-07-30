@@ -1,0 +1,51 @@
+# Project Rules
+
+## Structure
+
+- A Python file should normally stay around 100-200 lines.
+- This is a rule of thumb, not a reason to split cohesive logic unnaturally.
+- Main page files act as controllers. They select data, permissions, and views.
+- Business logic belongs in `db/` or `utils/`; rendering belongs in `ui/`.
+- Similar modules belong in one folder. Aim for roughly four focused files per
+  folder, but prefer clear ownership over an arbitrary file count.
+- Centralize reusable helpers instead of copying logic between QA, hotstamp,
+  inventory, containers, and production pages.
+- Keep SQL grouped by domain and purpose. Do not combine unrelated platform
+  maintenance functions into one oversized SQL script.
+
+## Changes
+
+- Read the active call path before editing. The repository may contain legacy
+  modules with similar names.
+- Follow current interfaces and patterns before adding new abstractions.
+- Keep changes scoped. Refactoring is welcome when it directly improves
+  maintainability or removes active duplication.
+- Do not silently omit invalid rows. Show users which SKU, barcode, or record
+  failed and stop an unsafe batch operation.
+- Database writes must be auditable, idempotent where practical, and followed
+  by one focused result check.
+- Use New York time for operational dates and timestamps.
+
+## UI
+
+- Design for a manager who needs a decision quickly.
+- Put conclusions, risks, and important totals first and on the left.
+- Put parameters and calculation details after the result.
+- Avoid showing the same metric in multiple places.
+- Prefer one sortable table over several redundant charts or rankings.
+- Use tabs to separate daily work, analysis, history, undo, and master data.
+- Reuse shared department/category/brand/material/color/size filters.
+- A selected department controls available categories; stale selections must
+  reset when the department changes.
+- Use wide tables for size/model comparisons when they reduce rows.
+- Explain disabled actions in the UI.
+- Cost is hidden by default and visible only with the correct permission.
+- Inventory surfaces support Chinese, English, and Spanish.
+
+## Verification
+
+- Narrow logic change: syntax check plus targeted tests.
+- Shared business logic: targeted tests plus related integration tests.
+- UI interaction change: one browser verification after implementation.
+- Database write: one precheck and one post-write verification.
+- Full test suite is for shared contracts, broad refactors, or release checks.

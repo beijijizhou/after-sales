@@ -107,6 +107,39 @@ def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=D
     return pd.DataFrame(response.data)
 
 
+def load_latest_inventory_movement_date(
+    supabase, department, category="", brands=None, materials=None,
+    colors=None, sizes=None,
+):
+    query = (
+        supabase.table("inventory_movements")
+        .select("movement_date")
+        .eq("department", department)
+    )
+    if category:
+        query = query.eq("category", category)
+    for column, values in [
+        ("brand", brands),
+        ("material", materials),
+        ("color", colors),
+        ("size", sizes),
+    ]:
+        if values:
+            query = query.in_(column, list(values))
+    rows = (
+        query.order("movement_date", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not rows:
+        return None
+    parsed = pd.to_datetime(
+        rows[0].get("movement_date"), errors="coerce"
+    )
+    return None if pd.isna(parsed) else parsed.date()
+
+
 def load_recent_inventory_outbound(
     supabase, department, start_date, category=None, limit=5000
 ):

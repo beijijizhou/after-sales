@@ -6,8 +6,8 @@ import streamlit as st
 from db.inventory.container.history import (
     build_container_history_display,
     load_container_events,
-    update_container_status,
 )
+from db.inventory.container.workflow import confirm_container_arrival
 from utils.auth import get_current_operator_name
 
 
@@ -38,13 +38,13 @@ def render_status_update(supabase, raw_df, container_key):
         return
     target = raw_df[
         (raw_df["container_key"] == container_key)
-        & (raw_df["status"].isin(["未到货", "延迟"]))
+        & (raw_df["status"].isin(["未到货", "延迟", "在途"]))
     ]
     if target.empty:
         return
     container_no = target["container_no"].dropna().astype(str).str.strip()
     label = container_no.iloc[0] if not container_no.empty else container_key
-    st.subheader(f"确认到货｜{label}")
+    st.subheader(f"确认到柜｜{label}")
     now = datetime.now(NY_TIMEZONE)
     arrival_date = st.date_input(
         "实际到货日期",
@@ -61,7 +61,7 @@ def render_status_update(supabase, raw_df, container_key):
         "备注",
         key=f"container_status_note_{container_key}",
     )
-    if not st.button("确认已到货", width="stretch"):
+    if not st.button("确认到柜", width="stretch"):
         return
     try:
         arrival_at = datetime.combine(
@@ -72,28 +72,17 @@ def render_status_update(supabase, raw_df, container_key):
         if arrival_at > datetime.now(NY_TIMEZONE):
             st.error("实际到货时间不能晚于当前纽约时间")
             return
-        update_container_status(
+        confirm_container_arrival(
             supabase,
             container_key,
-            "已到货",
             arrival_at,
             get_current_operator_name(),
             note,
         )
-        st.success("货柜已确认到货，并已写入到货历史")
+        st.success("已记录真实到柜时间，库存尚未增加")
         st.rerun()
     except Exception as error:
         st.error(f"货柜状态保存失败：{error}")
-        if "actual_arrival_at" in str(error):
-            st.info(
-                "请先在 Supabase SQL Editor 运行 "
-                "sql/add_container_actual_arrival_time.sql"
-            )
-        else:
-            st.info(
-                "请先在 Supabase SQL Editor 运行 "
-                "sql/inventory_container_history.sql"
-            )
 
 
 def render_container_history(supabase, raw_df):

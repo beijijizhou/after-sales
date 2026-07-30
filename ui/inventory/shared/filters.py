@@ -32,7 +32,7 @@ def render_inventory_global_filters(dimensions, key="inventory_global"):
         department_rows.get("category", []), preferred_categories
     )
     category_options = ["", *categories]
-    category_key = f"{key}_category"
+    category_key = f"{key}_{department}_category"
     _reset_invalid_selectbox(category_key, category_options)
     initialization_key = f"{category_key}_default_v2"
     if initialization_key not in st.session_state:

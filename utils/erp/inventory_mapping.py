@@ -9,10 +9,10 @@ from utils.erp.material import normalize_production_material
 KEY_COLUMNS = ["department", "category", "planning_material", "color", "size"]
 
 UV_CATEGORY_MAP = {
-    "铁皮画": ("牌类", "铁牌"),
-    "铁板画": ("牌类", "铁牌"),
-    "铝板画": ("牌类", "铝牌"),
-    "铝牌画": ("牌类", "铝牌"),
+    "铁皮画": ("铁板画", "铁牌"),
+    "铁板画": ("铁板画", "铁牌"),
+    "铝板画": ("铁板画", "铝牌"),
+    "铝牌画": ("铁板画", "铝牌"),
     "挂钟": ("木板画", "挂钟"),
 }
 
@@ -41,7 +41,7 @@ def normalize_production_for_inventory(df):
         normalize_uv_model
     )
     iron_only_models = result["size"].isin(["1040", "1530", "盾牌", "爱心"])
-    result.loc[is_uv & iron_only_models, "category"] = "牌类"
+    result.loc[is_uv & iron_only_models, "category"] = "铁板画"
     result.loc[is_uv & iron_only_models, "material"] = "铁牌"
     return add_planning_keys(result)
 

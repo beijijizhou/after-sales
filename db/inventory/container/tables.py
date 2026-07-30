@@ -11,7 +11,7 @@ from db.inventory.container.model_tables import (
 )
 
 
-CONTAINER_STATUSES = ["未到货", "已到货", "延迟", "取消"]
+CONTAINER_STATUSES = ["在途", "取消"]
 DEFAULT_TRANSIT_DAYS = 45
 
 
@@ -28,7 +28,7 @@ def build_container_template(today=None):
         "颜色": "",
         "成本": 0,
         **{size: 0 for size in SIZE_COLUMNS},
-        "状态": "未到货",
+        "状态": "在途",
         "备注": "",
     }])
 
@@ -57,7 +57,7 @@ def normalize_container_rows(df):
     for column, default in [
         ("货柜号", ""), ("部门", DEFAULT_DEPARTMENT), ("品类", ""),
         ("品牌", ""), ("材质", "180g"), ("颜色", ""),
-        ("状态", "未到货"), ("备注", ""),
+        ("状态", "在途"), ("备注", ""),
     ]:
         result[column] = result[column].fillna(default).astype(str).str.strip()
     container_keys = {}
@@ -70,7 +70,7 @@ def normalize_container_rows(df):
 
     result["货柜记录ID"] = result.apply(get_container_key, axis=1)
     result["成本"] = pd.to_numeric(result["成本"], errors="coerce").fillna(0)
-    result.loc[~result["状态"].isin(CONTAINER_STATUSES), "状态"] = "未到货"
+    result.loc[~result["状态"].isin(CONTAINER_STATUSES), "状态"] = "在途"
     result = result.dropna(subset=["发货日期", "预计到货日期"])
     result = result[(result["部门"] != "") & (result["材质"] != "") & (result["颜色"] != "")]
     if model_input:
@@ -107,7 +107,7 @@ def normalize_container_rows(df):
 def add_optional_columns(df):
     defaults = {
         "货柜号": "", "品类": "", "品牌": "", "成本": 0,
-        "状态": "未到货", "备注": "",
+        "状态": "在途", "备注": "",
     }
     for column, default in defaults.items():
         if column not in df.columns:
@@ -193,6 +193,40 @@ def build_container_display(df, include_cost=False):
         lambda row: row["货柜号"] or f"{row['发货日期']}-{row['总件数']}", axis=1
     )
     return pivot[columns]
+
+
+def build_container_inventory_summary(display_df):
+    if display_df.empty:
+        return pd.DataFrame()
+    if "型号" in display_df.columns:
+        items = _ordered_item_columns(display_df["型号"])
+        summary = display_df.pivot_table(
+            index=["材质", "颜色"],
+            columns="型号",
+            values="数量",
+            aggfunc="sum",
+            fill_value=0,
+        ).reset_index()
+        front = ["材质", "颜色"]
+    else:
+        items = get_container_item_columns(display_df)
+        summary = display_df.groupby(
+            "颜色", dropna=False, as_index=False
+        )[items].sum()
+        front = ["颜色"]
+    for item in items:
+        if item not in summary.columns:
+            summary[item] = 0
+        summary[item] = pd.to_numeric(
+            summary[item], errors="coerce"
+        ).fillna(0).astype(int)
+    summary["总件数"] = summary[items].sum(axis=1)
+    if "颜色" in summary.columns:
+        order = summary["颜色"].map({"黑": 0, "白": 1}).fillna(99)
+        summary = summary.assign(_color_order=order).sort_values(
+            ["_color_order", *front], kind="stable"
+        ).drop(columns="_color_order")
+    return summary[[*front, *items, "总件数"]].reset_index(drop=True)
 
 
 def container_display_columns(include_cost, item_columns=None):

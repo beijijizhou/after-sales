@@ -19,6 +19,7 @@ from db.inventory.core.queries import (
     load_inventory_dimensions,
     load_inventory_departments,
     load_inventory_items,
+    load_latest_inventory_movement_date,
     load_inventory_movements,
 )
 from db.inventory.core.snapshots import (
@@ -56,6 +57,7 @@ __all__ = [
     "load_inventory_departments",
     "load_inventory_dimensions",
     "load_inventory_items",
+    "load_latest_inventory_movement_date",
     "load_inventory_movements",
     "load_inventory_snapshot",
     "normalize_adjustment_rows",

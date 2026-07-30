@@ -22,7 +22,6 @@ OUTBOUND_SPECS = {
     "CVC/Haloo/Bag": ("Haloo", "CVC", "Bag"),
 }
 
-
 def build_outbound_package_template():
     today = datetime.now(ZoneInfo("America/New_York")).date()
     rows = []

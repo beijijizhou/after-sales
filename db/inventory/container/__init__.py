@@ -6,7 +6,10 @@ from db.inventory.container.repository import (
 from db.inventory.container.history import (
     build_container_history_display,
     load_container_events,
-    update_container_status,
+)
+from db.inventory.container.workflow import (
+    confirm_container_arrival,
+    post_container_inventory,
 )
 from db.inventory.container.progress import build_container_progress_summary
 from db.inventory.container.packaging import (
@@ -30,10 +33,11 @@ __all__ = [
     "build_container_packaging_summary",
     "build_container_schedule_preview",
     "build_container_template",
+    "confirm_container_arrival",
     "create_inventory_containers",
     "load_inventory_containers",
     "load_container_dimensions",
     "load_container_events",
     "normalize_container_rows",
-    "update_container_status",
+    "post_container_inventory",
 ]
