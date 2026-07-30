@@ -89,15 +89,19 @@ def render_movement_undo(supabase, selected_df, reversed_ids):
         st.rerun()
 
 
-def load_inventory_history_data(supabase, department):
-    movement_df = load_inventory_movements(supabase, department, "", limit=500)
-    sku_import_df = load_sku_imports(supabase, department, "", limit=500)
+def load_inventory_history_data(supabase, department, limit=500):
+    movement_df = load_inventory_movements(
+        supabase, department, "", limit=limit
+    )
+    sku_import_df = load_sku_imports(
+        supabase, department, "", limit=limit
+    )
     batch_df = build_movement_batches(movement_df, sku_import_df)
     return movement_df, sku_import_df, batch_df
 
 
 def filter_inventory_history_data(
-    history_data, category, brands, materials, colors, sizes
+    history_data, category, brands, materials, colors, sizes,
 ):
     movement_df, sku_import_df, _ = history_data
     movement_df = filter_inventory_rows(
@@ -124,8 +128,11 @@ def render_inventory_history(
     selected_df = filter_history_batches(batch_df, mode)
     if mode == "all":
         outbound_kind = st.selectbox(
-            t("出库记录类型"),
-            ["全部流水", "历史出库", "每日出库", "临时出库"],
+            t("流水记录类型"),
+            [
+                "全部流水", "货柜入库", "历史出库", "每日出库",
+                "临时出库",
+            ],
             format_func=t,
             key="inventory_ledger_outbound_kind",
         )
@@ -150,6 +157,51 @@ def render_inventory_history(
         visible_sizes=visible_sizes,
         sku_import=mode == "sku",
     )
+
+
+def render_sku_operation_history(inventory_df, history_data, visible_sizes=None):
+    st.subheader(t("SKU 操作历史"))
+    st.caption(t("选择一个完整 SKU，查看它的全部库存操作时间线。"))
+    identity = ["category", "brand", "material", "color", "size"]
+    if inventory_df.empty or not set(identity).issubset(inventory_df.columns):
+        st.info(t("暂无相关记录"))
+        return
+    skus = inventory_df[identity].fillna("").astype(str).drop_duplicates()
+    records = skus.to_dict("records")
+    labels = {
+        index: " · ".join(
+            value or t("未填写")
+            for value in [
+                row["category"], row["brand"], row["material"],
+                row["color"], row["size"],
+            ]
+        )
+        for index, row in enumerate(records)
+    }
+    selected_index = st.selectbox(
+        t("选择 SKU"), list(labels), format_func=labels.get,
+        key="inventory_sku_operation_history_selection",
+    )
+    selected = records[selected_index]
+    movement_df, sku_import_df, _ = history_data
+    movement_df = _filter_exact_sku(movement_df, selected)
+    sku_import_df = _filter_exact_sku(sku_import_df, selected)
+    render_movement_table(movement_df, [selected["size"]])
+    if not sku_import_df.empty:
+        render_sku_import_table(sku_import_df, [selected["size"]])
+
+
+def _filter_exact_sku(df, selected):
+    if df.empty:
+        return df
+    result = df
+    for column, value in selected.items():
+        if column not in result.columns:
+            return result.iloc[0:0]
+        result = result[
+            result[column].fillna("").astype(str) == value
+        ]
+    return result.reset_index(drop=True)
     if mode == "undo":
         st.subheader(t("撤销记录"))
         reversal_df = batch_df[batch_df["记录类别"] == "撤销记录"]

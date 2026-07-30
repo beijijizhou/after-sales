@@ -5,6 +5,52 @@ from db.inventory.container.workflow.state import (
 )
 
 
+def confirm_container_arrival_date(
+    supabase, container_key, arrival_date, operated_by, note=""
+):
+    current = _load_current_container(supabase, container_key)
+    previous = validate_container_transition(
+        current["status"], STATE_ARRIVED
+    )
+    try:
+        (
+            supabase.table("inventory_container_imports")
+            .update({
+                "expected_arrival_date": arrival_date.isoformat(),
+                "actual_arrival_date": arrival_date.isoformat(),
+                "actual_arrival_at": None,
+                "status": STATE_ARRIVED,
+            })
+            .eq("container_key", container_key)
+            .execute()
+        )
+        event = build_container_event(
+            current, container_key, "到柜", previous, STATE_ARRIVED,
+            arrival_date, operated_by, note,
+        )
+        return (
+            supabase.table("inventory_container_events")
+            .insert(event)
+            .execute()
+            .data
+        )
+    except Exception:
+        (
+            supabase.table("inventory_container_imports")
+            .update({
+                "expected_arrival_date": current.get(
+                    "expected_arrival_date"
+                ),
+                "actual_arrival_date": current.get("actual_arrival_date"),
+                "actual_arrival_at": current.get("actual_arrival_at"),
+                "status": current["status"],
+            })
+            .eq("container_key", container_key)
+            .execute()
+        )
+        raise
+
+
 def confirm_container_arrival(
     supabase, container_key, arrival_at, operated_by, note=""
 ):
@@ -50,7 +96,10 @@ def confirm_container_arrival(
 def _load_current_container(supabase, container_key):
     rows = (
         supabase.table("inventory_container_imports")
-        .select("container_no,status")
+        .select(
+            "container_no,status,expected_arrival_date,"
+            "actual_arrival_date,actual_arrival_at"
+        )
         .eq("container_key", container_key)
         .execute()
         .data

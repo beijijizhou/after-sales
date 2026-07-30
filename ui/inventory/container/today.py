@@ -2,11 +2,12 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory.container.repository import load_inventory_containers
+from db.inventory.container.workflow import post_container_inventory
 from ui.inventory.container.tables import (
     render_container_inventory_summary,
     render_container_records,
 )
-from utils.auth import has_permission
+from utils.auth import get_current_operator_name, has_permission
 
 
 def container_tab_names(has_today_arrivals, has_pending_posting=False):
@@ -66,3 +67,73 @@ def render_today_arrivals(raw_df, load_error=None):
         raw_df,
         include_cost=has_permission("can_view_cost"),
     )
+
+
+def render_today_arrival_posting(supabase, raw_df):
+    if raw_df.empty:
+        return
+    pending = raw_df[raw_df["status"] == "已到柜"].copy()
+    st.subheader("确认入库")
+    if pending.empty:
+        st.success("今日到柜均已入库")
+        return
+    if not has_permission("can_edit_container"):
+        st.info("当前账号可以查看，但不能确认入库")
+        return
+
+    pending["quantity"] = pd.to_numeric(
+        pending["quantity"], errors="coerce"
+    ).fillna(0)
+    summary = (
+        pending.groupby(
+            ["container_key", "container_no"],
+            dropna=False,
+            as_index=False,
+        )["quantity"]
+        .sum()
+    )
+    choices = {}
+    for row in summary.to_dict("records"):
+        container_key = row["container_key"]
+        number = row.get("container_no") or container_key
+        quantity = int(row["quantity"])
+        choices[f"{number}｜{quantity:,} 件"] = container_key
+    selected = st.selectbox(
+        "选择待入库货柜",
+        list(choices),
+        key="today_arrival_posting_target",
+    )
+    container_key = choices[selected]
+    total = int(
+        pd.to_numeric(
+            pending.loc[
+                pending["container_key"] == container_key,
+                "quantity",
+            ],
+            errors="coerce",
+        ).fillna(0).sum()
+    )
+    note = st.text_input(
+        "入库备注",
+        key=f"today_arrival_posting_note_{container_key}",
+    )
+    st.warning(f"确认后库存将增加 {total:,} 件")
+    if not st.button(
+        "确认入库",
+        type="primary",
+        width="stretch",
+        key=f"today_arrival_posting_{container_key}",
+    ):
+        return
+    try:
+        post_container_inventory(
+            supabase,
+            container_key,
+            get_current_operator_name(),
+            note,
+        )
+        st.success(f"入库成功：库存增加 {total:,} 件")
+        st.toast("货柜已完成入库")
+        st.rerun()
+    except Exception as error:
+        st.error(f"确认入库失败：{error}")

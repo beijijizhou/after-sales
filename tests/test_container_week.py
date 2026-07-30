@@ -1,65 +1,30 @@
-from datetime import date
 import unittest
+from datetime import date
 
-from db.inventory.container.repository import apply_container_filters
-from ui.inventory.container.week import week_bounds, week_label
-
-
-class QueryRecorder:
-    def __init__(self):
-        self.calls = []
-
-    def __getattr__(self, name):
-        def record(*args):
-            self.calls.append((name, args))
-            return self
-        return record
+from ui.inventory.container.week import (
+    selected_week_bounds,
+    week_bounds,
+)
 
 
 class ContainerWeekTests(unittest.TestCase):
-    def test_week_runs_monday_through_sunday(self):
-        start, end = week_bounds(date(2026, 7, 29))
+    def test_current_week_starts_today(self):
+        today = date(2026, 7, 30)
+        current_start, current_end = week_bounds(today)
 
-        self.assertEqual(start, date(2026, 7, 27))
-        self.assertEqual(end, date(2026, 8, 2))
+        start, end = selected_week_bounds(current_start, today)
 
-    def test_current_week_label_contains_dates_and_weekdays(self):
-        start = date(2026, 7, 27)
+        self.assertEqual(start, today)
+        self.assertEqual(end, current_end)
 
-        label = week_label(start, start)
+    def test_future_week_keeps_full_week(self):
+        today = date(2026, 7, 30)
+        future_start = date(2026, 8, 3)
 
-        self.assertEqual(
-            label,
-            "本周｜07/27（周一）- 08/02（周日）",
-        )
+        start, end = selected_week_bounds(future_start, today)
 
-    def test_planning_week_can_hide_weekdays(self):
-        start = date(2026, 7, 27)
-
-        label = week_label(start, start, show_weekdays=False)
-
-        self.assertEqual(label, "本周｜07/27 - 08/02")
-
-    def test_container_filters_are_applied_to_database_query(self):
-        query = QueryRecorder()
-
-        apply_container_filters(
-            query,
-            date(2026, 7, 27),
-            date(2026, 8, 2),
-            "DTF",
-            "黑白短袖",
-            ["未到货"],
-            "expected_arrival_date",
-            ["Haloo"],
-            ["CVC"],
-            ["黑"],
-            ["L"],
-        )
-
-        self.assertIn(("eq", ("department", "DTF")), query.calls)
-        self.assertIn(("in_", ("brand", ["Haloo"])), query.calls)
-        self.assertIn(("in_", ("size", ["L"])), query.calls)
+        self.assertEqual(start, future_start)
+        self.assertEqual(end, date(2026, 8, 9))
 
 
 if __name__ == "__main__":

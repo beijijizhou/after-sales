@@ -108,13 +108,21 @@ def render_inventory_global_filters(dimensions, key="inventory_global"):
         key=f"{key}_movement_types", placeholder=t("全部"),
     )
     today = datetime.now(ZoneInfo("America/New_York")).date()
-    selected_date = date_col.date_input(
-        t("查看库存日期"), value=today, max_value=today,
-        key=f"{key}_snapshot_date",
+    use_snapshot_date = date_col.toggle(
+        t("查看库存日期"), value=True, key=f"{key}_use_snapshot_date"
     )
+    if use_snapshot_date:
+        selected_date = date_col.date_input(
+            t("库存日期"), value=today, max_value=today,
+            key=f"{key}_snapshot_date",
+        )
+    else:
+        selected_date = today
+        date_col.caption(t("已关闭历史快照，当前显示最新库存"))
     return (
         department, category, selected_brands, selected_materials,
         selected_colors, selected_sizes, movement_types, selected_date,
+        use_snapshot_date,
     )
 
 

@@ -51,11 +51,13 @@ class ContainerStateMachineTests(unittest.TestCase):
             STATE_ARRIVED,
         )
 
-    def test_cannot_post_before_arrival(self):
-        with self.assertRaisesRegex(ValueError, "不能从"):
+    def test_can_post_directly_from_transit(self):
+        self.assertEqual(
             validate_container_transition(
                 STATE_IN_TRANSIT, STATE_POSTED
-            )
+            ),
+            STATE_IN_TRANSIT,
+        )
 
 
 if __name__ == "__main__":

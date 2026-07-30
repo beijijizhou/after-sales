@@ -52,7 +52,7 @@ def render_inventory_summary(supabase):
         return
     (
         department, category, brands, materials, colors, selected_sizes,
-        movement_types, selected_date,
+        movement_types, selected_date, _use_snapshot_date,
     ) = (
         render_inventory_global_filters(dimensions_df)
     )
@@ -123,9 +123,11 @@ def render_inventory_summary(supabase):
         if inventory_df.empty:
             st.warning(t("暂无库存数据"))
 
-        history_data = load_inventory_history_data(supabase, department)
+        history_data = load_inventory_history_data(
+            supabase, department, limit=10000
+        )
         history_data = filter_inventory_history_data(
-            history_data, category, brands, materials, colors, selected_sizes
+            history_data, category, brands, materials, colors, selected_sizes,
         )
         render_inventory_tabs(
             supabase, department, category, inventory_df, raw_df,

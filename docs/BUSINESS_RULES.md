@@ -41,8 +41,10 @@
 
 - Container workflow:
   `添加货柜 -> 在途 -> 手动确认到柜 -> 确认入库`.
+- A container may also move directly from `在途` to `确认入库`.
 - Expected arrival is not actual arrival.
-- Only manual arrival confirmation records the real arrival time.
+- Manual arrival confirmation records a date, which may be in the future.
+- The confirmation operation time is recorded automatically in event history.
 - Inventory changes only when container contents are confirmed into stock.
 - Containers may belong to any department and use the same core workflow.
 - Piece quantity is the accounting unit. Box/bag conversions are display and

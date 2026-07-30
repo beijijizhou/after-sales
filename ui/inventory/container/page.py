@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -33,11 +33,13 @@ from ui.inventory.container.posting import (
 from ui.inventory.container.progress_view import render_arrival_alerts
 from ui.inventory.container.tables import (
     render_container_detail,
+    render_filtered_container_summary,
     render_container_inventory_summary,
 )
 from ui.inventory.container.today import (
     container_tab_names,
     load_today_arrivals,
+    render_today_arrival_posting,
     render_today_arrivals,
 )
 from ui.inventory.container.week import render_week_selector
@@ -53,8 +55,8 @@ def render_in_transit_table(
 ):
     st.subheader("在途货柜")
     st.caption(
-        "仅显示尚未到货或已经延迟的货柜；即使未到预计日期，"
-        "也可以提前手动确认实际到货。"
+        "选择货柜后可手动确认到柜日期，日期可以是明天或后天；"
+        "也可以跳过到柜状态，直接确认入库。"
     )
     try:
         raw_df = load_inventory_containers(
@@ -63,22 +65,6 @@ def render_in_transit_table(
             brands=brands, materials=materials, colors=colors, sizes=sizes,
         )
         today = datetime.now(NY_TIMEZONE).date()
-        if start_date <= today <= end_date:
-            overdue_df = load_inventory_containers(
-                supabase,
-                end_date=start_date - timedelta(days=1),
-                department=department,
-                category=category,
-                statuses=["未到货", "延迟", "在途"],
-                brands=brands,
-                materials=materials,
-                colors=colors,
-                sizes=sizes,
-            )
-            raw_df = pd.concat(
-                [overdue_df, raw_df],
-                ignore_index=True,
-            ).drop_duplicates()
     except Exception as error:
         st.error(f"在途货柜加载失败：{error}")
         st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
@@ -99,9 +85,7 @@ def render_in_transit_table(
         expected_dates < today, "container_key"
     ].nunique()
     col3.metric("延迟货柜", delayed_count)
-    render_container_inventory_summary(
-        raw_df, "在途货柜库存汇总"
-    )
+    render_filtered_container_summary(raw_df)
     progress_df = build_container_progress_summary(raw_df, today)
     render_arrival_alerts(progress_df)
     selection_df = progress_df.drop(columns=["货柜记录ID"])
@@ -186,6 +170,11 @@ def render_inventory_container_page(supabase):
             today_arrivals_df,
             load_error=today_arrivals_error,
         )
+        if today_arrivals_error is None:
+            render_today_arrival_posting(
+                supabase,
+                today_arrivals_df,
+            )
     with tabs["待确认入库"]:
         if pending_error is not None:
             st.error(f"待入库货柜加载失败：{pending_error}")

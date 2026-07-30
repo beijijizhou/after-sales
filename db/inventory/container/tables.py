@@ -12,7 +12,7 @@ from db.inventory.container.model_tables import (
 
 
 CONTAINER_STATUSES = ["在途", "取消"]
-DEFAULT_TRANSIT_DAYS = 45
+DEFAULT_TRANSIT_DAYS = 55
 
 
 def build_container_template(today=None):
@@ -227,6 +227,71 @@ def build_container_inventory_summary(display_df):
             ["_color_order", *front], kind="stable"
         ).drop(columns="_color_order")
     return summary[[*front, *items, "总件数"]].reset_index(drop=True)
+
+
+def build_filtered_container_summary(raw_df):
+    front = ["涉及货柜", "部门", "品类", "品牌", "材质", "颜色"]
+    if raw_df is None or raw_df.empty:
+        return pd.DataFrame(columns=[*front, "总件数"])
+    source = raw_df.copy()
+    source["quantity"] = pd.to_numeric(
+        source["quantity"], errors="coerce"
+    ).fillna(0)
+    for column in [
+        "container_key", "container_no", "department", "category", "brand",
+        "material", "color", "size",
+    ]:
+        source[column] = source[column].fillna("").astype(str).str.strip()
+    source["涉及货柜"] = source["container_no"].where(
+        source["container_no"] != "", source["container_key"]
+    )
+    group_keys = [
+        "department", "category", "brand", "material", "color",
+    ]
+    container_labels = source.groupby(
+        group_keys, dropna=False, as_index=False
+    ).agg(
+        涉及货柜=("涉及货柜", lambda values: "、".join(dict.fromkeys(
+            value for value in values if value
+        )))
+    )
+    grouped = source.groupby(
+        [*group_keys, "size"],
+        dropna=False,
+        as_index=False,
+    ).agg(数量=("quantity", "sum"))
+    item_order = _ordered_item_columns(grouped["size"])
+    quantities = grouped.pivot_table(
+        index=group_keys,
+        columns="size",
+        values="数量",
+        aggfunc="sum",
+        fill_value=0,
+    ).reset_index()
+    result = quantities.rename(columns={
+        "department": "部门", "category": "品类", "brand": "品牌",
+        "material": "材质", "color": "颜色",
+    })
+    container_labels = container_labels.rename(columns={
+        "department": "部门", "category": "品类", "brand": "品牌",
+        "material": "材质", "color": "颜色",
+    })
+    result = result.merge(
+        container_labels,
+        on=["部门", "品类", "品牌", "材质", "颜色"],
+        how="left",
+    )
+    for item in item_order:
+        if item not in result.columns:
+            result[item] = 0
+        result[item] = pd.to_numeric(
+            result[item], errors="coerce"
+        ).fillna(0).astype(int)
+    result["总件数"] = result[item_order].sum(axis=1)
+    return result[[*front, *item_order, "总件数"]].sort_values(
+        ["部门", "品类", "品牌", "材质", "颜色"],
+        kind="stable",
+    ).reset_index(drop=True)
 
 
 def container_display_columns(include_cost, item_columns=None):

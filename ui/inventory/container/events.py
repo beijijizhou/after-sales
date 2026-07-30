@@ -7,7 +7,10 @@ from db.inventory.container.history import (
     build_container_history_display,
     load_container_events,
 )
-from db.inventory.container.workflow import confirm_container_arrival
+from db.inventory.container.workflow import (
+    confirm_container_arrival_date,
+    post_container_inventory,
+)
 from utils.auth import get_current_operator_name
 
 
@@ -44,45 +47,58 @@ def render_status_update(supabase, raw_df, container_key):
         return
     container_no = target["container_no"].dropna().astype(str).str.strip()
     label = container_no.iloc[0] if not container_no.empty else container_key
-    st.subheader(f"确认到柜｜{label}")
+    st.subheader(f"确认到柜日期｜{label}")
     now = datetime.now(NY_TIMEZONE)
-    arrival_date = st.date_input(
-        "实际到货日期",
-        value=now.date(),
-        max_value=now.date(),
-        key=f"container_status_date_{container_key}",
+    expected = target["expected_arrival_date"].dropna()
+    expected_date = (
+        datetime.fromisoformat(str(expected.iloc[0])).date()
+        if not expected.empty else now.date()
     )
-    arrival_time = st.time_input(
-        "实际到货时间（纽约）",
-        value=now.time().replace(second=0, microsecond=0),
-        key=f"container_status_time_{container_key}",
+    arrival_date = st.date_input(
+        "确认到柜日期",
+        value=expected_date,
+        key=f"container_status_date_{container_key}",
     )
     note = st.text_input(
         "备注",
         key=f"container_status_note_{container_key}",
     )
-    if not st.button("确认到柜", width="stretch"):
-        return
-    try:
-        arrival_at = datetime.combine(
-            arrival_date,
-            arrival_time,
-            tzinfo=NY_TIMEZONE,
-        )
-        if arrival_at > datetime.now(NY_TIMEZONE):
-            st.error("实际到货时间不能晚于当前纽约时间")
-            return
-        confirm_container_arrival(
-            supabase,
-            container_key,
-            arrival_at,
-            get_current_operator_name(),
-            note,
-        )
-        st.success("已记录真实到柜时间，库存尚未增加")
-        st.rerun()
-    except Exception as error:
-        st.error(f"货柜状态保存失败：{error}")
+    st.caption(
+        "日期可以是明天或后天。点击后货柜进入“已到柜”，"
+        "下一步确认入库；也可以跳过到柜直接入库。"
+    )
+    arrival_col, post_col = st.columns(2)
+    if arrival_col.button("确认到柜", width="stretch"):
+        try:
+            confirm_container_arrival_date(
+                supabase,
+                container_key,
+                arrival_date,
+                get_current_operator_name(),
+                note,
+            )
+            st.success("到柜日期已确认，下一步可以确认入库")
+            st.rerun()
+        except Exception as error:
+            st.error(f"到柜日期保存失败：{error}")
+
+    total = int(target["quantity"].sum())
+    if post_col.button(
+        "直接确认入库",
+        type="primary",
+        width="stretch",
+    ):
+        try:
+            post_container_inventory(
+                supabase,
+                container_key,
+                get_current_operator_name(),
+                note,
+            )
+            st.success(f"入库成功：库存增加 {total:,} 件")
+            st.rerun()
+        except Exception as error:
+            st.error(f"直接入库失败：{error}")
 
 
 def render_container_history(supabase, raw_df):

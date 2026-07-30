@@ -82,6 +82,7 @@ class OutboundStatusTests(unittest.TestCase):
                 "数量": 300,
             },
             {"类型": "入库", "备注": "临时库存调整", "数量": 400},
+            {"类型": "入库", "备注": "货柜入库：9柜", "数量": 500},
         ])
 
         self.assertEqual(
@@ -101,6 +102,12 @@ class OutboundStatusTests(unittest.TestCase):
                 batches, "临时出库"
             )["数量"].tolist(),
             [300],
+        )
+        self.assertEqual(
+            filter_batches_by_outbound_kind(
+                batches, "货柜入库"
+            )["数量"].tolist(),
+            [500],
         )
 
     def test_recognizes_daily_outbound_reasons_on_current_dates(self):

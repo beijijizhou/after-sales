@@ -5,6 +5,7 @@ import streamlit as st
 
 
 WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+ALL_TIME = "全部时间"
 
 
 def week_bounds(anchor_date):
@@ -14,31 +15,44 @@ def week_bounds(anchor_date):
 
 def render_week_selector(today, show_weekdays=True):
     current_start, _ = week_bounds(today)
-    options = [
+    week_options = [
         current_start + timedelta(weeks=offset)
-        for offset in range(-26, 27)
+        for offset in range(27)
     ]
+    options = [ALL_TIME, *week_options]
     if st.session_state.get("container_week_anchor") not in options:
         st.session_state["container_week_anchor"] = current_start
-    start = st.selectbox(
+    selected = st.selectbox(
         "查看周",
         options,
-        index=26,
-        format_func=lambda value: week_label(
-            value, current_start, show_weekdays
+        format_func=lambda value: (
+            ALL_TIME if value == ALL_TIME
+            else week_label(value, current_start, show_weekdays)
         ),
         key="container_week_anchor",
     )
+    if selected == ALL_TIME:
+        st.caption("全部时间：显示所有仍在途或未到货的货柜，包括延迟货柜。")
+        return None, None
+    start, end = selected_week_bounds(selected, today)
     range_label = (
-        f"{start:%Y-%m-%d}（周一）至 "
-        f"{start + timedelta(days=6):%Y-%m-%d}（周日）"
+        f"{start:%Y-%m-%d}（{WEEKDAYS[start.weekday()]}）至 "
+        f"{end:%Y-%m-%d}（{WEEKDAYS[end.weekday()]}）"
         if show_weekdays
-        else f"{start:%Y-%m-%d} 至 {start + timedelta(days=6):%Y-%m-%d}"
+        else f"{start:%Y-%m-%d} 至 {end:%Y-%m-%d}"
     )
     st.caption(
-        f"{'本周' if start == current_start else '所选周'}：{range_label}"
+        f"{'本周剩余时间' if selected == current_start else '所选周'}："
+        f"{range_label}"
     )
-    return start, start + timedelta(days=6)
+    return start, end
+
+
+def selected_week_bounds(selected_start, today):
+    _, current_end = week_bounds(today)
+    if selected_start <= today <= current_end:
+        return today, current_end
+    return selected_start, selected_start + timedelta(days=6)
 
 
 def week_label(start, current_start, show_weekdays=True):

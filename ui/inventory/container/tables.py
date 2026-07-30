@@ -5,6 +5,7 @@ from db.inventory import SIZE_COLUMNS
 from db.inventory.container.packaging import build_container_packaging_summary
 from db.inventory.container.tables import (
     build_container_display,
+    build_filtered_container_summary,
     build_container_inventory_summary,
     get_container_item_columns,
 )
@@ -82,6 +83,37 @@ def render_container_inventory_summary(raw_df, title):
         if len(department_names) > 1:
             st.markdown(f"**{department or '未分类部门'}**")
         _render_container_summary_table(rows)
+
+
+def render_filtered_container_summary(raw_df):
+    summary_df = build_filtered_container_summary(raw_df)
+    if summary_df.empty:
+        return
+    st.subheader("筛选结果汇总")
+    st.caption(
+        "以下数量严格按照页面当前的部门、品类、品牌、材质、颜色和尺码筛选汇总。"
+    )
+    fixed = {"涉及货柜", "部门", "品类", "品牌", "材质", "颜色", "总件数"}
+    item_columns = [
+        column for column in summary_df.columns if column not in fixed
+    ]
+    st.dataframe(
+        summary_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "涉及货柜": st.column_config.TextColumn(
+                "涉及货柜", width="medium"
+            ),
+            "总件数": st.column_config.NumberColumn("总件数", format="%d"),
+            **{
+                item: st.column_config.NumberColumn(
+                    _item_label(item), format="%d"
+                )
+                for item in item_columns
+            },
+        },
+    )
 
 
 def _render_container_summary_table(raw_df):

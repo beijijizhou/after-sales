@@ -1,7 +1,10 @@
 import streamlit as st
 
 from utils.auth import has_permission
-from ui.inventory.history.history import render_inventory_history
+from ui.inventory.history.history import (
+    render_inventory_history,
+    render_sku_operation_history,
+)
 from ui.inventory.i18n import t
 from ui.inventory.operations.pages import (
     render_daily_outbound_operation,
@@ -96,6 +99,11 @@ def render_inventory_tabs(
             movement_types,
         )
 
+    with tabs["SKU 操作历史"]:
+        render_sku_operation_history(
+            raw_df, history_data, visible_sizes
+        )
+
     with tabs["撤销"]:
         _render_history(
             supabase, department, "undo", history_data, visible_sizes,
@@ -134,7 +142,7 @@ def inventory_tab_keys(department, can_view_cost=False):
     if department == "DTF":
         keys.append("仓库每日出货")
     keys.extend([
-        "临时库存调整", "库存流水", "撤销", "SKU 管理",
+        "临时库存调整", "库存流水", "SKU 操作历史", "撤销", "SKU 管理",
     ])
     if can_view_cost:
         keys.append("库存成本")
@@ -142,7 +150,7 @@ def inventory_tab_keys(department, can_view_cost=False):
 
 
 def _render_history(
-    supabase, department, mode, history_data, visible_sizes, movement_types
+    supabase, department, mode, history_data, visible_sizes, movement_types,
 ):
     render_inventory_history(
         supabase, department, mode, history_data=history_data,

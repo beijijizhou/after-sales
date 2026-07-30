@@ -18,6 +18,9 @@ def filter_batches_by_outbound_kind(batch_df, outbound_kind):
         return batch_df
     reasons = batch_df["备注"].fillna("").astype(str)
     is_outbound = batch_df["类型"].fillna("").astype(str) == "出库"
+    is_container_inbound = (
+        batch_df["类型"].fillna("").astype(str) == "入库"
+    ) & reasons.str.contains("货柜入库：", regex=False)
     is_daily = reasons.str.contains("仓库每日出货", regex=False)
     is_legacy = (
         reasons.str.contains(
@@ -26,6 +29,7 @@ def filter_batches_by_outbound_kind(batch_df, outbound_kind):
         & ~is_daily
     )
     masks = {
+        "货柜入库": is_container_inbound,
         "历史出库": is_outbound & is_legacy,
         "每日出库": is_outbound & is_daily,
         "临时出库": is_outbound & ~is_daily & ~is_legacy,

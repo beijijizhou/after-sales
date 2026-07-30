@@ -9,6 +9,7 @@ from db.inventory.container.history import (
 )
 from db.inventory.container.workflow import (
     confirm_container_arrival,
+    confirm_container_arrival_date,
     post_container_inventory,
 )
 from db.inventory.container.progress import build_container_progress_summary
@@ -34,6 +35,7 @@ __all__ = [
     "build_container_schedule_preview",
     "build_container_template",
     "confirm_container_arrival",
+    "confirm_container_arrival_date",
     "create_inventory_containers",
     "load_inventory_containers",
     "load_container_dimensions",

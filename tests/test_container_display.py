@@ -5,6 +5,8 @@ import pandas as pd
 
 from db.inventory.container.tables import (
     build_container_display,
+    build_container_template,
+    build_filtered_container_summary,
     build_container_inventory_summary,
 )
 from ui.inventory.container.tables import calculate_container_totals
@@ -31,6 +33,11 @@ def container_row(department, material, item, quantity):
 
 
 class ContainerDisplayTests(unittest.TestCase):
+    def test_new_container_defaults_to_55_transit_days(self):
+        template = build_container_template(today=date(2026, 7, 30))
+
+        self.assertEqual(template.iloc[0]["预计运输天数"], 55)
+
     def test_uv_uses_compact_model_rows(self):
         source = pd.DataFrame([
             container_row("UV", "铁牌", "1040", 20_000),
@@ -112,6 +119,68 @@ class ContainerDisplayTests(unittest.TestCase):
         self.assertEqual(summary.iloc[0]["2030"], 40_000)
         self.assertEqual(summary.iloc[0]["总件数"], 60_000)
         self.assertNotIn("S", summary.columns)
+
+    def test_filtered_summary_keeps_business_dimensions(self):
+        source = pd.DataFrame([
+            {
+                **container_row("DTF", "180g", "S", 72),
+                "brand": "Haloo",
+                "color": "黑",
+            },
+            {
+                **container_row("DTF", "CVC", "S", 100),
+                "brand": "临时进货",
+                "color": "黑",
+                "container_key": "10柜",
+                "container_no": "10柜",
+            },
+        ])
+
+        summary = build_filtered_container_summary(source)
+
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(summary["总件数"].sum(), 172)
+        self.assertEqual(set(summary["品牌"]), {"Haloo", "临时进货"})
+        self.assertEqual(set(summary["涉及货柜"]), {"9柜", "10柜"})
+
+    def test_filtered_summary_shows_same_container_for_color_rows(self):
+        source = pd.DataFrame([
+            {
+                **container_row("DTF", "160g", "L", 19_008),
+                "brand": "加州",
+                "color": "白",
+            },
+            {
+                **container_row("DTF", "160g", "3XL", 5_460),
+                "brand": "加州",
+                "color": "黑",
+            },
+        ])
+
+        summary = build_filtered_container_summary(source)
+
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(summary["涉及货柜"].tolist(), ["9柜", "9柜"])
+
+    def test_filtered_summary_combines_containers_and_lists_them(self):
+        source = pd.DataFrame([
+            {
+                **container_row("DTF", "160g", "L", 100),
+                "brand": "加州",
+            },
+            {
+                **container_row("DTF", "160g", "L", 200),
+                "brand": "加州",
+                "container_key": "10柜",
+                "container_no": "10柜",
+            },
+        ])
+
+        summary = build_filtered_container_summary(source)
+
+        self.assertEqual(len(summary), 1)
+        self.assertEqual(summary.iloc[0]["涉及货柜"], "9柜、10柜")
+        self.assertEqual(summary.iloc[0]["L"], 300)
 
 
 if __name__ == "__main__":
