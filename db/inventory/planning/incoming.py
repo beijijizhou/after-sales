@@ -43,7 +43,11 @@ def build_incoming_inventory_forecast(
     current = _sum_quantity(current, "quantity", "current_quantity")
     nearest = _nearest_incoming(incoming)
     system = _normalize_usage(system_usage_df, "system_daily_usage")
-    manual = _manual_average(outbound_df, department)
+    manual = (
+        _manual_average(outbound_df, department)
+        if department == "DTF"
+        else pd.DataFrame(columns=[*KEY_COLUMNS, "manual_daily_usage"])
+    )
 
     result = nearest.merge(current, on=KEY_COLUMNS, how="left")
     result = result.merge(system, on=KEY_COLUMNS, how="left")
@@ -71,8 +75,42 @@ def build_incoming_inventory_forecast(
         _coverage_after_arrival, axis=1
     )
     result["判断"] = result.apply(_forecast_status, axis=1)
-    result["录入核对"] = result.apply(_audit_status, axis=1)
+    result["录入核对"] = (
+        result.apply(_audit_status, axis=1)
+        if department == "DTF"
+        else "不适用"
+    )
     return _format_forecast(result)
+
+
+def build_inventory_audit_issues(forecast):
+    columns = [
+        "品类", "材质口径", "颜色", "规格", "问题",
+        "系统日均", "仓库申报日均", "日均差额", "差异比例", "核对建议",
+    ]
+    if forecast is None or forecast.empty:
+        return pd.DataFrame(columns=columns)
+    issues = forecast[
+        ~forecast["录入核对"].isin(["接近", "无数据", "不适用"])
+    ].copy()
+    if issues.empty:
+        return pd.DataFrame(columns=columns)
+    issues["问题"] = issues["录入核对"]
+    issues["日均差额"] = (
+        issues["仓库申报日均"] - issues["系统日均"]
+    ).round(1)
+    issues["差异比例"] = issues.apply(
+        lambda row: (
+            abs(row["日均差额"]) / row["系统日均"] * 100
+            if row["系统日均"] > 0 else None
+        ),
+        axis=1,
+    )
+    issues["核对建议"] = issues.apply(_audit_suggestion, axis=1)
+    return issues[columns].sort_values(
+        ["问题", "差异比例"], ascending=[True, False],
+        na_position="last",
+    ).reset_index(drop=True)
 
 
 def _nearest_incoming(df):
@@ -244,6 +282,18 @@ def _audit_status(row):
     if system == 0:
         return "无数据"
     return "需核对" if abs(manual - system) / system > 0.3 else "接近"
+
+
+def _audit_suggestion(row):
+    if row["录入核对"] == "未录入出库":
+        return "系统有生产但仓库无匹配出库；检查漏录或颜色/规格映射"
+    if row["录入核对"] == "可能录错规格":
+        return "仓库有出库但系统无相同 SKU；检查材质、颜色和规格"
+    direction = "高于" if row["日均差额"] > 0 else "低于"
+    return (
+        f"仓库申报{direction}系统生产 "
+        f"{abs(row['日均差额']):.1f}/天"
+    )
 
 
 def _join_unique(values):

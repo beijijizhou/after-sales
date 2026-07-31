@@ -1,7 +1,18 @@
+import json
+import os
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
 from automation.production_period import load_period_production_model
+from automation.sync.google_sheets import GoogleSheetsClient
+from automation.sync.uv_daily_operation import (
+    SYNCABLE_STATUSES,
+    apply_daily_sync,
+    build_daily_sync_preview,
+)
+from automation.sync.uv_sheet_inventory import load_daily_summary
 from db.inventory.planning.consumption import (
     load_consumption_model,
     scale_consumption_model,
@@ -12,15 +23,21 @@ from db.inventory.planning.consumption_comparison import (
 from db.inventory.planning.demand_anomaly import load_daily_outbound_history
 from db.inventory.planning.uv_consumption import (
     UV_CONSUMPTION_LOOKBACK_DAYS,
+    UV_DAILY_ORDERS_SPREADSHEET_ID,
     UV_DAILY_ORDERS_SPREADSHEET_URL,
     build_uv_container_coverage,
     load_uv_consumption_history,
 )
 from db.inventory.container.repository import load_inventory_containers
 from db.inventory.core.constants import SIZE_COLUMNS
+from db.inventory.core.queries import load_inventory_items
 from ui.inventory.i18n import t
 from ui.inventory.planning.accuracy import (
     render_model_accuracy_summary,
+)
+from utils.auth.session import (
+    get_current_operator_name,
+    has_permission,
 )
 
 
@@ -185,6 +202,7 @@ def render_uv_consumption_model(
         "的有效数据日计算，并按品类、材质、颜色、型号连接当前库存和最近货柜。"
     )
     st.link_button("打开 UV 每日订单表", UV_DAILY_ORDERS_SPREADSHEET_URL)
+    _render_uv_daily_deduction(supabase, current_date)
     if model_df.empty:
         st.info("最近 14 天暂无已同步的 UV 每日消耗数据")
         return
@@ -213,6 +231,147 @@ def render_uv_consumption_model(
             ),
         },
     )
+
+
+def _render_uv_daily_deduction(supabase, current_date):
+    st.markdown("#### 当日 SKU 消耗扣减")
+    st.caption(
+        "先读取今天的 Google Sheets 数据并核对表格；"
+        "确认后才会扣减库存，重复操作不会重复扣减。"
+    )
+    result = st.session_state.pop("uv_daily_deduction_result", None)
+    if result:
+        st.success(result)
+    state_key = "uv_daily_deduction_preview"
+    date_key = "uv_daily_deduction_date"
+    if st.button(
+        "读取今日消耗并生成表格",
+        key="uv_load_daily_deduction",
+        type="secondary",
+    ):
+        try:
+            summary = load_daily_summary(
+                _google_sheets_client(),
+                UV_DAILY_ORDERS_SPREADSHEET_ID,
+                current_date,
+            )
+            if not summary:
+                st.session_state.pop(state_key, None)
+                st.session_state.pop(date_key, None)
+                st.warning(
+                    f"{current_date:%m/%d} 暂无可扣减的 SKU 消耗数据。"
+                )
+            else:
+                inventory = load_inventory_items(supabase, "UV", "")
+                st.session_state[state_key] = build_daily_sync_preview(
+                    supabase, summary, current_date, inventory
+                )
+                st.session_state[date_key] = current_date
+        except Exception as error:
+            st.error(f"读取今日消耗失败：{error}")
+
+    preview = st.session_state.get(state_key)
+    preview_date = st.session_state.get(date_key)
+    if preview is None or preview_date != current_date:
+        return
+    st.caption(f"扣减日期：{current_date:%Y-%m-%d}")
+    st.dataframe(
+        preview,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "当日消耗": st.column_config.NumberColumn(format="%d"),
+            "当前库存": st.column_config.NumberColumn(format="%d"),
+            "预计扣减": st.column_config.NumberColumn(format="%d"),
+            "扣减后库存": st.column_config.NumberColumn(format="%d"),
+        },
+    )
+    pending = preview[
+        preview["状态"] == "可扣减"
+    ]
+    blocking = preview[
+        ~preview["状态"].isin(SYNCABLE_STATUSES)
+    ]
+    st.caption(
+        f"本次预计扣减：{int(pending['预计扣减'].sum()):,} 件｜"
+        f"已同步：{int((preview['状态'] == '已同步').sum())} 个 SKU"
+    )
+    if not blocking.empty:
+        details = "；".join(
+            f"{row['表格产品']}：{row['状态']}"
+            for row in blocking.to_dict("records")
+        )
+        st.error(f"暂不能扣减，请先处理：{details}")
+        return
+    deferred = preview[
+        preview["状态"] == "待分配 SKU（本次不扣）"
+    ]
+    if not deferred.empty:
+        details = "；".join(
+            f"{row['表格产品']} {int(row['当日消耗'])} 件"
+            for row in deferred.to_dict("records")
+        )
+        st.warning(
+            f"{details} 缺少可确认的具体 SKU，本次不会扣减；"
+            "其余 SKU 可以继续确认。"
+        )
+    if pending.empty:
+        st.success("今天的消耗已经全部同步，无需再次扣减。")
+        return
+    if not has_permission("can_edit_inventory"):
+        st.info("当前账号只有查看权限，不能确认扣减库存。")
+        return
+    confirmed = st.checkbox(
+        "我已核对以上 SKU、当日消耗和扣减后库存",
+        key="uv_confirm_daily_deduction",
+    )
+    if st.button(
+        "确认扣减今日库存",
+        key="uv_apply_daily_deduction",
+        type="primary",
+        disabled=not confirmed,
+    ):
+        try:
+            imported, skipped = apply_daily_sync(
+                supabase,
+                preview,
+                current_date,
+                get_current_operator_name(),
+            )
+            st.session_state.pop(state_key, None)
+            st.session_state.pop(date_key, None)
+            st.session_state["uv_daily_deduction_result"] = (
+                f"今日库存已扣减 {imported:,} 件"
+                + (f"，另有 {skipped:,} 件此前已同步" if skipped else "")
+            )
+            st.rerun()
+        except Exception as error:
+            st.error(f"扣减失败：{error}")
+
+
+def _google_sheets_client():
+    raw = os.environ.get("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "")
+    if not raw:
+        try:
+            raw = st.secrets.get(
+                "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", ""
+            )
+        except FileNotFoundError:
+            raw = ""
+    if not raw:
+        credential_file = (
+            Path(__file__).resolve().parents[3]
+            / ".streamlit"
+            / "google-service-account.json"
+        )
+        if credential_file.is_file():
+            raw = credential_file.read_text(encoding="utf-8")
+    if not raw:
+        raise RuntimeError(
+            "尚未配置 Google Sheets 服务账号，无法读取私有表格"
+        )
+    info = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    return GoogleSheetsClient(info)
 
 
 def _render_totals(df):

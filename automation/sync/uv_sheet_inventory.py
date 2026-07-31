@@ -24,6 +24,7 @@ class InventorySku:
 def sync_product_from_google_sheet(
     sheets, supabase, spreadsheet_id, product_code, sku,
     start_date, end_date, created_by="system", summary_range="P16:Q40",
+    range_changes=None,
 ):
     daily_usage = load_daily_product_usage(
         sheets,
@@ -32,6 +33,7 @@ def sync_product_from_google_sheet(
         start_date,
         end_date,
         summary_range,
+        range_changes,
     )
     imported, skipped = sync_usage_to_inventory(
         supabase,
@@ -50,7 +52,7 @@ def sync_product_from_google_sheet(
 
 def load_daily_product_usage(
     sheets, spreadsheet_id, product_code, start_date, end_date,
-    summary_range="P16:Q40",
+    summary_range="P16:Q40", range_changes=None,
 ):
     tabs = [
         item["title"]
@@ -58,7 +60,12 @@ def load_daily_product_usage(
         if DATE_TAB_PATTERN.fullmatch(item["title"])
         and start_date <= _tab_date(item["title"], start_date.year) <= end_date
     ]
-    requested = [f"'{tab}'!{summary_range}" for tab in tabs]
+    requested = [
+        f"'{tab}'!{_summary_range_for_date(
+            _tab_date(tab, start_date.year), summary_range, range_changes
+        )}"
+        for tab in tabs
+    ]
     values_by_range = sheets.batch_get_values(spreadsheet_id, requested)
     result = {}
     for tab, cell_range in zip(tabs, requested):
@@ -67,6 +74,33 @@ def load_daily_product_usage(
         if quantity > 0:
             result[_tab_date(tab, start_date.year)] = quantity
     return dict(sorted(result.items()))
+
+
+def load_daily_summary(
+    sheets, spreadsheet_id, movement_date,
+    summary_range="P16:Q40", range_changes=None,
+):
+    cell_range = _summary_range_for_date(
+        movement_date, summary_range, range_changes
+    )
+    tab = movement_date.strftime("%m%d")
+    requested = f"'{tab}'!{cell_range}"
+    values = _range_values(
+        sheets.batch_get_values(spreadsheet_id, [requested]),
+        tab,
+        requested,
+    )
+    result = {}
+    for row in values:
+        if len(row) < 2:
+            continue
+        product = str(row[0] or "").strip()
+        if not product or product in {"材质", "总计"}:
+            continue
+        quantity = int(float(row[1] or 0))
+        if quantity > 0:
+            result[product] = quantity
+    return result
 
 
 def sync_usage_to_inventory(
@@ -80,7 +114,9 @@ def sync_usage_to_inventory(
             f"{reason_prefix}｜{movement_date.isoformat()}｜"
             f"{reason_product_code or sku.size}"
         )
-        existing = _existing_usage(supabase, sku, movement_date, reason)
+        existing = _existing_usage(
+            supabase, sku, movement_date, reason_prefix
+        )
         if existing:
             if existing != quantity:
                 raise ValueError(
@@ -130,6 +166,16 @@ def _find_product_quantity(values, product_code):
     return 0
 
 
+def _summary_range_for_date(
+    movement_date, default_range, range_changes
+):
+    selected = default_range
+    for effective_date, cell_range in sorted(range_changes or []):
+        if movement_date >= effective_date:
+            selected = cell_range
+    return selected
+
+
 def _range_values(values_by_range, tab, requested_range):
     if requested_range in values_by_range:
         return values_by_range[requested_range]
@@ -142,7 +188,7 @@ def _range_values(values_by_range, tab, requested_range):
     return []
 
 
-def _existing_usage(supabase, sku, movement_date, reason):
+def _existing_usage(supabase, sku, movement_date, reason_prefix):
     rows = (
         supabase.table("inventory_movements")
         .select("quantity_change")
@@ -153,9 +199,21 @@ def _existing_usage(supabase, sku, movement_date, reason):
         .eq("color", sku.color)
         .eq("size", sku.size)
         .eq("movement_date", movement_date.isoformat())
-        .eq("reason", reason)
+        .like(
+            "reason",
+            f"{reason_prefix}｜{movement_date.isoformat()}%",
+        )
         .execute()
         .data
         or []
     )
     return sum(abs(int(row["quantity_change"])) for row in rows)
+
+
+def existing_usage(
+    supabase, sku, movement_date,
+    reason_prefix="Google Sheets UV每日消耗",
+):
+    return _existing_usage(
+        supabase, sku, movement_date, reason_prefix
+    )

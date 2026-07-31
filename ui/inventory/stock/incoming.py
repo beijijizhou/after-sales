@@ -7,6 +7,7 @@ from db.inventory.container.repository import load_inventory_containers
 from db.inventory.core.queries import load_recent_inventory_outbound
 from db.inventory.planning.incoming import (
     LOOKBACK_DAYS,
+    build_inventory_audit_issues,
     build_incoming_inventory_forecast,
     normalize_forecast_usage,
 )
@@ -18,9 +19,14 @@ def render_incoming_inventory_forecast(
     forecast_usage_df=None,
 ):
     st.subheader(t("库存与最近到货联动"))
-    st.caption(t(
-        "货柜联动沿用上方点货预测的综合日耗；仓库手工出库只用于核对录入差异。"
-    ))
+    if department == "UV":
+        st.caption(t(
+            "货柜联动沿用上方点货预测的综合日耗；UV 由 Google Sheets 自动扣减库存，不做仓库申报对比。"
+        ))
+    else:
+        st.caption(t(
+            "货柜联动沿用上方点货预测的综合日耗；仓库手工出库只用于核对录入差异。"
+        ))
     if inventory_df.empty:
         st.info(t("暂无库存数据"))
         return
@@ -37,9 +43,13 @@ def render_incoming_inventory_forecast(
             supabase, department=department, category=category,
             statuses=["在途", "未到货", "延迟", "已到柜", "已到货"],
         )
-        outbound = load_recent_inventory_outbound(
-            supabase, department, today - timedelta(days=LOOKBACK_DAYS - 1),
-            category,
+        outbound = (
+            load_recent_inventory_outbound(
+                supabase, department,
+                today - timedelta(days=LOOKBACK_DAYS - 1),
+                category,
+            )
+            if department == "DTF" else None
         )
         forecast = build_incoming_inventory_forecast(
             inventory_df, containers, system_usage, outbound, today,
@@ -58,8 +68,23 @@ def render_incoming_inventory_forecast(
         st.warning(t("有货柜已经到柜但尚未入库，请仓库尽快确认入库。"))
     if (forecast["判断"] == "到货后库存仍偏低").any():
         st.warning(t("部分 SKU 到货后预计仍不足 14 天，请提前安排下一批。"))
-    if (forecast["录入核对"] != "接近").any():
-        st.warning(t("仓库申报与系统生产存在差异，请核对颜色、规格和品牌。"))
+    audit_issues = build_inventory_audit_issues(forecast)
+    if not audit_issues.empty:
+        st.warning(
+            t("发现 {count} 个 SKU 的仓库申报与系统生产不一致。").format(
+                count=len(audit_issues)
+            )
+        )
+        st.dataframe(
+            audit_issues, hide_index=True, width="stretch",
+            column_config={
+                "系统日均": st.column_config.NumberColumn(format="%.1f"),
+                "仓库申报日均": st.column_config.NumberColumn(format="%.1f"),
+                "日均差额": st.column_config.NumberColumn(format="%+.1f"),
+                "差异比例": st.column_config.NumberColumn(format="%.0f%%"),
+                "核对建议": st.column_config.TextColumn(width="large"),
+            },
+        )
     st.dataframe(
         forecast, hide_index=True, width="stretch",
         column_config={

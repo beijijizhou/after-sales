@@ -4,6 +4,7 @@ import unittest
 import pandas as pd
 
 from db.inventory.planning.incoming import (
+    build_inventory_audit_issues,
     build_incoming_inventory_forecast,
     normalize_forecast_usage,
 )
@@ -111,6 +112,49 @@ class InventoryIncomingForecastTests(unittest.TestCase):
         self.assertEqual(row["到货前预计剩余"], 10)
         self.assertEqual(row["到货后预计库存"], 30)
         self.assertEqual(row["判断"], "到货后库存仍偏低")
+
+    def test_audit_issues_explain_exact_sku_and_difference(self):
+        forecast = pd.DataFrame([{
+            "品类": "铁板画", "材质口径": "铁牌", "颜色": "白",
+            "规格": "2030", "系统日均": 2302.0,
+            "仓库申报日均": 1200.0, "录入核对": "需核对",
+        }])
+
+        issues = build_inventory_audit_issues(forecast)
+
+        self.assertEqual(issues.iloc[0]["规格"], "2030")
+        self.assertEqual(issues.iloc[0]["日均差额"], -1102.0)
+        self.assertAlmostEqual(
+            issues.iloc[0]["差异比例"], 1102 / 2302 * 100
+        )
+        self.assertIn("低于", issues.iloc[0]["核对建议"])
+
+    def test_uv_does_not_create_warehouse_declaration_issues(self):
+        inventory = pd.DataFrame([{
+            "department": "UV", "category": "铁板画",
+            "brand": "", "material": "铁牌", "color": "白",
+            "size": "2030", "quantity": 35_396,
+        }])
+        container = pd.DataFrame([{
+            **inventory.iloc[0].to_dict(),
+            "container_key": "第十三柜", "container_no": "第十三柜",
+            "status": "在途",
+            "expected_arrival_date": date(2026, 8, 17),
+            "actual_arrival_date": None, "quantity": 45_000,
+        }])
+        usage = pd.DataFrame([{
+            "department": "UV", "category": "铁板画",
+            "planning_material": "铁牌", "color": "白",
+            "size": "2030", "system_daily_usage": 2_302,
+        }])
+
+        forecast = build_incoming_inventory_forecast(
+            inventory, container, usage, pd.DataFrame(),
+            date(2026, 7, 30), "UV",
+        )
+
+        self.assertEqual(forecast.iloc[0]["录入核对"], "不适用")
+        self.assertTrue(build_inventory_audit_issues(forecast).empty)
 
 
 if __name__ == "__main__":

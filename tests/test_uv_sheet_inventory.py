@@ -3,6 +3,7 @@ from datetime import date
 
 from automation.sync.uv_sheet_inventory import (
     load_daily_product_usage,
+    load_daily_summary,
 )
 from automation.sync.google_sheets import GoogleSheetsClient
 
@@ -13,10 +14,12 @@ class FakeSheets:
             {"title": "0430"},
             {"title": "0501"},
             {"title": "0502"},
+            {"title": "0704"},
             {"title": "说明"},
         ]
 
     def batch_get_values(self, _spreadsheet_id, ranges):
+        self.requested_ranges = ranges
         return {
             cell_range: (
                 [["Tie_yuan_2020", 120]]
@@ -29,8 +32,9 @@ class FakeSheets:
 
 class UVSheetInventoryTests(unittest.TestCase):
     def test_reads_only_requested_date_tabs_and_product(self):
+        sheets = FakeSheets()
         result = load_daily_product_usage(
-            FakeSheets(),
+            sheets,
             "spreadsheet",
             "Tie_yuan_2020",
             date(2026, 5, 1),
@@ -38,6 +42,42 @@ class UVSheetInventoryTests(unittest.TestCase):
         )
 
         self.assertEqual(result, {date(2026, 5, 1): 120})
+
+    def test_supports_date_based_summary_ranges(self):
+        sheets = FakeSheets()
+        load_daily_product_usage(
+            sheets,
+            "spreadsheet",
+            "Tie_1530",
+            date(2026, 5, 1),
+            date(2026, 7, 4),
+            "M17:N30",
+            [(date(2026, 7, 4), "P16:Q40")],
+        )
+
+        self.assertIn("'0501'!M17:N30", sheets.requested_ranges)
+        self.assertIn("'0704'!P16:Q40", sheets.requested_ranges)
+
+    def test_loads_all_positive_products_for_one_day(self):
+        class DailySheets:
+            def batch_get_values(self, _spreadsheet_id, ranges):
+                return {
+                    ranges[0]: [
+                        ["材质", "数量"],
+                        ["Tie_2030", 2300],
+                        ["Tie_1040", 0],
+                        ["Lv_2030", "1793"],
+                        ["总计", 4093],
+                    ]
+                }
+
+        result = load_daily_summary(
+            DailySheets(), "spreadsheet", date(2026, 7, 30)
+        )
+
+        self.assertEqual(
+            result, {"Tie_2030": 2300, "Lv_2030": 1793}
+        )
 
     def test_google_sheets_client_writes_bounded_range(self):
         client = GoogleSheetsClient({

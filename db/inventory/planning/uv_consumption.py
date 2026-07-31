@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -12,6 +12,10 @@ UV_DAILY_ORDERS_SPREADSHEET_URL = (
 )
 UV_CONSUMPTION_LOOKBACK_DAYS = 14
 UV_GOOGLE_SHEETS_REASON_PREFIX = "Google Sheets UV每日消耗"
+UV_CURRENT_MODEL_START_DATES = {
+    ("铁板画", "铁牌", "2030"): date(2026, 7, 29),
+    ("铁板画", "铝牌", "2030"): date(2026, 7, 29),
+}
 
 
 def load_uv_consumption_history(
@@ -78,17 +82,35 @@ def build_uv_consumption_model(
     result["型号"] = (
         result["size"].fillna("").astype(str).str.strip().str.upper()
     )
+    for (category, material, model), start_date in (
+        UV_CURRENT_MODEL_START_DATES.items()
+    ):
+        identity = (
+            (result["品类"] == category)
+            & (result["材质"] == material)
+            & (result["型号"] == model)
+        )
+        result = result[~identity | (result["日期"] >= start_date)]
+    if result.empty:
+        return pd.DataFrame(columns=columns)
     result["消耗"] = result["消耗"].abs()
-    effective_days = int(result["日期"].nunique())
+    available_dates = sorted(result["日期"].unique())
+    keys = ["品类", "材质", "颜色", "型号"]
     grouped = result.groupby(
-        ["品类", "材质", "颜色", "型号"], as_index=False
+        keys, as_index=False
     ).agg(
         period_usage=("消耗", "sum"),
+        first_usage_date=("日期", "min"),
+    )
+    grouped["有效数据天数"] = grouped["first_usage_date"].apply(
+        lambda first_date: sum(
+            movement_date >= first_date
+            for movement_date in available_dates
+        )
     )
     grouped["每日消耗"] = (
-        grouped["period_usage"] / effective_days
+        grouped["period_usage"] / grouped["有效数据天数"]
     ).round(1)
-    grouped["有效数据天数"] = effective_days
     return grouped[columns].sort_values(
         ["品类", "材质", "型号"], kind="stable"
     ).reset_index(drop=True)

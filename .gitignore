@@ -2,6 +2,7 @@
 .venv
 .streamlit/secrets.toml
 .streamlit/local_factory_credentials.toml
+.streamlit/google-service-account.json
 automation/playwright/.auth/
 output/automation/
 .cache/

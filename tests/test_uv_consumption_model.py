@@ -16,7 +16,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "material": "铁牌",
                 "category": "铁板画",
                 "color": "白",
-                "size": "2030",
+                "size": "1040",
                 "quantity_change": -100,
                 "movement_date": "2026-07-28",
                 "reason": "Google Sheets UV每日消耗｜2026-07-28",
@@ -27,7 +27,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "material": "铁牌",
                 "category": "铁板画",
                 "color": "白",
-                "size": "2030",
+                "size": "1040",
                 "quantity_change": -200,
                 "movement_date": "2026-07-29",
                 "reason": "Google Sheets UV每日消耗｜2026-07-29",
@@ -79,7 +79,42 @@ class UVConsumptionModelTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["货柜数量"], 30)
         self.assertEqual(result.iloc[0]["到货后可撑天数"], 25.0)
 
-    def test_zero_usage_days_still_count_in_daily_average(self):
+    def test_2030_models_restart_after_substitution_ends(self):
+        rows = pd.DataFrame([
+            {
+                "category": "铁板画", "material": "铝牌",
+                "color": "白", "size": "2030",
+                "quantity_change": -2500,
+                "movement_date": "2026-07-28",
+                "reason": "Google Sheets UV每日消耗｜2026-07-28",
+                "batch_id": "a", "reversal_of_batch_id": None,
+            },
+            {
+                "category": "铁板画", "material": "铝牌",
+                "color": "白", "size": "2030",
+                "quantity_change": -136,
+                "movement_date": "2026-07-29",
+                "reason": "Google Sheets UV每日消耗｜2026-07-29",
+                "batch_id": "b", "reversal_of_batch_id": None,
+            },
+            {
+                "category": "铁板画", "material": "铝牌",
+                "color": "白", "size": "2030",
+                "quantity_change": -182,
+                "movement_date": "2026-07-30",
+                "reason": "Google Sheets UV每日消耗｜2026-07-30",
+                "batch_id": "c", "reversal_of_batch_id": None,
+            },
+        ])
+
+        result = build_uv_consumption_model(
+            rows, date(2026, 7, 30)
+        )
+
+        self.assertEqual(result.iloc[0]["每日消耗"], 159.0)
+        self.assertEqual(result.iloc[0]["有效数据天数"], 2)
+
+    def test_zero_days_count_only_after_sku_first_usage(self):
         rows = pd.DataFrame([
             {
                 "category": "铁板画", "material": "铁牌",
@@ -103,8 +138,8 @@ class UVConsumptionModelTests(unittest.TestCase):
             rows, date(2026, 7, 29)
         )
 
-        self.assertEqual(result["有效数据天数"].tolist(), [2, 2])
-        self.assertEqual(result["每日消耗"].tolist(), [50.0, 100.0])
+        self.assertEqual(result["有效数据天数"].tolist(), [2, 1])
+        self.assertEqual(result["每日消耗"].tolist(), [50.0, 200.0])
 
 
 if __name__ == "__main__":
