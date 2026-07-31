@@ -88,56 +88,71 @@ def render_in_transit_table(
         expected_dates < today, "container_key"
     ].nunique()
     col3.metric("延迟货柜", delayed_count)
-    render_filtered_container_summary(raw_df)
     progress_df = build_container_progress_summary(raw_df, today)
-    render_arrival_alerts(progress_df)
-    selection_df = progress_df.drop(columns=["货柜记录ID"])
-    st.dataframe(
-        selection_df,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "发货日期": st.column_config.DateColumn("发货日期"),
-            "预计到货日期": st.column_config.DateColumn("预计到货日期"),
-            "已运输天数": st.column_config.NumberColumn("已运输天数", format="%d 天"),
-            "剩余天数": st.column_config.NumberColumn("剩余天数", format="%d 天"),
-            "到货提醒": st.column_config.TextColumn("到货提醒"),
-            "运输进度": st.column_config.ProgressColumn(
-                "运输进度", min_value=0, max_value=100, format="%d%%"
-            ),
-            "总件数": st.column_config.NumberColumn("总件数", format="%d"),
-        },
-    )
+    list_tab, summary_tab, detail_tab = st.tabs([
+        "在途列表", "筛选汇总", "货柜明细",
+    ])
+    with list_tab:
+        render_arrival_alerts(progress_df)
+        selection_df = progress_df.drop(columns=["货柜记录ID"])
+        st.dataframe(
+            selection_df,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "发货日期": st.column_config.DateColumn("发货日期"),
+                "预计到货日期": st.column_config.DateColumn("预计到货日期"),
+                "已运输天数": st.column_config.NumberColumn(
+                    "已运输天数", format="%d 天"
+                ),
+                "剩余天数": st.column_config.NumberColumn(
+                    "剩余天数", format="%d 天"
+                ),
+                "到货提醒": st.column_config.TextColumn("到货提醒"),
+                "运输进度": st.column_config.ProgressColumn(
+                    "运输进度", min_value=0, max_value=100,
+                    format="%d%%",
+                ),
+                "总件数": st.column_config.NumberColumn(
+                    "总件数", format="%d"
+                ),
+            },
+        )
+    with summary_tab:
+        render_filtered_container_summary(raw_df)
     choices = build_container_progress_choices(progress_df)
     selection_key = "transit_container_detail_target"
     options = ["", *choices]
     if st.session_state.get(selection_key, "") not in options:
         st.session_state[selection_key] = ""
-    container_key = st.selectbox(
-        "查看货柜明细",
-        options,
-        key=selection_key,
-        format_func=lambda value: (
-            "请选择货柜" if not value else choices[value]
-        ),
-    )
-    if container_key:
-        target_raw_df = raw_df[raw_df["container_key"] == container_key]
-        target_display_df = build_container_display(
-            target_raw_df,
-            include_cost=has_permission("can_view_cost"),
+    with detail_tab:
+        container_key = st.selectbox(
+            "查看货柜明细",
+            options,
+            key=selection_key,
+            format_func=lambda value: (
+                "请选择货柜" if not value else choices[value]
+            ),
         )
-        edited_detail_df = render_container_detail(
-            target_display_df,
-            container_key,
-            editable_cost=can_edit_container_cost(),
-        )
-        auto_save_container_costs(
-            supabase, raw_df, container_key, edited_detail_df
-        )
-        if has_permission("can_edit_container"):
-            render_status_update(supabase, raw_df, container_key)
+        if container_key:
+            target_raw_df = raw_df[raw_df["container_key"] == container_key]
+            target_display_df = build_container_display(
+                target_raw_df,
+                include_cost=has_permission("can_view_cost"),
+            )
+            edited_detail_df = render_container_detail(
+                target_display_df,
+                container_key,
+                editable_cost=can_edit_container_cost(),
+            )
+            auto_save_container_costs(
+                supabase, raw_df, container_key, edited_detail_df
+            )
+            if has_permission("can_edit_container"):
+                render_status_update(supabase, raw_df, container_key)
     return raw_df
+
+
 def render_inventory_container_page(supabase):
     st.title("货柜安排")
     try:
