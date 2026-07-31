@@ -7,6 +7,7 @@ from db.inventory.container.repository import load_inventory_containers
 from db.inventory.core.queries import load_recent_inventory_outbound
 from db.inventory.planning.incoming import (
     LOOKBACK_DAYS,
+    build_incoming_executive_view,
     build_inventory_audit_issues,
     build_incoming_inventory_forecast,
     normalize_forecast_usage,
@@ -98,22 +99,42 @@ def render_incoming_inventory_forecast(
                 "核对建议": st.column_config.TextColumn(width="large"),
             },
         )
+    executive_view = build_incoming_executive_view(forecast)
     st.dataframe(
-        forecast, hide_index=True, width="stretch",
+        executive_view, hide_index=True, width="stretch",
         column_config={
+            "SKU": st.column_config.TextColumn(width="large"),
+            "判断": st.column_config.TextColumn(width="medium"),
             "当前库存": st.column_config.NumberColumn(format="%d"),
-            "系统日均": st.column_config.NumberColumn(format="%.1f"),
-            "仓库申报日均": st.column_config.NumberColumn(format="%.1f"),
-            "当前可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
-            "预计/实际到货": st.column_config.DateColumn(),
-            "距到货天数": st.column_config.NumberColumn(format="%d 天"),
-            "到货前预计剩余": st.column_config.NumberColumn(format="%d"),
+            "日耗": st.column_config.NumberColumn(format="%.1f"),
+            "可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
+            "到货日": st.column_config.DateColumn(),
+            "到货数量": st.column_config.NumberColumn(format="%d"),
             "到货前缺口": st.column_config.NumberColumn(format="%d"),
-            "货柜数量": st.column_config.NumberColumn(format="%d"),
-            "到货后预计库存": st.column_config.NumberColumn(format="%d"),
-            "到货后可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
+            "到货后可撑": st.column_config.NumberColumn(format="%.1f 天"),
         },
     )
+    with st.expander(t("查看完整计算明细")):
+        st.dataframe(
+            forecast, hide_index=True, width="stretch",
+            column_config={
+                "当前库存": st.column_config.NumberColumn(format="%d"),
+                "系统日均": st.column_config.NumberColumn(format="%.1f"),
+                "仓库申报日均": st.column_config.NumberColumn(format="%.1f"),
+                "当前可撑天数": st.column_config.NumberColumn(
+                    format="%.1f 天"
+                ),
+                "预计/实际到货": st.column_config.DateColumn(),
+                "距到货天数": st.column_config.NumberColumn(format="%d 天"),
+                "到货前预计剩余": st.column_config.NumberColumn(format="%d"),
+                "到货前缺口": st.column_config.NumberColumn(format="%d"),
+                "货柜数量": st.column_config.NumberColumn(format="%d"),
+                "到货后预计库存": st.column_config.NumberColumn(format="%d"),
+                "到货后可撑天数": st.column_config.NumberColumn(
+                    format="%.1f 天"
+                ),
+            },
+        )
 
 
 def _render_reference_status(reference, today):

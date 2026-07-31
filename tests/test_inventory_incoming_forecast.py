@@ -4,6 +4,7 @@ import unittest
 import pandas as pd
 
 from db.inventory.planning.incoming import (
+    build_incoming_executive_view,
     build_inventory_audit_issues,
     build_incoming_inventory_forecast,
     normalize_forecast_usage,
@@ -155,6 +156,30 @@ class InventoryIncomingForecastTests(unittest.TestCase):
 
         self.assertEqual(forecast.iloc[0]["录入核对"], "不适用")
         self.assertTrue(build_inventory_audit_issues(forecast).empty)
+
+    def test_executive_view_combines_sku_and_keeps_decision_columns(self):
+        forecast = pd.DataFrame([{
+            "品类": "铁板画", "材质口径": "铁牌", "颜色": "白",
+            "规格": "2030", "判断": "到货前可能断货",
+            "当前库存": 35_396, "系统日均": 2_302.0,
+            "当前可撑天数": 15.4, "最近货柜": "第十三柜",
+            "预计/实际到货": date(2026, 8, 17),
+            "货柜数量": 45_000, "到货前缺口": 6_040,
+            "到货后可撑天数": 19.5,
+        }])
+
+        result = build_incoming_executive_view(forecast)
+
+        self.assertEqual(
+            result.columns.tolist(),
+            [
+                "SKU", "判断", "当前库存", "日耗", "可撑天数",
+                "最近货柜", "到货日", "到货数量", "到货前缺口",
+                "到货后可撑",
+            ],
+        )
+        self.assertEqual(result.iloc[0]["SKU"], "铁板画｜铁牌｜白｜2030")
+        self.assertEqual(result.iloc[0]["日耗"], 2_302.0)
 
 
 if __name__ == "__main__":

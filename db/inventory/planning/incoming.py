@@ -113,6 +113,36 @@ def build_inventory_audit_issues(forecast):
     ).reset_index(drop=True)
 
 
+def build_incoming_executive_view(forecast):
+    columns = [
+        "SKU", "判断", "当前库存", "日耗", "可撑天数", "最近货柜",
+        "到货日", "到货数量", "到货前缺口", "到货后可撑",
+    ]
+    if forecast is None or forecast.empty:
+        return pd.DataFrame(columns=columns)
+    result = forecast.copy()
+    result["SKU"] = result.apply(
+        lambda row: "｜".join(
+            value for value in [
+                _display_text(row.get("品类")),
+                _display_text(row.get("材质口径")),
+                _display_text(row.get("颜色")),
+                _display_text(row.get("规格")),
+            ]
+            if value
+        ),
+        axis=1,
+    )
+    result = result.rename(columns={
+        "系统日均": "日耗",
+        "当前可撑天数": "可撑天数",
+        "预计/实际到货": "到货日",
+        "货柜数量": "到货数量",
+        "到货后可撑天数": "到货后可撑",
+    })
+    return result[columns]
+
+
 def _nearest_incoming(df):
     result = df.copy()
     result["quantity"] = pd.to_numeric(
@@ -300,3 +330,10 @@ def _join_unique(values):
     return " / ".join(sorted({
         str(value).strip() for value in values if str(value).strip()
     }))
+
+
+def _display_text(value):
+    if pd.isna(value):
+        return ""
+    text = str(value).strip()
+    return "" if text in {"", "未填写"} else text
