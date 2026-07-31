@@ -1,6 +1,29 @@
 import pandas as pd
 
 
+def build_container_progress_choices(progress_df):
+    if progress_df is None or progress_df.empty:
+        return {}
+    choices = {}
+    for row in progress_df.to_dict("records"):
+        container_key = str(row.get("货柜记录ID") or "").strip()
+        if not container_key:
+            continue
+        container_no = str(row.get("货柜号") or container_key).strip()
+        expected = row.get("预计到货日期")
+        date_label = (
+            expected.strftime("%m/%d")
+            if hasattr(expected, "strftime") else str(expected or "未定")
+        )
+        quantity = int(row.get("总件数") or 0)
+        alert = str(row.get("到货提醒") or "").strip()
+        label = f"{container_no}｜到货 {date_label}｜{quantity:,} 件"
+        if alert:
+            label += f"｜{alert}"
+        choices[container_key] = label
+    return choices
+
+
 def build_container_progress_summary(df, today):
     columns = [
         "货柜记录ID", "货柜号", "部门", "品类", "发货日期", "预计到货日期",

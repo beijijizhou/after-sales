@@ -8,7 +8,10 @@ from db.inventory.container.repository import (
     load_container_dimensions,
     load_inventory_containers,
 )
-from db.inventory.container.progress import build_container_progress_summary
+from db.inventory.container.progress import (
+    build_container_progress_choices,
+    build_container_progress_summary,
+)
 from db.inventory.container.tables import build_container_display
 from ui.inventory.container.events import (
     render_container_history,
@@ -89,13 +92,10 @@ def render_in_transit_table(
     progress_df = build_container_progress_summary(raw_df, today)
     render_arrival_alerts(progress_df)
     selection_df = progress_df.drop(columns=["货柜记录ID"])
-    selection = st.dataframe(
+    st.dataframe(
         selection_df,
         hide_index=True,
         width="stretch",
-        on_select="rerun",
-        selection_mode="single-row",
-        key=f"transit_progress_{department}_{category}",
         column_config={
             "发货日期": st.column_config.DateColumn("发货日期"),
             "预计到货日期": st.column_config.DateColumn("预计到货日期"),
@@ -108,9 +108,20 @@ def render_in_transit_table(
             "总件数": st.column_config.NumberColumn("总件数", format="%d"),
         },
     )
-    selected_rows = selection.selection.rows
-    if selected_rows:
-        container_key = progress_df.iloc[selected_rows[0]]["货柜记录ID"]
+    choices = build_container_progress_choices(progress_df)
+    selection_key = "transit_container_detail_target"
+    options = ["", *choices]
+    if st.session_state.get(selection_key, "") not in options:
+        st.session_state[selection_key] = ""
+    container_key = st.selectbox(
+        "查看货柜明细",
+        options,
+        key=selection_key,
+        format_func=lambda value: (
+            "请选择货柜" if not value else choices[value]
+        ),
+    )
+    if container_key:
         target_raw_df = raw_df[raw_df["container_key"] == container_key]
         target_display_df = build_container_display(
             target_raw_df,
