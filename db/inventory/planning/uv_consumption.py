@@ -116,6 +116,35 @@ def build_uv_consumption_model(
     ).reset_index(drop=True)
 
 
+def build_uv_forecast_usage(model_df):
+    columns = [
+        "department", "category", "planning_material", "color", "size",
+        "system_daily_usage",
+    ]
+    if model_df is None or model_df.empty:
+        return pd.DataFrame(columns=columns)
+    result = model_df.rename(columns={
+        "品类": "category",
+        "材质": "planning_material",
+        "颜色": "color",
+        "型号": "size",
+        "每日消耗": "system_daily_usage",
+    }).copy()
+    result["department"] = "UV"
+    result["category"] = result["category"].fillna("").astype(str).str.strip()
+    result["planning_material"] = (
+        result["planning_material"].fillna("").astype(str).str.strip()
+    )
+    result["color"] = result["color"].fillna("").astype(str).str.strip()
+    result["size"] = (
+        result["size"].fillna("").astype(str).str.strip().str.upper()
+    )
+    result["system_daily_usage"] = pd.to_numeric(
+        result["system_daily_usage"], errors="coerce"
+    ).fillna(0)
+    return result[columns]
+
+
 def build_uv_container_coverage(model_df, inventory_df, container_df):
     columns = [
         "品类", "材质", "颜色", "型号", "每日消耗", "当前库存",

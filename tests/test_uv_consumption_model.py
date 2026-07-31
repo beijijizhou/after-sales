@@ -6,6 +6,7 @@ import pandas as pd
 from db.inventory.planning.uv_consumption import (
     build_uv_container_coverage,
     build_uv_consumption_model,
+    build_uv_forecast_usage,
 )
 
 
@@ -78,6 +79,26 @@ class UVConsumptionModelTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["当前可撑天数"], 10.0)
         self.assertEqual(result.iloc[0]["货柜数量"], 30)
         self.assertEqual(result.iloc[0]["到货后可撑天数"], 25.0)
+
+    def test_adapts_google_sheet_model_for_incoming_forecast(self):
+        model = pd.DataFrame([{
+            "品类": "铁板画",
+            "材质": "铁牌",
+            "颜色": "白",
+            "型号": "2030",
+            "每日消耗": 2302.0,
+            "有效数据天数": 2,
+        }])
+
+        result = build_uv_forecast_usage(model)
+
+        self.assertEqual(result.iloc[0]["department"], "UV")
+        self.assertEqual(result.iloc[0]["category"], "铁板画")
+        self.assertEqual(result.iloc[0]["planning_material"], "铁牌")
+        self.assertEqual(result.iloc[0]["size"], "2030")
+        self.assertEqual(
+            result.iloc[0]["system_daily_usage"], 2302.0
+        )
 
     def test_2030_models_restart_after_substitution_ends(self):
         rows = pd.DataFrame([

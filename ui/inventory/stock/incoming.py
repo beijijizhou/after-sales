@@ -11,6 +11,10 @@ from db.inventory.planning.incoming import (
     build_incoming_inventory_forecast,
     normalize_forecast_usage,
 )
+from db.inventory.planning.uv_consumption import (
+    build_uv_forecast_usage,
+    load_uv_consumption_history,
+)
 from ui.inventory.i18n import t
 
 
@@ -21,7 +25,7 @@ def render_incoming_inventory_forecast(
     st.subheader(t("库存与最近到货联动"))
     if department == "UV":
         st.caption(t(
-            "货柜联动沿用上方点货预测的综合日耗；UV 由 Google Sheets 自动扣减库存，不做仓库申报对比。"
+            "UV 货柜联动使用消耗模型中的 Google Sheets 日耗，并自动扣减库存，不做仓库申报对比。"
         ))
     else:
         st.caption(t(
@@ -31,10 +35,19 @@ def render_incoming_inventory_forecast(
         st.info(t("暂无库存数据"))
         return
     try:
-        system_usage = normalize_forecast_usage(
-            forecast_usage_df, department, category
-        )
-        if system_usage.empty:
+        if department == "UV":
+            uv_model = load_uv_consumption_history(supabase, today)
+            if category:
+                uv_model = uv_model[uv_model["品类"] == category]
+            system_usage = build_uv_forecast_usage(uv_model)
+            if system_usage.empty:
+                st.info(t("最近 14 天暂无已同步的 UV 每日消耗数据"))
+                return
+        else:
+            system_usage = normalize_forecast_usage(
+                forecast_usage_df, department, category
+            )
+        if system_usage.empty and department != "UV":
             reference = load_production_reference(department, category)
             if not _render_reference_status(reference, today):
                 return
