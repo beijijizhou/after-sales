@@ -26,6 +26,7 @@ from ui.inventory.operations.outbound_feedback import (
 from ui.inventory.operations.outbound_i18n import TEXT as OUTBOUND_TEXT
 from ui.inventory.operations.outbound_status import (
     render_daily_outbound_alert,
+    render_uv_daily_consumption_alert,
 )
 from ui.inventory.page_tabs import render_inventory_tabs
 from ui.inventory.shared import (
@@ -65,6 +66,8 @@ def render_inventory_summary(supabase):
     can_edit = has_permission("can_edit_inventory")
     if department == "DTF" and can_edit:
         render_daily_outbound_alert(supabase, department)
+    elif department == "UV" and can_edit:
+        render_uv_daily_consumption_alert(supabase)
     st.session_state["inventory_today"] = datetime.now(ZoneInfo("America/New_York")).date()
 
     try:

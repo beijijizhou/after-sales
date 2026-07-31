@@ -6,7 +6,25 @@ import streamlit as st
 from db.inventory.operations.outbound_audit import (
     find_missing_outbound_dates,
     load_daily_outbound_dates,
+    load_uv_daily_consumption_total,
 )
+
+
+def render_uv_daily_consumption_alert(supabase):
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    try:
+        deducted = load_uv_daily_consumption_total(supabase, today)
+    except Exception:
+        return
+    if deducted:
+        st.success(
+            f"UV 今日库存消耗已扣减 {deducted:,} 件"
+            "（来源：Google Sheets）。"
+        )
+    else:
+        st.warning(
+            "UV 今日库存消耗尚未扣减；请到“消耗模型”读取并确认今日数据。"
+        )
 
 
 def render_daily_outbound_alert(supabase, department, lookback_days=7):

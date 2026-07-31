@@ -10,6 +10,27 @@ DAILY_OUTBOUND_REASONS = [
     "每日出货",
     "黑白短袖出库",
 ]
+UV_DAILY_CONSUMPTION_REASON = "Google Sheets UV每日消耗"
+
+
+def load_uv_daily_consumption_total(supabase, movement_date):
+    rows = (
+        supabase.table("inventory_movements")
+        .select("quantity_change")
+        .eq("department", "UV")
+        .eq("movement_date", movement_date.isoformat())
+        .like("reason", f"{UV_DAILY_CONSUMPTION_REASON}｜%")
+        .execute()
+        .data
+        or []
+    )
+    return sum(
+        abs(int(row.get("quantity_change") or 0))
+        for row in rows
+        if int(row.get("quantity_change") or 0) < 0
+    )
+
+
 def load_daily_outbound_dates(supabase, department, start_date, end_date):
     rows = (
         supabase.table("inventory_movements")
