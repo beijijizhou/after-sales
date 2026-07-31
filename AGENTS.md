@@ -17,5 +17,9 @@ Default execution mode is **standard**:
 5. Use full tests, browser checks, or live database verification only when
    the change's risk requires them.
 
+Treat UI modularity as seriously as code modularity. Group related functions
+in the same page area, and separate distinct workflows with tabs or focused
+views instead of stacking multiple full tables and forms on one screen.
+
 Do not infer database structure when it can be inspected. Confirm schema before
 designing database changes. Never overwrite unrelated worktree changes.

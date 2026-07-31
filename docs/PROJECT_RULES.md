@@ -28,6 +28,13 @@
 
 ## UI
 
+- UI structure must be modular like code structure: group related functions in
+  one page area and give each area one clear purpose.
+- Do not vertically stack several complete tables or workflows when users only
+  need one at a time. Use tabs or focused view switching while preserving the
+  shared filters and selection state.
+- Keep similar operations together; for example, list, filtered summary, and
+  detail views for one business object belong in the same page section.
 - Design for a manager who needs a decision quickly.
 - Put conclusions, risks, and important totals first and on the left.
 - Put parameters and calculation details after the result.
