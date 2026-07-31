@@ -9,6 +9,7 @@ from ui.consumables.operations.entry import (
     _build_sku_labels,
     _normalize_entry_rows,
 )
+from ui.consumables.units import boxes_to_base, package_size, to_boxes
 from utils.auth import get_current_operator_name
 
 
@@ -17,39 +18,44 @@ NY_TIMEZONE = ZoneInfo("America/New_York")
 
 def render_daily_issue_table(supabase, department_code, items_df, can_edit):
     st.subheader("每日耗材扣减")
-    st.caption("填写今天各耗材的领用量；空白或 0 不会写入库存。")
+    st.caption(
+        "只填写今天领用的箱数；系统按每箱数量自动换算库存扣减。"
+    )
     active = _active_items(items_df, can_edit)
     if active is None:
         return
+    missing_package = active[
+        active["package_unit"].fillna("").astype(str).str.strip().ne("箱")
+        | pd.to_numeric(
+            active["units_per_package"], errors="coerce"
+        ).fillna(0).le(0)
+    ]
+    if not missing_package.empty:
+        names = "、".join(missing_package["name"].astype(str))
+        st.error(f"以下耗材尚未设置每箱数量：{names}")
+        st.info("请先在“SKU 管理 → 现有 SKU”中设置包装单位为箱。")
+        return
     labels, label_to_row = _build_sku_labels(active)
     version = st.session_state.get("consumable_issue_version", 0)
-    template = pd.DataFrame([
-        {
-            "耗材 SKU": label,
-            "当前库存": float(item["current_quantity"]),
-            "录入方式": "基础单位",
-            "今日领用": 0.0,
-            "备注": "",
-        }
-        for label, item in label_to_row.items()
-    ])
+    template = build_daily_issue_template(label_to_row)
     edited = st.data_editor(
         template,
         width="stretch",
         hide_index=True,
         key=f"daily_consumable_issue_{department_code}_{version}",
-        disabled=["耗材 SKU", "当前库存"],
+        disabled=["耗材 SKU", "当前库存（箱）", "每箱数量"],
         column_config={
-            "当前库存": st.column_config.NumberColumn(format="%.4f"),
-            "录入方式": st.column_config.SelectboxColumn(
-                options=["基础单位", "整包装"], required=True
+            "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+            "每箱数量": st.column_config.NumberColumn(
+                min_value=1.0, format="%.4f"
             ),
-            "今日领用": st.column_config.NumberColumn(
-                min_value=0.0, step=0.1, format="%.4f"
+            "今日领用（箱）": st.column_config.NumberColumn(
+                min_value=0, step=1, format="%d"
             ),
         },
     )
-    normalized = edited.rename(columns={"今日领用": "数量"})
+    normalized = edited.rename(columns={"今日领用（箱）": "数量"})
+    normalized["录入方式"] = "整包装"
     try:
         rows, preview = _normalize_entry_rows(
             normalized, label_to_row, include_cost=False
@@ -75,6 +81,22 @@ def render_daily_issue_table(supabase, department_code, items_df, can_edit):
         )
 
 
+def build_daily_issue_template(label_to_row):
+    return pd.DataFrame([
+        {
+            "耗材 SKU": label,
+            "当前库存（箱）": (
+                float(item["current_quantity"])
+                / float(item["units_per_package"])
+            ),
+            "每箱数量": float(item["units_per_package"]),
+            "今日领用（箱）": 0,
+            "备注": "",
+        }
+        for label, item in label_to_row.items()
+    ])
+
+
 def render_inventory_initialization(
     supabase, department_code, items_df, can_edit, show_cost
 ):
@@ -84,14 +106,21 @@ def render_inventory_initialization(
     if active is None:
         return
     labels, label_to_row = _build_sku_labels(active)
-    columns = ["耗材 SKU", "当前库存", "目标库存", "备注"]
+    missing = active[active.apply(package_size, axis=1).isna()]
+    if not missing.empty:
+        st.error(
+            "以下耗材尚未设置每箱数量："
+            + "、".join(missing["name"].astype(str))
+        )
+        return
+    columns = ["耗材 SKU", "当前库存（箱）", "目标库存（箱）", "备注"]
     if show_cost:
         columns.insert(3, "单位成本")
     template = pd.DataFrame([
         {
             "耗材 SKU": label,
-            "当前库存": float(item["current_quantity"]),
-            "目标库存": float(item["current_quantity"]),
+            "当前库存（箱）": to_boxes(item["current_quantity"], item),
+            "目标库存（箱）": to_boxes(item["current_quantity"], item),
             "单位成本": None,
             "备注": "",
         }
@@ -102,11 +131,11 @@ def render_inventory_initialization(
         width="stretch",
         hide_index=True,
         key=f"consumable_initialization_{department_code}",
-        disabled=["耗材 SKU", "当前库存"],
+        disabled=["耗材 SKU", "当前库存（箱）"],
         column_config={
-            "当前库存": st.column_config.NumberColumn(format="%.4f"),
-            "目标库存": st.column_config.NumberColumn(
-                min_value=0.0, step=0.1, format="%.4f"
+            "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+            "目标库存（箱）": st.column_config.NumberColumn(
+                min_value=0.0, step=1, format="%.2f"
             ),
             "单位成本": st.column_config.NumberColumn(
                 min_value=0.0, step=0.0001, format="$%.4f"
@@ -143,11 +172,14 @@ def _normalize_initialization(edited, label_to_row, include_cost):
     for row in edited.to_dict("records"):
         label = row["耗材 SKU"]
         item = label_to_row[label]
-        current = float(item["current_quantity"])
-        target = pd.to_numeric(row.get("目标库存"), errors="coerce")
-        if pd.isna(target) or target < 0:
+        current_boxes = to_boxes(item["current_quantity"], item)
+        target_boxes = pd.to_numeric(
+            row.get("目标库存（箱）", row.get("目标库存")), errors="coerce"
+        )
+        if current_boxes is None or pd.isna(target_boxes) or target_boxes < 0:
             continue
-        difference = float(target) - current
+        target = boxes_to_base(target_boxes, item)
+        difference = float(target) - float(item["current_quantity"])
         if abs(difference) < 0.00005:
             continue
         record = {
@@ -161,9 +193,9 @@ def _normalize_initialization(edited, label_to_row, include_cost):
         rows.append(record)
         preview.append({
             "耗材 SKU": label,
-            "当前库存": current,
-            "目标库存": float(target),
-            "库存差额": difference,
+            "当前库存（箱）": current_boxes,
+            "目标库存（箱）": float(target_boxes),
+            "库存差额（箱）": float(target_boxes) - current_boxes,
             **({"单位成本": record.get("unit_cost")} if include_cost else {}),
         })
     return rows, pd.DataFrame(preview)

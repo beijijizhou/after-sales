@@ -1,6 +1,3 @@
-from db.inventory.operations.outbound import OUTBOUND_SPECS
-
-
 LANGUAGES = {
     "中文": "zh",
     "English": "en",
@@ -23,6 +20,9 @@ TEXT = {
         "rule_units": "每箱 / 每包件数",
         "rule_reset": "恢复默认",
         "rule_sku": "SKU",
+        "rule_material": "材质",
+        "material_rules_title": "材质优先换算",
+        "material_rules_help": "选择材质后，本次出库中该材质统一使用此换算单位，优先于 SKU 和普通规则。",
         "sku_rules_title": "SKU 特殊换算",
         "sku_rules_help": "点击表格底部的加号新增一行，选择 SKU、包装方式和每箱 / 每包件数。",
         "rule_labels": {
@@ -81,6 +81,9 @@ TEXT = {
         "rule_units": "Pieces per box / bag",
         "rule_reset": "Restore default",
         "rule_sku": "SKU",
+        "rule_material": "Material",
+        "material_rules_title": "Material-priority Conversions",
+        "material_rules_help": "For this outbound, the selected material uses one fixed conversion before SKU-specific and general rules.",
         "sku_rules_title": "SKU-specific Conversions",
         "sku_rules_help": "Add a row, then select the SKU, package type, and pieces per box or bag.",
         "rule_labels": {
@@ -139,6 +142,9 @@ TEXT = {
         "rule_units": "Piezas por caja / bolsa",
         "rule_reset": "Restaurar valor predeterminado",
         "rule_sku": "SKU",
+        "rule_material": "Material",
+        "material_rules_title": "Conversión prioritaria por material",
+        "material_rules_help": "Para esta salida, el material seleccionado usa una conversión fija antes que las reglas de SKU y generales.",
         "sku_rules_title": "Conversiones específicas por SKU",
         "sku_rules_help": "Agregue una fila y seleccione el SKU, el empaque y las piezas por caja o bolsa.",
         "rule_labels": {
@@ -216,6 +222,13 @@ def translate_package(value, language):
     return result
 
 
+def untranslate_package(value, language):
+    result = str(value)
+    for source, target in PACKAGE_WORDS[language].items():
+        result = result.replace(f"/{target}", f"/{source}")
+    return result
+
+
 def to_display_table(df, language):
     result = df.copy()
     result["包装规格"] = result["包装规格"].map(
@@ -232,10 +245,7 @@ def to_internal_table(df, language):
     reverse_colors = {value: key for key, value in COLORS[language].items()}
     result["颜色"] = result["颜色"].map(reverse_colors).fillna(result["颜色"])
     result["备注"] = result["备注"].replace(NOTES[language], "每日正常出货")
-    reverse_packages = {
-        translate_package(value, language): value for value in OUTBOUND_SPECS
-    }
-    result["包装规格"] = result["包装规格"].map(reverse_packages).fillna(
-        result["包装规格"]
+    result["包装规格"] = result["包装规格"].map(
+        lambda value: untranslate_package(value, language)
     )
     return result

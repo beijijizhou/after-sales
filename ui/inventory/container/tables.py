@@ -142,7 +142,7 @@ def _render_container_summary_table(raw_df):
 
 
 def render_container_detail(
-    display_df, container_key, editable_cost=False
+    display_df, container_key, editable_cost=False, show_items=True
 ):
     detail_df = display_df[display_df["货柜记录ID"] == container_key].copy()
     if detail_df.empty:
@@ -156,55 +156,57 @@ def render_container_detail(
         quantity_col, cost_col = st.columns(2)
         quantity_col.metric("总数量", f"{total_quantity:,} 件")
         cost_col.metric("总成本", f"${total_cost:,.2f}")
-    hidden = [
-        "货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期",
-        "实际到货日期", "实际到货时间（纽约）", "货柜号", "状态",
-    ]
-    detail_df = detail_df.drop(columns=hidden)
-    item_columns = get_container_item_columns(display_df)
-    front = ["部门", "品类", "品牌", "材质", "颜色", "备注"]
-    cost = ["成本"] if "成本" in detail_df.columns else []
-    if "型号" in detail_df.columns:
-        detail_df = detail_df[[
-            *front[:-1], *cost, "型号", "数量", "备注",
-        ]]
-    else:
-        detail_df = detail_df[[*front, *cost, *item_columns, "总件数"]]
-    config = {
-        "备注": st.column_config.TextColumn("备注", width="large"),
-        "型号": st.column_config.TextColumn("型号"),
-        "数量": st.column_config.NumberColumn("数量", format="%d"),
-        **{
-            item: st.column_config.NumberColumn(
-                _item_label(item), format="%d"
+    edited_detail_df = detail_df
+    if show_items:
+        hidden = [
+            "货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期",
+            "实际到货日期", "实际到货时间（纽约）", "货柜号", "状态",
+        ]
+        detail_df = detail_df.drop(columns=hidden)
+        item_columns = get_container_item_columns(display_df)
+        front = ["部门", "品类", "品牌", "材质", "颜色", "备注"]
+        cost = ["成本"] if "成本" in detail_df.columns else []
+        if "型号" in detail_df.columns:
+            detail_df = detail_df[[
+                *front[:-1], *cost, "型号", "数量", "备注",
+            ]]
+        else:
+            detail_df = detail_df[[*front, *cost, *item_columns, "总件数"]]
+        config = {
+            "备注": st.column_config.TextColumn("备注", width="large"),
+            "型号": st.column_config.TextColumn("型号"),
+            "数量": st.column_config.NumberColumn("数量", format="%d"),
+            **{
+                item: st.column_config.NumberColumn(
+                    _item_label(item), format="%d"
+                )
+                for item in item_columns
+            },
+            "总件数": st.column_config.NumberColumn("总件数", format="%d"),
+        }
+        if "成本" in detail_df.columns:
+            config["成本"] = st.column_config.NumberColumn(
+                "成本", min_value=0.0, step=0.0001, format="%.4f",
+                disabled=not editable_cost,
             )
-            for item in item_columns
-        },
-        "总件数": st.column_config.NumberColumn("总件数", format="%d"),
-    }
-    if "成本" in detail_df.columns:
-        config["成本"] = st.column_config.NumberColumn(
-            "成本", min_value=0.0, step=0.0001, format="%.4f",
-            disabled=not editable_cost,
-        )
-    if editable_cost and "成本" in detail_df.columns:
-        edited_detail_df = st.data_editor(
-            detail_df,
-            hide_index=True,
-            width="stretch",
-            column_config=config,
-            disabled=[
-                column for column in detail_df.columns
-                if column != "成本"
-            ],
-            key=f"container_detail_cost_editor_{container_key}",
-        )
-    else:
-        st.dataframe(
-            detail_df, hide_index=True, width="stretch",
-            column_config=config,
-        )
-        edited_detail_df = detail_df
+        if editable_cost and "成本" in detail_df.columns:
+            edited_detail_df = st.data_editor(
+                detail_df,
+                hide_index=True,
+                width="stretch",
+                column_config=config,
+                disabled=[
+                    column for column in detail_df.columns
+                    if column != "成本"
+                ],
+                key=f"container_detail_cost_editor_{container_key}",
+            )
+        else:
+            st.dataframe(
+                detail_df, hide_index=True, width="stretch",
+                column_config=config,
+            )
+            edited_detail_df = detail_df
     packaging_df = build_container_packaging_summary(display_df, container_key)
     render_packaging_check(packaging_df)
     return edited_detail_df

@@ -28,7 +28,8 @@ class ConsumableInventoryTests(unittest.TestCase):
         rows, preview = _normalize_entry_rows(edited, labels, False)
 
         self.assertEqual(rows[0]["quantity"], 24)
-        self.assertEqual(preview.iloc[0]["实际数量"], 24)
+        self.assertEqual(preview.iloc[0]["箱数"], 2)
+        self.assertEqual(preview.iloc[0]["换算数量"], 24)
 
     def test_latest_cost_uses_newest_priced_movement(self):
         movements = pd.DataFrame([
@@ -49,14 +50,16 @@ class ConsumableInventoryTests(unittest.TestCase):
     def test_initialization_records_difference_from_current_stock(self):
         edited = pd.DataFrame([{
             "耗材 SKU": "墨水｜蓝色",
-            "当前库存": 20,
-            "目标库存": 35,
+            "当前库存（箱）": 5,
+            "目标库存（箱）": 7,
             "备注": "首次盘点",
         }])
         labels = {
             "墨水｜蓝色": {
                 "id": "item-1",
                 "current_quantity": 20,
+                "package_unit": "箱",
+                "units_per_package": 4,
             }
         }
 
@@ -64,20 +67,22 @@ class ConsumableInventoryTests(unittest.TestCase):
             edited, labels, include_cost=False
         )
 
-        self.assertEqual(rows[0]["quantity"], 15)
-        self.assertEqual(preview.iloc[0]["库存差额"], 15)
+        self.assertEqual(rows[0]["quantity"], 8)
+        self.assertEqual(preview.iloc[0]["库存差额（箱）"], 2)
 
     def test_initialization_can_reduce_incorrect_opening_stock(self):
         edited = pd.DataFrame([{
             "耗材 SKU": "墨水｜蓝色",
-            "当前库存": 20,
-            "目标库存": 8,
+            "当前库存（箱）": 5,
+            "目标库存（箱）": 2,
             "备注": "",
         }])
         labels = {
             "墨水｜蓝色": {
                 "id": "item-1",
                 "current_quantity": 20,
+                "package_unit": "箱",
+                "units_per_package": 4,
             }
         }
 

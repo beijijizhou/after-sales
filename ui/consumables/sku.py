@@ -5,12 +5,13 @@ import pandas as pd
 import streamlit as st
 
 from db.consumables import create_consumable_item, update_consumable_item
+from ui.consumables.units import boxes_to_base, to_boxes
 from utils.auth import get_current_operator_name
 
 
 EDIT_COLUMNS = [
     "分类", "耗材名称", "规格/型号", "品牌", "基础单位",
-    "包装单位", "每包装数量", "最低库存", "当前库存", "启用",
+    "包装单位", "每箱数量", "最低库存（箱）", "当前库存（箱）", "启用",
 ]
 
 
@@ -41,22 +42,16 @@ def _render_create_form(supabase, department_id, can_manage):
         brand = col2.text_input("品牌（可选）")
         col1, col2 = st.columns(2)
         base_unit = col1.text_input("基础单位 *", placeholder="瓶、卷、米")
-        minimum_quantity = col2.number_input(
-            "最低库存（可选）", min_value=0.0, value=None,
-            step=0.1, format="%.4f",
+        minimum_boxes = col2.number_input(
+            "最低库存（箱，可选）", min_value=0.0, value=None,
+            step=1.0, format="%.2f",
         )
-        has_package = st.checkbox("设置包装换算")
-        package_unit = ""
-        units_per_package = None
-        if has_package:
-            col1, col2 = st.columns(2)
-            package_unit = col1.text_input(
-                "包装单位 *", placeholder="箱、桶、包"
-            )
-            units_per_package = col2.number_input(
-                "每包装数量 *", min_value=0.0001,
-                value=1.0, step=0.1, format="%.4f",
-            )
+        col1, col2 = st.columns(2)
+        col1.text_input("计数单位", value="箱", disabled=True)
+        units_per_package = col2.number_input(
+            "每箱数量 *", min_value=0.0001,
+            value=1.0, step=0.1, format="%.4f",
+        )
         submitted = st.form_submit_button(
             "新增耗材 SKU", type="primary", width="stretch"
         )
@@ -66,9 +61,10 @@ def _render_create_form(supabase, department_id, can_manage):
     if not category.strip() or not name.strip() or not base_unit.strip():
         st.error("请填写所有带 * 的必填项目。")
         return
-    if has_package and not package_unit.strip():
-        st.error("设置包装换算时，包装单位不能为空。")
-        return
+    minimum_quantity = (
+        None if minimum_boxes is None
+        else float(minimum_boxes) * float(units_per_package)
+    )
     values = {
         "department_id": department_id,
         "category": category.strip(),
@@ -76,8 +72,8 @@ def _render_create_form(supabase, department_id, can_manage):
         "specification": specification.strip(),
         "brand": brand.strip(),
         "base_unit": base_unit.strip(),
-        "package_unit": package_unit.strip() or None,
-        "units_per_package": units_per_package if has_package else None,
+        "package_unit": "箱",
+        "units_per_package": units_per_package,
         "minimum_quantity": minimum_quantity,
         "created_by": get_current_operator_name(),
     }
@@ -105,22 +101,23 @@ def _render_catalog(supabase, items_df, can_manage):
         editor,
         width="stretch",
         hide_index=True,
-        disabled=["_id", "当前库存"] if can_manage else ["_id", *EDIT_COLUMNS],
+        disabled=["_id", "包装单位", "当前库存（箱）"]
+        if can_manage else ["_id", *EDIT_COLUMNS],
         key="consumable_sku_catalog",
         column_config={
             "_id": None,
-            "每包装数量": st.column_config.NumberColumn(
+            "每箱数量": st.column_config.NumberColumn(
                 min_value=0.0001, step=0.1, format="%.4f"
             ),
-            "最低库存": st.column_config.NumberColumn(
-                min_value=0.0, step=0.1, format="%.4f"
+            "最低库存（箱）": st.column_config.NumberColumn(
+                min_value=0.0, step=1, format="%.2f"
             ),
-            "当前库存": st.column_config.NumberColumn(format="%.4f"),
+            "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
         },
     )
     if not can_manage:
         return
-    st.caption("当前库存不能在这里直接修改，请通过入库、领用或库存修正处理。")
+    st.caption("耗材统一按箱计数；当前库存请通过入库、领用或库存修正处理。")
     if not st.button("保存 SKU 修改", width="stretch"):
         return
     try:
@@ -147,10 +144,14 @@ def _build_editor(items_df):
         "规格/型号": items_df["specification"],
         "品牌": items_df["brand"],
         "基础单位": items_df["base_unit"],
-        "包装单位": items_df["package_unit"],
-        "每包装数量": items_df["units_per_package"],
-        "最低库存": items_df["minimum_quantity"],
-        "当前库存": items_df["current_quantity"],
+        "包装单位": "箱",
+        "每箱数量": items_df["units_per_package"],
+        "最低库存（箱）": items_df.apply(
+            lambda row: to_boxes(row["minimum_quantity"], row), axis=1
+        ),
+        "当前库存（箱）": items_df.apply(
+            lambda row: to_boxes(row["current_quantity"], row), axis=1
+        ),
         "启用": items_df["is_active"],
     })
 
@@ -166,9 +167,12 @@ def _build_updates(original, edited):
             "specification": _text(row["规格/型号"]),
             "brand": _text(row["品牌"]),
             "base_unit": _required(row["基础单位"], "基础单位"),
-            "package_unit": _text(row["包装单位"]) or None,
-            "units_per_package": _number(row["每包装数量"]),
-            "minimum_quantity": _number(row["最低库存"]),
+            "package_unit": "箱",
+            "units_per_package": _number(row["每箱数量"]),
+            "minimum_quantity": boxes_to_base(
+                row["最低库存（箱）"],
+                {"package_unit": "箱", "units_per_package": row["每箱数量"]},
+            ),
             "is_active": bool(row["启用"]),
         }
         if bool(values["package_unit"]) != bool(values["units_per_package"]):

@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from hashlib import sha1
 
 from db.inventory.master_data import (
     load_master_data,
@@ -12,7 +13,7 @@ from ui.inventory.sku.master_forms import render_master_data_forms
 
 
 def render_sku_management(
-    supabase, selected_department, can_manage
+    supabase, selected_department, can_manage, sku_filters=None,
 ):
     try:
         departments, categories, brands = load_master_data(supabase)
@@ -41,27 +42,27 @@ def render_sku_management(
     )
 
     if not can_manage:
-        _render_catalog(supabase, department_code)
+        _render_catalog(supabase, department_code, sku_filters)
         return
 
     catalog_tab, create_tab, edit_tab, master_tab = st.tabs(
         [t("SKU 目录"), t("新增 SKU"), t("修改 SKU"), t("基础资料")]
     )
     with catalog_tab:
-        _render_catalog(supabase, department_code)
+        _render_catalog(supabase, department_code, sku_filters)
     with create_tab:
         render_create_skus(
             supabase, department, categories, brands
         )
     with edit_tab:
         _render_editor(
-            supabase, department, categories, brands
+            supabase, department, categories, brands, sku_filters
         )
     with master_tab:
         render_master_data_forms(supabase, departments)
 
 
-def _render_catalog(supabase, department_code):
+def _render_catalog(supabase, department_code, sku_filters=None):
     catalog = load_sku_catalog(supabase, department_code)
     if catalog.empty:
         st.info(t("当前部门暂无 SKU"))
@@ -69,6 +70,10 @@ def _render_catalog(supabase, department_code):
     active_only = st.toggle(t("只看启用 SKU"), value=True)
     if active_only:
         catalog = catalog[catalog["is_active"] == True]  # noqa: E712
+    catalog = catalog.assign(
+        规格=catalog["model"].fillna(catalog["size"])
+    )
+    catalog = filter_sku_editor_source(catalog, sku_filters)
     display = _display_catalog(catalog)
     st.metric(t("SKU 数量"), len(display))
     st.dataframe(
@@ -79,7 +84,9 @@ def _render_catalog(supabase, department_code):
     )
 
 
-def _render_editor(supabase, department, categories, brands):
+def _render_editor(
+    supabase, department, categories, brands, sku_filters=None
+):
     catalog = load_sku_catalog(supabase, department["code"])
     if catalog.empty:
         st.info(t("当前部门暂无可修改 SKU"))
@@ -88,7 +95,10 @@ def _render_editor(supabase, department, categories, brands):
         categories["department_id"] == department["id"]
     ]
     category_names = department_categories["name"].tolist()
-    brand_names = ["", *brands.get("name", []).tolist()]
+    active_brands = brands[
+        brands.get("is_active", False) == True  # noqa: E712
+    ]
+    brand_names = ["", *active_brands.get("name", []).tolist()]
     source = catalog.assign(
         规格=catalog["model"].fillna(catalog["size"])
     )
@@ -97,17 +107,25 @@ def _render_editor(supabase, department, categories, brands):
         "material", "color", "规格", "unit", "quantity", "is_active",
     ]
     source = source[columns]
+    filtered = filter_sku_editor_source(source, sku_filters)
+    st.caption(f"已筛选 {len(filtered)} / {len(source)} 个 SKU")
+    if filtered.empty:
+        st.info("当前筛选条件下没有 SKU")
+        return
     version = st.session_state.get("sku_master_editor_version", 0)
+    signature = sha1(
+        "|".join(filtered["id"].astype(str)).encode()
+    ).hexdigest()[:10]
     edited = pd.DataFrame(st.data_editor(
-        source,
+        filtered,
         hide_index=True,
         width="stretch",
-        disabled=["id", "sku_code", "quantity"],
+        disabled=["id", "sku_code", "sku_name", "quantity"],
         column_config={
             "id": None,
             "sku_code": st.column_config.TextColumn(t("SKU 编号")),
             "sku_name": st.column_config.TextColumn(
-                t("SKU 名称"), required=True
+                t("SKU 名称")
             ),
             "category": st.column_config.SelectboxColumn(
                 t("品类"), options=category_names, required=True
@@ -124,14 +142,22 @@ def _render_editor(supabase, department, categories, brands):
             ),
             "is_active": st.column_config.CheckboxColumn(t("启用")),
         },
-        key=f"sku_master_editor_{department['id']}_{version}",
+        key=(
+            f"sku_master_editor_{department['id']}_{version}_{signature}"
+        ),
     ))
-    st.caption(t("SKU 修改历史说明"))
+    st.caption(
+        f"{t('SKU 修改历史说明')} SKU 名称会按品类、品牌、材质、颜色和规格自动生成。"
+    )
     if not st.button(t("保存 SKU 修改"), width="stretch"):
         return
     try:
+        complete_edited = source.set_index("id")
+        complete_edited.update(edited.set_index("id"))
+        complete_edited = complete_edited.reset_index()
         updated = update_skus(
-            supabase, source, edited, department_categories, brands
+            supabase, source, complete_edited,
+            department_categories, brands,
         )
     except Exception as error:
         st.error(f"{t('SKU 修改失败')}：{error}")
@@ -144,6 +170,22 @@ def _render_editor(supabase, department, categories, brands):
     )
     st.session_state["sku_master_editor_version"] = version + 1
     st.rerun()
+
+
+def filter_sku_editor_source(source, selections=None):
+    result = source.copy()
+    selections = selections or {}
+    show_phone_cases = selections.get("category") == "手机壳"
+    if not show_phone_cases and "category" in result.columns:
+        result = result[result["category"] != "手机壳"]
+    for field, value in selections.items():
+        if isinstance(value, (list, tuple, set)) and value:
+            result = result[result[field].isin(value)]
+        elif value and value != "全部":
+            result = result[
+                result[field].fillna("").astype(str).str.strip() == value
+            ]
+    return result.reset_index(drop=True)
 
 
 def _display_catalog(catalog):

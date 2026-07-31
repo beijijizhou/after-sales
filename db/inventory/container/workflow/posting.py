@@ -1,10 +1,14 @@
 from uuid import uuid4
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
 from db.inventory.container.workflow.state import (
+    STATE_ARRIVED,
+    STATE_IN_TRANSIT,
     STATE_POSTED,
     build_container_event,
+    normalize_container_state,
     validate_container_transition,
 )
 from db.inventory.operations.adjustments import apply_adjustment_rows
@@ -15,9 +19,16 @@ def post_container_inventory(
 ):
     items = _load_container_rows(supabase, container_key)
     today = pd.Timestamp.now(tz="America/New_York").date()
-    previous = validate_container_transition(
-        items[0]["status"], STATE_POSTED
-    )
+    original = items[0]
+    previous = normalize_container_state(original["status"])
+    auto_arrival = previous == STATE_IN_TRANSIT
+    if auto_arrival:
+        validate_container_transition(previous, STATE_ARRIVED)
+        previous = validate_container_transition(
+            STATE_ARRIVED, STATE_POSTED
+        )
+    else:
+        previous = validate_container_transition(previous, STATE_POSTED)
     _ensure_not_posted(supabase, container_key)
     batch_id = str(uuid4())
     frame = pd.DataFrame(items)
@@ -25,25 +36,45 @@ def post_container_inventory(
         _apply_inventory_groups(
             supabase, frame, batch_id, operated_by, today, container_key
         )
+        container_values = {"status": STATE_POSTED}
+        if auto_arrival:
+            container_values.update({
+                "actual_arrival_date": today.isoformat(),
+                "actual_arrival_at": None,
+            })
         (
             supabase.table("inventory_container_imports")
-            .update({"status": STATE_POSTED})
+            .update(container_values)
             .eq("container_key", container_key)
             .execute()
         )
-        event = build_container_event(
-            items[0], container_key, "入库", previous, STATE_POSTED,
+        event_time = datetime.now(timezone.utc)
+        events = []
+        if auto_arrival:
+            arrival_event = build_container_event(
+                original, container_key, "到柜", STATE_IN_TRANSIT,
+                STATE_ARRIVED, today, operated_by,
+                "直接入库：系统自动确认到柜",
+            )
+            arrival_event["created_at"] = event_time.isoformat()
+            events.append(arrival_event)
+        posting_event = build_container_event(
+            original, container_key, "入库", previous, STATE_POSTED,
             today, operated_by, f"{note}｜库存批次：{batch_id}".strip("｜"),
         )
+        posting_event["created_at"] = (
+            event_time + timedelta(microseconds=1)
+        ).isoformat()
+        events.append(posting_event)
         return (
             supabase.table("inventory_container_events")
-            .insert(event)
+            .insert(events)
             .execute()
             .data
         )
     except Exception:
         _rollback_posting(
-            supabase, batch_id, container_key, previous, operated_by
+            supabase, batch_id, container_key, original, operated_by
         )
         raise
 
@@ -86,7 +117,7 @@ def _load_container_rows(supabase, container_key):
         supabase.table("inventory_container_imports")
         .select(
             "container_no,status,department,category,brand,material,"
-            "color,size,quantity,unit_cost"
+            "color,size,quantity,unit_cost,actual_arrival_date,actual_arrival_at"
         )
         .eq("container_key", container_key)
         .execute()
@@ -115,7 +146,7 @@ def _ensure_not_posted(supabase, container_key):
 
 
 def _rollback_posting(
-    supabase, batch_id, container_key, previous, operated_by
+    supabase, batch_id, container_key, original, operated_by
 ):
     try:
         supabase.rpc(
@@ -127,7 +158,11 @@ def _rollback_posting(
     finally:
         (
             supabase.table("inventory_container_imports")
-            .update({"status": previous})
+            .update({
+                "status": original["status"],
+                "actual_arrival_date": original.get("actual_arrival_date"),
+                "actual_arrival_at": original.get("actual_arrival_at"),
+            })
             .eq("container_key", container_key)
             .execute()
         )

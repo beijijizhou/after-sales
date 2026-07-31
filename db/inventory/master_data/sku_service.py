@@ -83,14 +83,18 @@ def update_skus(supabase, original_df, edited_df, categories, brands):
         if not _has_changes(row, original):
             continue
         brand = _clean(row.get("brand"))
+        material = _clean(row.get("material"))
+        color = _clean(row.get("color"))
         values = {
-            "sku_name": _required(row.get("sku_name"), "SKU 名称"),
+            "sku_name": _build_sku_name(
+                category["name"], brand, material, color, specification
+            ),
             "category": category["name"],
             "category_id": category["id"],
             "brand": brand,
             "brand_id": brand_map.get(brand),
-            "material": _clean(row.get("material")),
-            "color": _clean(row.get("color")),
+            "material": material,
+            "color": color,
             "size": specification,
             "model": (
                 specification
@@ -100,7 +104,7 @@ def update_skus(supabase, original_df, edited_df, categories, brands):
             "unit": _clean(row.get("unit")) or "件",
             "is_active": bool(row.get("is_active")),
             "品牌": brand,
-            "材质": _clean(row.get("material")),
+            "材质": material,
         }
         supabase.table("inventory_items").update(values).eq(
             "id", row["id"]
@@ -168,13 +172,6 @@ def _build_sku_name(category, brand, material, color, specification):
 
 def _normalized_key(values):
     return tuple(_clean(value).casefold() for value in values)
-
-
-def _required(value, label):
-    result = _clean(value)
-    if not result:
-        raise ValueError(f"{label}不能为空")
-    return result
 
 
 def _clean(value):

@@ -3,6 +3,7 @@ import streamlit as st
 
 from db.inventory.core.packaging import (
     DEFAULT_PACKAGING_RULES,
+    packaging_material_key,
     packaging_sku_key,
 )
 from db.inventory.master_data.repository import load_sku_catalog
@@ -62,7 +63,7 @@ def render_packaging_rule_editor(
         },
         key=f"packaging_rule_table_{language}_{version}",
     )
-    sku_rules = _render_sku_rule_table(
+    special_rules = _render_sku_rule_table(
         supabase,
         department,
         category,
@@ -80,7 +81,7 @@ def render_packaging_rule_editor(
         str(row["_rule"]): int(row[text["rule_units"]])
         for _, row in edited.iterrows()
     }
-    return default_rules, sku_rules
+    return default_rules, special_rules
 
 
 def _render_sku_rule_table(
@@ -98,6 +99,8 @@ def _render_sku_rule_table(
         sku_df = sku_df[sku_df["is_active"].fillna(True)]
     if sku_df.empty:
         return {}
+
+    rules = _render_material_rule_table(sku_df, text, language, version)
 
     labels = {
         _sku_label(row): row
@@ -134,7 +137,6 @@ def _render_sku_rule_table(
         },
         key=f"packaging_sku_rule_table_{language}_{version}",
     )
-    rules = {}
     for _, source in edited.dropna().iterrows():
         sku = labels.get(source[sku_column])
         if sku is None:
@@ -148,6 +150,47 @@ def _render_sku_rule_table(
         )
         rules[key] = int(source[units_column])
     return rules
+
+
+def _render_material_rule_table(sku_df, text, language, version):
+    materials = sorted({
+        str(value).strip() for value in sku_df["material"].dropna()
+        if str(value).strip()
+    })
+    if not materials:
+        return {}
+    material_column = text["rule_material"]
+    package_column = text["rule_package"]
+    units_column = text["rule_units"]
+    st.markdown(f"**{text['material_rules_title']}**")
+    st.caption(text["material_rules_help"])
+    edited = st.data_editor(
+        pd.DataFrame(columns=[
+            material_column, package_column, units_column,
+        ]),
+        hide_index=True,
+        width="stretch",
+        num_rows="dynamic",
+        column_config={
+            material_column: st.column_config.SelectboxColumn(
+                material_column, options=materials, required=True,
+            ),
+            package_column: st.column_config.SelectboxColumn(
+                package_column, options=["Box", "Bag"], required=True,
+            ),
+            units_column: st.column_config.NumberColumn(
+                units_column, min_value=1, step=1, format="%d",
+                required=True,
+            ),
+        },
+        key=f"packaging_material_rule_table_{language}_{version}",
+    )
+    return {
+        packaging_material_key(
+            source[material_column], source[package_column]
+        ): int(source[units_column])
+        for _, source in edited.dropna().iterrows()
+    }
 
 
 def _sku_label(row):

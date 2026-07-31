@@ -94,4 +94,7 @@ def _save(action, message):
         st.error(f"{t('保存失败')}：{error}")
         return
     st.session_state["inventory_saved_message"] = message
+    st.session_state["sku_master_editor_version"] = (
+        st.session_state.get("sku_master_editor_version", 0) + 1
+    )
     st.rerun()

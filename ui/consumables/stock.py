@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
 
+from ui.consumables.units import to_boxes
+
 
 def filter_items(items_df, categories, brands, search_text, active_mode):
     result = items_df.copy()
@@ -30,9 +32,7 @@ def render_stock(items_df, latest_costs, show_cost):
     quantities = pd.to_numeric(
         items_df["current_quantity"], errors="coerce"
     ).fillna(0)
-    minimums = pd.to_numeric(
-        items_df["minimum_quantity"], errors="coerce"
-    )
+    minimums = pd.to_numeric(items_df["minimum_quantity"], errors="coerce")
     low_mask = minimums.notna() & (quantities <= minimums)
 
     col1, col2, col3 = st.columns(3)
@@ -44,22 +44,27 @@ def render_stock(items_df, latest_costs, show_cost):
     display["库存状态"] = "正常"
     display.loc[low_mask, "库存状态"] = "需要补货"
     display["包装换算"] = display.apply(_package_label, axis=1)
+    display["当前库存（箱）"] = display.apply(
+        lambda row: to_boxes(row["current_quantity"], row), axis=1
+    )
+    display["最低库存（箱）"] = display.apply(
+        lambda row: to_boxes(row["minimum_quantity"], row), axis=1
+    )
     display = display.rename(columns={
         "category": "分类", "name": "耗材名称",
         "specification": "规格/型号", "brand": "品牌",
-        "base_unit": "基础单位", "current_quantity": "当前库存",
-        "minimum_quantity": "最低库存", "is_active": "状态",
+        "base_unit": "基础单位", "is_active": "状态",
     })
     display["状态"] = display["状态"].map({True: "启用", False: "停用"})
 
     columns = [
         "库存状态", "分类", "耗材名称", "规格/型号", "品牌",
-        "当前库存", "基础单位", "包装换算", "最低库存", "状态",
+        "当前库存（箱）", "包装换算", "最低库存（箱）", "状态",
     ]
     if show_cost:
         display["最近入库成本"] = display["id"].map(latest_costs)
         display["库存估值"] = (
-            pd.to_numeric(display["当前库存"], errors="coerce").fillna(0)
+            pd.to_numeric(display["current_quantity"], errors="coerce").fillna(0)
             * pd.to_numeric(display["最近入库成本"], errors="coerce").fillna(0)
         )
         columns.extend(["最近入库成本", "库存估值"])
@@ -69,8 +74,8 @@ def render_stock(items_df, latest_costs, show_cost):
         width="stretch",
         hide_index=True,
         column_config={
-            "当前库存": st.column_config.NumberColumn(format="%.4f"),
-            "最低库存": st.column_config.NumberColumn(format="%.4f"),
+            "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+            "最低库存（箱）": st.column_config.NumberColumn(format="%.2f"),
             "最近入库成本": st.column_config.NumberColumn(format="$%.4f"),
             "库存估值": st.column_config.NumberColumn(format="$%.2f"),
         },

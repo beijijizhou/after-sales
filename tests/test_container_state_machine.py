@@ -51,13 +51,17 @@ class ContainerStateMachineTests(unittest.TestCase):
             STATE_ARRIVED,
         )
 
-    def test_can_post_directly_from_transit(self):
+    def test_direct_ui_action_still_uses_full_state_path(self):
         self.assertEqual(
-            validate_container_transition(
-                STATE_IN_TRANSIT, STATE_POSTED
-            ),
+            validate_container_transition(STATE_IN_TRANSIT, STATE_ARRIVED),
             STATE_IN_TRANSIT,
         )
+        self.assertEqual(
+            validate_container_transition(STATE_ARRIVED, STATE_POSTED),
+            STATE_ARRIVED,
+        )
+        with self.assertRaises(ValueError):
+            validate_container_transition(STATE_IN_TRANSIT, STATE_POSTED)
 
 
 if __name__ == "__main__":

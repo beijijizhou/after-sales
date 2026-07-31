@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from db.consumables import reverse_consumable_batch
+from ui.consumables.units import to_boxes
 from utils.auth import get_current_operator_name
 
 
@@ -108,7 +109,8 @@ def _render_batch_detail(batch_id, movements_df, items_df, show_cost):
         st.info("这笔记录没有可显示的明细。")
         return
     item_columns = [
-        "id", "category", "name", "specification", "brand", "base_unit"
+        "id", "category", "name", "specification", "brand", "base_unit",
+        "package_unit", "units_per_package",
     ]
     detail = detail.merge(
         items_df[item_columns], left_on="item_id", right_on="id", how="left"
@@ -116,26 +118,33 @@ def _render_batch_detail(batch_id, movements_df, items_df, show_cost):
     detail["类型"] = detail["quantity_change"].apply(
         lambda value: "增加" if float(value) > 0 else "扣减"
     )
-    detail["数量"] = pd.to_numeric(
-        detail["quantity_change"], errors="coerce"
-    ).abs()
+    detail["箱数"] = detail.apply(
+        lambda row: _absolute_boxes(row["quantity_change"], row), axis=1
+    )
+    detail["操作后库存（箱）"] = detail.apply(
+        lambda row: to_boxes(row["quantity_after"], row), axis=1
+    )
     display = detail.rename(columns={
         "category": "分类", "name": "耗材名称",
         "specification": "规格/型号", "brand": "品牌",
-        "base_unit": "单位", "quantity_after": "操作后库存",
         "unit_cost": "单位成本", "note": "备注",
     })
     columns = [
         "类型", "分类", "耗材名称", "规格/型号", "品牌",
-        "数量", "单位", "操作后库存", "备注",
+        "箱数", "操作后库存（箱）", "备注",
     ]
     if show_cost:
         columns.insert(-1, "单位成本")
     st.dataframe(
         display[columns], width="stretch", hide_index=True,
         column_config={
-            "数量": st.column_config.NumberColumn(format="%.4f"),
-            "操作后库存": st.column_config.NumberColumn(format="%.4f"),
+            "箱数": st.column_config.NumberColumn(format="%.2f"),
+            "操作后库存（箱）": st.column_config.NumberColumn(format="%.2f"),
             "单位成本": st.column_config.NumberColumn(format="$%.4f"),
         },
     )
+
+
+def _absolute_boxes(quantity, item):
+    value = to_boxes(quantity, item)
+    return None if value is None else abs(value)

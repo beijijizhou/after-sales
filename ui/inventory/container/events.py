@@ -65,7 +65,7 @@ def render_status_update(supabase, raw_df, container_key):
     )
     st.caption(
         "日期可以是明天或后天。点击后货柜进入“已到柜”，"
-        "下一步确认入库；也可以跳过到柜直接入库。"
+        "下一步确认入库；直接入库会自动同时记录当天到柜。"
     )
     arrival_col, post_col = st.columns(2)
     if arrival_col.button("确认到柜", width="stretch"):
@@ -84,7 +84,7 @@ def render_status_update(supabase, raw_df, container_key):
 
     total = int(target["quantity"].sum())
     if post_col.button(
-        "直接确认入库",
+        "到柜并直接入库",
         type="primary",
         width="stretch",
     ):

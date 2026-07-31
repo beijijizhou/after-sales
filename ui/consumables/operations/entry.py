@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from db.consumables import apply_consumable_batch
+from ui.consumables.units import boxes_to_base, package_size
 from utils.auth import get_current_operator_name
 
 
@@ -45,15 +46,21 @@ def render_movement_entry(
         key="consumable_movement_date",
     )
 
+    missing = active[active.apply(package_size, axis=1).isna()]
+    if not missing.empty:
+        st.error(
+            "以下耗材尚未设置每箱数量："
+            + "、".join(missing["name"].astype(str))
+        )
+        return
     labels, label_to_row = _build_sku_labels(active)
-    columns = ["耗材 SKU", "录入方式", "数量", "备注"]
+    columns = ["耗材 SKU", "箱数", "备注"]
     if show_cost and movement_label == "入库":
         columns.insert(3, "单位成本")
     template = pd.DataFrame([
         {
             "耗材 SKU": None,
-            "录入方式": "基础单位",
-            "数量": 0.0,
+            "箱数": 0.0,
             "单位成本": None,
             "备注": "",
         }
@@ -69,11 +76,8 @@ def render_movement_entry(
             "耗材 SKU": st.column_config.SelectboxColumn(
                 required=True, options=labels
             ),
-            "录入方式": st.column_config.SelectboxColumn(
-                required=True, options=["基础单位", "整包装"]
-            ),
-            "数量": st.column_config.NumberColumn(
-                min_value=0.0, step=0.1, format="%.4f"
+            "箱数": st.column_config.NumberColumn(
+                min_value=0.0, step=1, format="%.2f"
             ),
             "单位成本": st.column_config.NumberColumn(
                 min_value=0.0, step=0.0001, format="$%.4f"
@@ -94,7 +98,7 @@ def render_movement_entry(
         st.dataframe(
             preview, width="stretch", hide_index=True,
             column_config={
-                "实际数量": st.column_config.NumberColumn(format="%.4f"),
+                "箱数": st.column_config.NumberColumn(format="%.2f"),
                 "单位成本": st.column_config.NumberColumn(format="$%.4f"),
             },
         )
@@ -145,19 +149,15 @@ def _normalize_entry_rows(edited, label_to_row, include_cost):
     records, preview = [], []
     for row in edited.to_dict("records"):
         label = row.get("耗材 SKU")
-        quantity = pd.to_numeric(row.get("数量"), errors="coerce")
+        quantity = pd.to_numeric(
+            row.get("箱数", row.get("数量")), errors="coerce"
+        )
         if not label or pd.isna(quantity) or quantity <= 0:
             continue
         item = label_to_row[label]
-        entry_mode = row.get("录入方式") or "基础单位"
-        actual_quantity = float(quantity)
-        if entry_mode == "整包装":
-            units = pd.to_numeric(
-                item.get("units_per_package"), errors="coerce"
-            )
-            if pd.isna(units) or units <= 0:
-                raise ValueError(f"{label} 没有设置包装换算，不能按整包装录入。")
-            actual_quantity *= float(units)
+        actual_quantity = boxes_to_base(quantity, item)
+        if actual_quantity is None:
+            raise ValueError(f"{label} 没有设置每箱数量，不能按箱录入。")
         record = {
             "item_id": item["id"],
             "quantity": actual_quantity,
@@ -169,11 +169,9 @@ def _normalize_entry_rows(edited, label_to_row, include_cost):
         records.append(record)
         preview.append({
             "耗材 SKU": label,
-            "录入": f"{float(quantity):g} {item.get('package_unit')}"
-            if entry_mode == "整包装"
-            else f"{float(quantity):g} {item['base_unit']}",
-            "实际数量": actual_quantity,
-            "基础单位": item["base_unit"],
+            "箱数": float(quantity),
+            "换算数量": actual_quantity,
+            "换算单位": item["base_unit"],
             **({"单位成本": record.get("unit_cost")} if include_cost else {}),
         })
     return records, pd.DataFrame(preview)

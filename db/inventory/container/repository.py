@@ -3,17 +3,19 @@ import pandas as pd
 from db.inventory.container.tables import normalize_container_rows
 
 
+CONTAINER_COLUMNS = (
+    "id,container_key,shipped_date,expected_arrival_date,actual_arrival_date,"
+    "actual_arrival_at,container_no,department,category,brand,material,color,"
+    "size,quantity,unit_cost,status,note,created_at"
+)
+
+
 def load_inventory_containers(
     supabase, start_date=None, end_date=None, department=None, category=None,
     statuses=None, date_field="expected_arrival_date",
     brands=None, materials=None, colors=None, sizes=None,
 ):
-    columns = (
-        "id,container_key,shipped_date,expected_arrival_date,actual_arrival_date,"
-        "actual_arrival_at,"
-        "container_no,department,category,"
-        "brand,material,color,size,quantity,unit_cost,status,note,created_at"
-    )
+    columns = CONTAINER_COLUMNS
     try:
         return _execute_container_query(
             supabase, columns, start_date, end_date, department, category,
@@ -49,6 +51,18 @@ def load_inventory_containers(
     result["actual_arrival_date"] = None
     result["actual_arrival_at"] = None
     return result.drop(columns=["id"])
+
+
+def load_container_search_records(supabase):
+    response = (
+        supabase.table("inventory_container_imports")
+        .select(CONTAINER_COLUMNS)
+        .order("expected_arrival_date", desc=True)
+        .order("created_at", desc=False)
+        .limit(5000)
+        .execute()
+    )
+    return pd.DataFrame(response.data)
 
 
 def _execute_container_query(

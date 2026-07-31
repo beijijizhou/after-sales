@@ -47,6 +47,27 @@ def packaging_sku_key(brand, material, color, size, package_type):
     )
 
 
+def packaging_material_key(material, package_type):
+    return packaging_sku_key("", material, "", "", package_type)
+
+
+def get_special_package_units(
+    rules, brand, material, color, size, package_type
+):
+    rules = rules or {}
+    material_units = rules.get(
+        packaging_material_key(material, package_type)
+    )
+    if material_units is not None:
+        return int(material_units)
+    sku_units = rules.get(
+        packaging_sku_key(
+            brand, material, color, size, package_type
+        )
+    )
+    return int(sku_units) if sku_units is not None else None
+
+
 def format_box_check(quantity, units_per_box):
     if quantity <= 0:
         return ""

@@ -33,6 +33,7 @@ def render_inventory_tabs(
     supabase, department, category, inventory_df, raw_df, current_cost_df,
     inventory_date, selected_date, current_date, visible_sizes, can_edit,
     can_view_cost, history_data, movement_types, filter_title,
+    sku_filters=None,
 ):
     tab_keys = inventory_tab_keys(department, can_view_cost)
     tab_names = [t(name) for name in tab_keys]
@@ -119,6 +120,7 @@ def render_inventory_tabs(
                 supabase,
                 department,
                 has_permission("can_manage_sku"),
+                sku_filters,
             )
         with initialization_tab:
             render_inventory_initialization(

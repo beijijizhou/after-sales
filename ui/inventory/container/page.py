@@ -17,10 +17,6 @@ from ui.inventory.container.events import (
     render_container_history,
     render_status_update,
 )
-from ui.inventory.container.cost_editor import (
-    auto_save_container_costs,
-    can_edit_container_cost,
-)
 from ui.inventory.container.filters import (
     render_container_inventory_filters,
 )
@@ -34,6 +30,7 @@ from ui.inventory.container.posting import (
     load_pending_containers,
     render_pending_container_posting,
 )
+from ui.inventory.container.search import render_container_search
 from ui.inventory.container.progress_view import render_arrival_alerts
 from ui.inventory.container.tables import (
     render_container_detail,
@@ -60,7 +57,7 @@ def render_in_transit_table(
     st.subheader("在途货柜")
     st.caption(
         "选择货柜后可手动确认到柜日期，日期可以是明天或后天；"
-        "也可以跳过到柜状态，直接确认入库。"
+        "也可以一键完成到柜和入库，系统仍会保留完整状态记录。"
     )
     try:
         raw_df = load_inventory_containers(
@@ -144,17 +141,15 @@ def render_in_transit_table(
                 target_raw_df,
                 include_cost=has_permission("can_view_cost"),
             )
-            edited_detail_df = render_container_detail(
+            render_container_detail(
                 target_display_df,
                 container_key,
-                editable_cost=can_edit_container_cost(),
+                editable_cost=False,
+                show_items=False,
             )
             render_container_item_editor(
                 supabase, target_raw_df, container_key,
                 has_permission("can_edit_container"),
-            )
-            auto_save_container_costs(
-                supabase, raw_df, container_key, edited_detail_df
             )
             if has_permission("can_edit_container"):
                 render_status_update(supabase, raw_df, container_key)
@@ -163,6 +158,8 @@ def render_in_transit_table(
 
 def render_inventory_container_page(supabase):
     st.title("货柜安排")
+    render_container_search(supabase)
+    st.divider()
     try:
         dimensions = load_container_dimensions(supabase)
     except Exception:

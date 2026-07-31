@@ -36,12 +36,17 @@
 - Different purchase batches may have different costs.
 - Temporary transferred stock is consumed before normal bulk stock.
 - Cost precision is four decimal places where supported.
+- Consumables are counted and entered in boxes across the UI. The ledger keeps
+  base-unit quantities internally and uses each SKU's required units-per-box
+  conversion for accurate inventory arithmetic.
 
 ## Containers
 
 - Container workflow:
   `添加货柜 -> 在途 -> 手动确认到柜 -> 确认入库`.
-- A container may also move directly from `在途` to `确认入库`.
+- The UI may combine arrival confirmation and inventory posting into one
+  action for temporary or urgent arrivals, but the persisted state history
+  must still record `在途 -> 已到柜 -> 已入库` and inventory is added once.
 - Expected arrival is not actual arrival.
 - Manual arrival confirmation records a date, which may be in the future.
 - The confirmation operation time is recorded automatically in event history.
