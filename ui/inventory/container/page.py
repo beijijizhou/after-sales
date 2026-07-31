@@ -29,6 +29,7 @@ from ui.inventory.container.history_view import (
     render_arrival_date_range,
     render_arrival_history_table,
 )
+from ui.inventory.container.item_editor import render_container_item_editor
 from ui.inventory.container.posting import (
     load_pending_containers,
     render_pending_container_posting,
@@ -89,10 +90,13 @@ def render_in_transit_table(
     ].nunique()
     col3.metric("延迟货柜", delayed_count)
     progress_df = build_container_progress_summary(raw_df, today)
-    list_tab, summary_tab, detail_tab = st.tabs([
-        "在途列表", "筛选汇总", "货柜明细",
-    ])
-    with list_tab:
+    view = st.radio(
+        "查看方式",
+        ["在途列表", "筛选汇总", "货柜明细"],
+        horizontal=True,
+        key="transit_container_view",
+    )
+    if view == "在途列表":
         render_arrival_alerts(progress_df)
         selection_df = progress_df.drop(columns=["货柜记录ID"])
         st.dataframe(
@@ -118,14 +122,14 @@ def render_in_transit_table(
                 ),
             },
         )
-    with summary_tab:
+    elif view == "筛选汇总":
         render_filtered_container_summary(raw_df)
-    choices = build_container_progress_choices(progress_df)
-    selection_key = "transit_container_detail_target"
-    options = ["", *choices]
-    if st.session_state.get(selection_key, "") not in options:
-        st.session_state[selection_key] = ""
-    with detail_tab:
+    else:
+        choices = build_container_progress_choices(progress_df)
+        selection_key = "transit_container_detail_target"
+        options = ["", *choices]
+        if st.session_state.get(selection_key, "") not in options:
+            st.session_state[selection_key] = ""
         container_key = st.selectbox(
             "查看货柜明细",
             options,
@@ -144,6 +148,10 @@ def render_in_transit_table(
                 target_display_df,
                 container_key,
                 editable_cost=can_edit_container_cost(),
+            )
+            render_container_item_editor(
+                supabase, target_raw_df, container_key,
+                has_permission("can_edit_container"),
             )
             auto_save_container_costs(
                 supabase, raw_df, container_key, edited_detail_df
