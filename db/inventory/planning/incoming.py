@@ -41,7 +41,7 @@ def build_incoming_inventory_forecast(
     current = normalize_inventory_for_planning(inventory_df, department)
     incoming = normalize_inventory_for_planning(container_df, department)
     current = _sum_quantity(current, "quantity", "current_quantity")
-    nearest = _nearest_incoming(incoming)
+    incoming_plan = _all_incoming(incoming)
     system = _normalize_usage(system_usage_df, "system_daily_usage")
     manual = (
         _manual_average(outbound_df, department)
@@ -49,7 +49,7 @@ def build_incoming_inventory_forecast(
         else pd.DataFrame(columns=[*KEY_COLUMNS, "manual_daily_usage"])
     )
 
-    result = nearest.merge(current, on=KEY_COLUMNS, how="left")
+    result = incoming_plan.merge(current, on=KEY_COLUMNS, how="left")
     result = result.merge(system, on=KEY_COLUMNS, how="left")
     result = result.merge(manual, on=KEY_COLUMNS, how="left")
     numeric = [
@@ -57,6 +57,7 @@ def build_incoming_inventory_forecast(
     ]
     for column in numeric:
         result[column] = result[column].fillna(0)
+    result["_forecast_today"] = today
     result["days_to_arrival"] = result.apply(
         lambda row: _days_to_arrival(row, today), axis=1
     )
@@ -65,12 +66,9 @@ def build_incoming_inventory_forecast(
         _quantity_before_arrival, axis=1
     )
     result["shortage"] = result.apply(_projected_shortage, axis=1)
-    result["quantity_after_arrival"] = (
-        result["current_quantity"]
-        - result["system_daily_usage"]
-        * result["days_to_arrival"].clip(lower=0)
-        + result["incoming_quantity"]
-    ).clip(lower=0)
+    result["quantity_after_arrival"] = result.apply(
+        _quantity_after_all_arrivals, axis=1
+    )
     result["coverage_after_arrival"] = result.apply(
         _coverage_after_arrival, axis=1
     )
@@ -115,8 +113,8 @@ def build_inventory_audit_issues(forecast):
 
 def build_incoming_executive_view(forecast):
     columns = [
-        "SKU", "判断", "当前库存", "日耗", "可撑天数", "最近货柜",
-        "到货日", "到货数量", "到货前缺口", "到货后可撑",
+        "SKU", "判断", "当前库存", "日耗", "可撑天数", "全部在途货柜",
+        "到货安排", "在途总量", "到货前缺口", "到货后可撑",
     ]
     if forecast is None or forecast.empty:
         return pd.DataFrame(columns=columns)
@@ -136,14 +134,12 @@ def build_incoming_executive_view(forecast):
     result = result.rename(columns={
         "系统日均": "日耗",
         "当前可撑天数": "可撑天数",
-        "预计/实际到货": "到货日",
-        "货柜数量": "到货数量",
         "到货后可撑天数": "到货后可撑",
     })
     return result[columns]
 
 
-def _nearest_incoming(df):
+def _all_incoming(df):
     result = df.copy()
     result["quantity"] = pd.to_numeric(
         result["quantity"], errors="coerce"
@@ -173,19 +169,45 @@ def _nearest_incoming(df):
     result["container_no"] = result["container_no"].fillna(
         result["container_key"]
     ).astype(str)
-    nearest_date = result.groupby(KEY_COLUMNS, dropna=False)[
-        "forecast_arrival_date"
-    ].transform("min")
-    result = result[result["forecast_arrival_date"] == nearest_date]
-    return result.groupby(
-        [*KEY_COLUMNS, "forecast_arrival_date"],
-        dropna=False,
-        as_index=False,
-    ).agg(
-        incoming_quantity=("quantity", "sum"),
-        container_no=("container_no", _join_unique),
-        normalized_status=("normalized_status", _join_unique),
-    )
+    rows = []
+    for identity, group in result.groupby(KEY_COLUMNS, dropna=False):
+        schedule_rows = (
+            group.groupby(
+                [
+                    "forecast_arrival_date", "container_no",
+                    "normalized_status",
+                ],
+                dropna=False,
+                as_index=False,
+            )["quantity"].sum()
+            .sort_values(["forecast_arrival_date", "container_no"])
+        )
+        events = [
+            (row["forecast_arrival_date"], float(row["quantity"]))
+            for row in schedule_rows.to_dict("records")
+        ]
+        schedule = "｜".join(
+            f"{row['forecast_arrival_date']:%m/%d} "
+            f"{row['container_no']} {int(row['quantity']):,}"
+            for row in schedule_rows.to_dict("records")
+        )
+        rows.append({
+            **dict(zip(KEY_COLUMNS, identity)),
+            "first_arrival_date": schedule_rows[
+                "forecast_arrival_date"
+            ].min(),
+            "last_arrival_date": schedule_rows[
+                "forecast_arrival_date"
+            ].max(),
+            "incoming_quantity": float(schedule_rows["quantity"].sum()),
+            "container_no": _join_unique(schedule_rows["container_no"]),
+            "normalized_status": _join_unique(
+                schedule_rows["normalized_status"]
+            ),
+            "arrival_schedule": schedule,
+            "arrival_events": events,
+        })
+    return pd.DataFrame(rows)
 
 
 def _format_forecast(result):
@@ -198,10 +220,12 @@ def _format_forecast(result):
         "system_daily_usage": "系统日均",
         "manual_daily_usage": "仓库申报日均",
         "coverage_days": "当前可撑天数",
-        "container_no": "最近货柜",
-        "forecast_arrival_date": "预计/实际到货",
+        "container_no": "全部在途货柜",
+        "arrival_schedule": "到货安排",
+        "first_arrival_date": "最早到货",
+        "last_arrival_date": "最晚到货",
         "days_to_arrival": "距到货天数",
-        "incoming_quantity": "货柜数量",
+        "incoming_quantity": "在途总量",
         "quantity_before_arrival": "到货前预计剩余",
         "quantity_after_arrival": "到货后预计库存",
         "coverage_after_arrival": "到货后可撑天数",
@@ -210,9 +234,9 @@ def _format_forecast(result):
     })
     columns = [
         "品类", "材质口径", "颜色", "规格", "判断", "当前库存",
-        "系统日均", "当前可撑天数", "最近货柜", "货柜状态",
-        "预计/实际到货", "距到货天数", "到货前预计剩余",
-        "到货前缺口", "货柜数量", "到货后预计库存",
+        "系统日均", "当前可撑天数", "全部在途货柜", "货柜状态",
+        "到货安排", "最早到货", "最晚到货", "距到货天数",
+        "到货前预计剩余", "到货前缺口", "在途总量", "到货后预计库存",
         "到货后可撑天数", "仓库申报日均", "录入核对",
     ]
     return result[columns].sort_values(
@@ -258,7 +282,7 @@ def _manual_average(df, department):
 def _days_to_arrival(row, today):
     if STATE_ARRIVED in row["normalized_status"]:
         return 0
-    return (row["forecast_arrival_date"] - today).days
+    return (row["first_arrival_date"] - today).days
 
 
 def _coverage_days(row):
@@ -275,12 +299,39 @@ def _quantity_before_arrival(row):
 
 
 def _projected_shortage(row):
-    if row["days_to_arrival"] < 0 or row["system_daily_usage"] <= 0:
+    if row["system_daily_usage"] <= 0:
         return 0
-    return max(math.ceil(
-        row["system_daily_usage"] * row["days_to_arrival"]
-        - row["current_quantity"]
-    ), 0)
+    shortage = 0
+    today = row["_forecast_today"]
+    arrival_dates = sorted({
+        arrival_date for arrival_date, _quantity in row["arrival_events"]
+    })
+    for arrival_date in arrival_dates:
+        days = max((arrival_date - today).days, 0)
+        stock_before = (
+            float(row["current_quantity"])
+            - float(row["system_daily_usage"]) * days
+            + sum(
+                previous_quantity
+                for previous_date, previous_quantity in row["arrival_events"]
+                if previous_date < arrival_date
+            )
+        )
+        shortage = max(shortage, math.ceil(max(-stock_before, 0)))
+    return shortage
+
+
+def _quantity_after_all_arrivals(row):
+    if not row["arrival_events"]:
+        return max(float(row["current_quantity"]), 0)
+    last_date = max(date for date, _quantity in row["arrival_events"])
+    days = max((last_date - row["_forecast_today"]).days, 0)
+    return max(
+        float(row["current_quantity"])
+        - float(row["system_daily_usage"]) * days
+        + sum(quantity for _date, quantity in row["arrival_events"]),
+        0,
+    )
 
 
 def _coverage_after_arrival(row):

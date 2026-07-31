@@ -108,8 +108,9 @@ def render_incoming_inventory_forecast(
             "当前库存": st.column_config.NumberColumn(format="%d"),
             "日耗": st.column_config.NumberColumn(format="%.1f"),
             "可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
-            "到货日": st.column_config.DateColumn(),
-            "到货数量": st.column_config.NumberColumn(format="%d"),
+            "全部在途货柜": st.column_config.TextColumn(width="medium"),
+            "到货安排": st.column_config.TextColumn(width="large"),
+            "在途总量": st.column_config.NumberColumn(format="%d"),
             "到货前缺口": st.column_config.NumberColumn(format="%d"),
             "到货后可撑": st.column_config.NumberColumn(format="%.1f 天"),
         },
@@ -124,11 +125,12 @@ def render_incoming_inventory_forecast(
                 "当前可撑天数": st.column_config.NumberColumn(
                     format="%.1f 天"
                 ),
-                "预计/实际到货": st.column_config.DateColumn(),
+                "最早到货": st.column_config.DateColumn(),
+                "最晚到货": st.column_config.DateColumn(),
                 "距到货天数": st.column_config.NumberColumn(format="%d 天"),
                 "到货前预计剩余": st.column_config.NumberColumn(format="%d"),
                 "到货前缺口": st.column_config.NumberColumn(format="%d"),
-                "货柜数量": st.column_config.NumberColumn(format="%d"),
+                "在途总量": st.column_config.NumberColumn(format="%d"),
                 "到货后预计库存": st.column_config.NumberColumn(format="%d"),
                 "到货后可撑天数": st.column_config.NumberColumn(
                     format="%.1f 天"
