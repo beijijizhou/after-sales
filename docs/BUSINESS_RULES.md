@@ -18,6 +18,10 @@
   The UV consumption model uses the latest 14 calendar days of synchronized
   movement data to show daily usage and connects matching SKUs to current
   inventory and the nearest container.
+- UV Google Sheets are discovered from the shared Drive folder
+  `1MhAq1n1dDd9P5WD0gdrR2uXH0Veb_MzA`. The daily-order workbook remains the
+  default, while replacement workbooks placed in that folder can be selected
+  without changing credentials or code.
 - The UV plate-product category is named `铁板画`; material distinguishes
   `铁牌` and `铝牌`.
 - Phone-case SKU material/model combinations come from the same

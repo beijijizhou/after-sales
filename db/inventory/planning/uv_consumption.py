@@ -10,6 +10,11 @@ UV_DAILY_ORDERS_SPREADSHEET_URL = (
     "https://docs.google.com/spreadsheets/d/"
     f"{UV_DAILY_ORDERS_SPREADSHEET_ID}/edit"
 )
+UV_GOOGLE_DRIVE_FOLDER_ID = "1MhAq1n1dDd9P5WD0gdrR2uXH0Veb_MzA"
+UV_GOOGLE_DRIVE_FOLDER_URL = (
+    "https://drive.google.com/drive/folders/"
+    f"{UV_GOOGLE_DRIVE_FOLDER_ID}"
+)
 UV_CONSUMPTION_LOOKBACK_DAYS = 14
 UV_GOOGLE_SHEETS_REASON_PREFIX = "Google Sheets UV每日消耗"
 UV_CURRENT_MODEL_START_DATES = {

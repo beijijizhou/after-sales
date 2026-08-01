@@ -7,8 +7,13 @@ import jwt
 import requests
 
 
-SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+GOOGLE_SCOPES = (
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.readonly",
+)
 SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
+DRIVE_FILES_API = "https://www.googleapis.com/drive/v3/files"
+GOOGLE_SHEETS_MIME_TYPE = "application/vnd.google-apps.spreadsheet"
 
 
 class GoogleSheetsClient:
@@ -35,13 +40,38 @@ class GoogleSheetsClient:
             params={
                 "fields": (
                     "sheets.properties("
-                    "sheetId,title,index,hidden,rowCount,columnCount)"
+                    "sheetId,title,index,hidden)"
                 )
             },
         )
         return [
             sheet["properties"] for sheet in payload.get("sheets", [])
         ]
+
+    def list_spreadsheets_in_folder(self, folder_id):
+        files = []
+        page_token = None
+        while True:
+            params = {
+                "q": (
+                    f"'{folder_id}' in parents and "
+                    f"mimeType = '{GOOGLE_SHEETS_MIME_TYPE}' and trashed = false"
+                ),
+                "fields": (
+                    "nextPageToken,files(id,name,modifiedTime,webViewLink)"
+                ),
+                "orderBy": "modifiedTime desc,name",
+                "pageSize": 100,
+                "supportsAllDrives": "true",
+                "includeItemsFromAllDrives": "true",
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            payload = self._request("GET", DRIVE_FILES_API, params=params)
+            files.extend(payload.get("files", []))
+            page_token = payload.get("nextPageToken")
+            if not page_token:
+                return files
 
     def batch_get_values(
         self, spreadsheet_id, ranges, value_render_option="UNFORMATTED_VALUE"
@@ -89,7 +119,7 @@ class GoogleSheetsClient:
         assertion = jwt.encode(
             {
                 "iss": self.info["client_email"],
-                "scope": SHEETS_SCOPE,
+                "scope": " ".join(GOOGLE_SCOPES),
                 "aud": self.info.get(
                     "token_uri", "https://oauth2.googleapis.com/token"
                 ),

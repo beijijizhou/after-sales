@@ -5,6 +5,15 @@ from ui.inventory.history.history_tables import format_date_columns
 from ui.inventory.i18n import t
 
 
+NY_TIMEZONE = "America/New_York"
+
+
+def _to_new_york_timestamp(values):
+    return pd.to_datetime(values, errors="coerce", utc=True).dt.tz_convert(
+        NY_TIMEZONE
+    )
+
+
 def add_movement_batch_key(movement_df):
     movement_df = format_date_columns(movement_df, ["movement_date"]).copy()
     movement_df["quantity_change"] = pd.to_numeric(
@@ -16,7 +25,9 @@ def add_movement_batch_key(movement_df):
     movement_df["created_by"] = movement_df["created_by"].fillna("a").astype(str)
     if "reversal_of_batch_id" not in movement_df.columns:
         movement_df["reversal_of_batch_id"] = None
-    movement_df["recorded_at"] = pd.to_datetime(movement_df["created_at"], errors="coerce")
+    movement_df["recorded_at"] = _to_new_york_timestamp(
+        movement_df["created_at"]
+    )
     movement_df["recorded_key"] = movement_df["recorded_at"].dt.strftime("%Y-%m-%d %H:%M")
     movement_df["direction"] = movement_df["quantity_change"].apply(lambda value: "入库" if value > 0 else "出库")
     movement_df["batch_key"] = (
@@ -46,7 +57,9 @@ def add_sku_batch_key(sku_import_df):
     sku_import_df["initial_quantity"] = pd.to_numeric(
         sku_import_df["initial_quantity"], errors="coerce"
     ).fillna(0).astype(int)
-    sku_import_df["recorded_at"] = pd.to_datetime(sku_import_df["created_at"], errors="coerce")
+    sku_import_df["recorded_at"] = _to_new_york_timestamp(
+        sku_import_df["created_at"]
+    )
     sku_import_df["recorded_key"] = sku_import_df["recorded_at"].dt.strftime("%Y-%m-%d %H:%M")
     sku_import_df["batch_key"] = (
         "sku|"

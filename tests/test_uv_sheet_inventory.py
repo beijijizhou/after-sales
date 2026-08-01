@@ -31,6 +31,30 @@ class FakeSheets:
 
 
 class UVSheetInventoryTests(unittest.TestCase):
+    def test_lists_all_spreadsheets_in_shared_folder(self):
+        client = GoogleSheetsClient({
+            "client_email": "test@example.com",
+            "private_key": "unused",
+        })
+        captured = {}
+
+        def request(method, url, **kwargs):
+            captured.update(method=method, url=url, kwargs=kwargs)
+            return {
+                "files": [{
+                    "id": "sheet-1", "name": "UV每日订单",
+                    "webViewLink": "https://docs.google.com/spreadsheets/d/sheet-1",
+                }]
+            }
+
+        client._request = request
+
+        result = client.list_spreadsheets_in_folder("folder-1")
+
+        self.assertEqual(result[0]["id"], "sheet-1")
+        self.assertEqual(captured["method"], "GET")
+        self.assertIn("'folder-1' in parents", captured["kwargs"]["params"]["q"])
+
     def test_reads_only_requested_date_tabs_and_product(self):
         sheets = FakeSheets()
         result = load_daily_product_usage(
