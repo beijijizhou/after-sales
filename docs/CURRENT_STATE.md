@@ -17,6 +17,7 @@ refactors, not after every small feature.
 - Phone-case image processing: `pages/8_图片拉伸.py`
 - Consumables: `pages/9_耗材库存.py`
 - Finance: `pages/10_财务.py`
+- Logistics label review: `pages/11_物流追踪.py`
 
 ## Major Modules
 
@@ -26,6 +27,8 @@ refactors, not after every small feature.
 - Container workflow: `db/inventory/container/` and
   `ui/inventory/container/`
 - Consumables: `db/consumables/` and `ui/consumables/`
+- Logistics label review: `automation/logistics/`, `db/logistics/`, and
+  `ui/logistics/`
 - Finance: `db/finance/` and `ui/finance/`
 - Production summaries: `utils/production/` and `ui/production/`
 - ERP normalization: `utils/erp/`
@@ -33,6 +36,9 @@ refactors, not after every small feature.
   `automation/sync/`
 - Phone-case image and dieline logic: `utils/image_tools/`,
   `ui/image_tools/`, and `assets/dielines/`
+- Database scripts: `sql/`, grouped by business domain; inventory scripts are
+  further grouped under `sql/inventory/` by schema, operations, containers,
+  planning, costs, imports, and one-time data fixes.
 
 ## Inventory Model
 

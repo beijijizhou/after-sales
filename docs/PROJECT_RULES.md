@@ -1,5 +1,39 @@
 # Project Rules
 
+## Product Standard
+
+- Treat this system as a commercial ERP product intended for sale to multiple
+  companies, not as a one-company internal script.
+- New features must be reusable and configurable. Do not hard-code the current
+  company's departments, brands, suppliers, spreadsheets, packaging rules,
+  workflow names, users, or operational dates when they belong in tenant or
+  master-data configuration.
+- Design data ownership with future tenant isolation in mind. A company's
+  operational records, costs, users, integrations, and configuration must be
+  separable without relying on naming conventions.
+- Business operations must be explicit and auditable: distinguish inbound,
+  outbound, counting, correction, reversal, approval, and synchronization;
+  record who, when, source, reason, before value, and after value where
+  applicable.
+- Prefer controlled workflows over direct mutation for sensitive operations,
+  while keeping routine warehouse work efficient. Cost, identity, permissions,
+  and large inventory changes require stronger validation and auditability.
+- Database changes must use repeatable, ordered migrations with constraints,
+  rollback or repair guidance, and compatibility consideration for existing
+  customer data.
+- Public product behavior must fail clearly and safely. Do not expose secrets,
+  raw provider errors, stack traces, or implementation details to end users.
+- Integrations must be replaceable per company and environment. Credentials,
+  Drive folders, spreadsheet IDs, API accounts, and platform mappings belong
+  in secure configuration, not shared source constants.
+- Preserve localization and accessible manager-oriented UI. Company-specific
+  terminology should be configurable instead of implemented as global labels.
+- Every material feature requires proportionate automated tests; inventory,
+  finance, permissions, tenant boundaries, synchronization, and migrations are
+  high-risk areas and require stronger verification.
+- Maintain backward compatibility or provide an explicit migration path when
+  changing stored data, APIs, configuration, or user workflows.
+
 ## Structure
 
 - A Python file should normally stay around 100-200 lines.

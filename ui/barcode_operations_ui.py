@@ -104,7 +104,7 @@ def render_direct_operation_entry():
             save_operation_rows(rows, user["username"])
         except Exception as e:
             st.error(f"保存失败：{e}")
-            st.info("请先在 Supabase SQL Editor 运行 sql/barcode_operation_history.sql")
+            st.info("请先在 Supabase SQL Editor 运行 sql/production/barcode_operation_history.sql")
             return
 
         st.session_state["operation_saved_count"] = len(rows)
@@ -171,7 +171,7 @@ def render_barcode_operation_section():
             save_operation_rows(selected_df.to_dict("records"), user["username"])
         except Exception as e:
             st.error(f"保存失败：{e}")
-            st.info("请先在 Supabase SQL Editor 运行 sql/barcode_operation_history.sql")
+            st.info("请先在 Supabase SQL Editor 运行 sql/production/barcode_operation_history.sql")
             return
 
         st.toast(f"已成功将 {len(selected_df)} 条操作标记加入数据库", icon="✅")

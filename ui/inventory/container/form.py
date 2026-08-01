@@ -83,7 +83,7 @@ def render_container_form(supabase, department=None, category=None):
         st.rerun()
     except Exception as error:
         st.error(f"保存失败：{error}")
-        st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
+        st.info("请先在 Supabase SQL Editor 运行 sql/inventory/containers/inventory_container_history.sql")
 
 
 def _build_department_template(today, department):

@@ -46,7 +46,7 @@ def render_after_sales_section():
             save_after_sales_batch(pd.DataFrame(edited_df))
         except Exception as e:
             st.error(f"保存售后失败：{e}")
-            st.info("如果提示字段不存在，请先在 Supabase SQL Editor 运行 sql/after_sales_amount.sql")
+            st.info("如果提示字段不存在，请先在 Supabase SQL Editor 运行 sql/after_sales/after_sales_amount.sql")
             return
 
         st.success(f"已保存 {len(edited_df)} 个条码")

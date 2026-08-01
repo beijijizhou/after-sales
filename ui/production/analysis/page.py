@@ -46,7 +46,7 @@ def render_qa_period_analysis(
         st.warning("质检区间汇总函数尚未更新")
         st.caption(
             "请在 Supabase SQL Editor 运行 "
-            "sql/qa_period_summary_functions.sql"
+            "sql/production/qa_period_summary_functions.sql"
         )
         st.caption(str(error))
         return

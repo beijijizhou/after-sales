@@ -71,8 +71,75 @@
 - Workflow switching analysis classifies each period as one platform group;
   a Haloo period cannot simultaneously report small-platform production.
 
+## Logistics Tracking
+
+- The initial logistics module is a pre-production shipping-label compliance
+  review, not long-term delivery tracking.
+- A pending-acceptance shipment is an ERP order that already has a tracking
+  number but has no matching production acceptance, pre-scan, or QA scan in
+  this system.
+- Initial integration priority is SDS2, followed by the separate S2B UV and
+  S2B DTF accounts. The connector contract must also support later SDS1,
+  Yidian Wanxiang, 3D printing, and other ERP accounts without changing the
+  shared shipment model.
+- S2B exported workbooks include order code, merchant order number, shipping
+  method, tracking number, order status, and production/shipping times. A
+  successful automated S2B export must parse and persist those logistics fields
+  immediately; users must not need to copy tracking numbers between pages.
+- A compliant label must use the configured factory return address. The current
+  factory street is `25 Ryanic Road` and the state must be New York; the full
+  normalized address belongs in company configuration rather than validation
+  source code.
+- Orders showing USPS pre-scan/pre-shipment or any later postal scan are not
+  eligible for normal production acceptance. USPS is queried to establish
+  scan activity at review time, not to monitor future delivery progress.
+- Label weight is a required compliance check. Normal single-shirt labels are
+  generally around 3-4 ounces or modestly above that range; pound-level labels
+  such as 4 lb are suspicious and require investigation or rejection. Exact
+  automatic pass, review, and reject thresholds must be configurable by
+  company, product, and quantity.
+- USPS Tracking does not supply the authoritative return address, label weight,
+  or original label document. Download the label PDF from the ERP parcel data
+  (`pdfUrl`/`laberPdf` or the equivalent connector field), preserve the source
+  document, and extract address and weight from that document.
+- Because many ERP platforms do not provide label downloads, USPS tracking
+  events are the primary source for the label-creation origin city, state, and
+  ZIP and must be preserved and shown in full. Use label OCR as a supplement
+  for the street address and weight when a source document is available.
+- USPS-format labels have a pickup-channel subtype. `CBT` is collected by the
+  TikTok-designated logistics provider, while `CBS` is collected by GOFO.
+  Prefer the ERP parcel `serviceProviderName` over the generic shipping-method
+  name or tracking-number pattern when assigning this subtype. The logistics
+  compliance database only imports ordinary USPS shipments; CBS and CBT are
+  identified solely so they can be excluded from that workflow.
+- Persist ERP account, platform, department, order ID, tracking number,
+  carrier, label URL/file reference, label content hash, extracted return
+  address, extracted weight, USPS scan result, rule version, compliance result,
+  reviewer decision, and synchronization metadata.
+- USPS checks are database-first because provider requests have a cost. Reuse a
+  sufficiently fresh review-time result for the same tracking number, but
+  revalidate when its cache expires, the label/tracking changes, the label hash
+  changes, the compliance rules change, or an authorized reviewer requests a
+  refresh.
+- Store append-only provider-query and compliance-decision audit records.
+  Repeated ERP synchronization, label downloads, and USPS responses must be
+  idempotent and must not duplicate orders, documents, or review events.
+- ERP shipment review is database-cache-first. Show the cached record count and
+  latest New York storage time before offering an explicit ERP refresh, and
+  render the carrier-review table from the persisted cache after each refresh.
+- ERP and USPS credentials are tenant/account configuration. Never copy tokens
+  hard-coded in the legacy USPS project into application source.
+- A local S2B connector must refresh a missing or expired account token through
+  the project's dedicated Chrome session. It opens the normal S2B login and
+  lets an administrator complete any required slider or human verification,
+  then retries the API synchronization. Requiring a local user to configure a
+  transient S2B token in Streamlit Secrets is not the normal local workflow.
+
 ## Access
 
+- The logistics tracking and shipping-label review page is restricted to the
+  after-sales and admin roles. Other roles must not see its navigation entry or
+  access it by direct URL.
 - Visitor access requires no login.
 - Supervisor inherits public visibility and can manage problem tracking.
 - Producer focuses on production and consumable reporting.

@@ -68,7 +68,7 @@ def render_in_transit_table(
         today = datetime.now(NY_TIMEZONE).date()
     except Exception as error:
         st.error(f"在途货柜加载失败：{error}")
-        st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
+        st.info("请先在 Supabase SQL Editor 运行 sql/inventory/containers/inventory_container_history.sql")
         return pd.DataFrame()
     display_df = build_container_display(
         raw_df, include_cost=has_permission("can_view_cost")

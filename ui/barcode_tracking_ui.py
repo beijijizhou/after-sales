@@ -33,7 +33,7 @@ def render_operation_tracking_section():
         tracking_df = build_barcode_histories_for_date(start_at, end_at)
     except Exception as error:
         st.error(f"追踪数据加载失败：{error}")
-        st.info("请先在 Supabase SQL Editor 运行 sql/barcode_operation_history.sql")
+        st.info("请先在 Supabase SQL Editor 运行 sql/production/barcode_operation_history.sql")
         return
 
     pending_tab, history_tab = st.tabs(["待处理订单", "每个条码完整操作历史"])

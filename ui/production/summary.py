@@ -41,9 +41,9 @@ def render_refresh_multiple_counts_button(supabase, selected_date):
         except Exception as e:
             st.error(f"多件订单刷新失败：{e}")
             if "statement timeout" in str(e):
-                st.info("数据库刷新超时。请在 Supabase SQL Editor 重新运行最新版 sql/refresh_barcode_multiple_counts.sql 后再试。")
+                st.info("数据库刷新超时。请在 Supabase SQL Editor 重新运行最新版 sql/production/refresh_barcode_multiple_counts.sql 后再试。")
             else:
-                st.info("请先在 Supabase SQL Editor 运行 sql/refresh_barcode_multiple_counts.sql")
+                st.info("请先在 Supabase SQL Editor 运行 sql/production/refresh_barcode_multiple_counts.sql")
 
 
 def load_rpc_summary(supabase, selected_date, user_column, snapshot_at):
@@ -102,7 +102,7 @@ def resolve_production_summary(supabase, selected_date, title, user_column, snap
 
     working_hours = get_working_hours_from_user_summary(user_summary)
     if hourly_summary.empty:
-        st.warning("每小时产量正在使用旧算法。请在 Supabase SQL Editor 运行最新版 sql/production_summary_functions.sql")
+        st.warning("每小时产量正在使用旧算法。请在 Supabase SQL Editor 运行最新版 sql/production/production_summary_functions.sql")
         raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
         df = prepare_production_df(raw_df, user_column)
         hourly_summary = summarize_by_hour(df, selected_date)

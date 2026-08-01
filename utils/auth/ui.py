@@ -64,8 +64,8 @@ def handle_login(username, password, remember, show_setup_hint):
             st.error("账号或密码不正确")
     except Exception as e:
         st.error(f"登录失败：{e}")
-        hint = "如果这是第一次启用登录，请先在 Supabase SQL Editor 运行 sql/access_control.sql"
-        st.info(hint if show_setup_hint else "请先在 Supabase SQL Editor 运行 sql/access_control.sql")
+        hint = "如果这是第一次启用登录，请先在 Supabase SQL Editor 运行 sql/access/access_control.sql"
+        st.info(hint if show_setup_hint else "请先在 Supabase SQL Editor 运行 sql/access/access_control.sql")
 
 
 def render_user_badge():

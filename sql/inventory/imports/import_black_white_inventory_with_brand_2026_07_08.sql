@@ -1,5 +1,5 @@
 -- 黑白短袖库存导入。品牌为可选字段；有品牌则分行，没有品牌则为空品牌。
--- 依据 2026-07-08 用户最终确认的正确数据生成。请先运行 sql/add_inventory_optional_brand.sql。
+-- 依据 2026-07-08 用户最终确认的正确数据生成。请先运行 sql/inventory/schema/add_inventory_optional_brand.sql。
 
 begin;
 

@@ -1,5 +1,6 @@
 import streamlit as st
 
+from automation.logistics import parse_s2b_logistics_workbook
 from automation.api.diy19 import DIY19_BASE_URLS, load_diy19_credentials
 from automation.api.fangguo import load_fangguo_credentials
 from automation.api.hansen import load_hansen_credentials
@@ -16,6 +17,9 @@ from automation.production_batch import (
     load_all_clothing_production,
 )
 from automation.production_cache import load_production_cache
+from automation.playwright.s2b.workflow import DOWNLOAD_DIR
+from db.logistics import upsert_shipments
+from db.supabase_client import supabase
 from ui.production_data.cache_state import (
     aggregate_missing,
     load_existing_platform_results,
@@ -98,6 +102,8 @@ def fetch_and_store_production_data(
             store_production_data(
                 platform, result.data, result.source, saved_at
             )
+            if platform == "S2B":
+                _sync_s2b_logistics(result.source, report)
             source, errors = result.source, {}
         status.update(
             label=f"生产数据获取完成：{source}",
@@ -125,6 +131,24 @@ def fetch_and_store_production_data(
         st.error(f"生产数据获取失败：{error}")
         if DIAGNOSTIC_PATH.exists():
             st.caption("已记录当前页面控件，便于校准自动化流程。")
+
+
+def _sync_s2b_logistics(source_file, report):
+    path = DOWNLOAD_DIR / source_file
+    if not path.is_file():
+        report("S2B物流单号同步跳过：没有找到刚下载的Excel")
+        return 0
+    try:
+        rows = parse_s2b_logistics_workbook(path.read_bytes(), account="DTF")
+        saved = upsert_shipments(supabase, rows)
+    except Exception as error:
+        report(f"S2B物流单号暂未写入数据库：{error}")
+        return 0
+    report(
+        f"S2B物流单号已自动保存：{len(saved):,} 条，"
+        "无需复制粘贴到物流页面"
+    )
+    return len(saved)
 
 
 def _fetch_all(

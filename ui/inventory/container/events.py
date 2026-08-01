@@ -113,7 +113,7 @@ def render_container_history(supabase, raw_df):
         display_df = build_container_history_display(events_df)
     except Exception as error:
         st.error(f"货柜历史加载失败：{error}")
-        st.info("请先在 Supabase SQL Editor 运行 sql/inventory_container_history.sql")
+        st.info("请先在 Supabase SQL Editor 运行 sql/inventory/containers/inventory_container_history.sql")
         return
     if display_df.empty:
         st.info("这个货柜还没有历史记录")

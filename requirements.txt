@@ -33,6 +33,7 @@ openpyxl==3.1.5
 packaging==26.2
 pandas==3.0.3
 pillow==12.2.0
+pypdfium2==5.12.1
 playwright==1.61.0
 postgrest==2.31.0
 propcache==0.5.2
@@ -48,6 +49,8 @@ python-multipart==0.0.32
 realtime==2.31.0
 referencing==0.37.0
 requests==2.34.2
+rapidocr==3.9.2
+onnxruntime==1.28.0
 rpds-py==2026.5.1
 six==1.17.0
 smmap==5.0.3

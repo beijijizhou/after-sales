@@ -28,6 +28,8 @@ PUBLIC_ACCESS = {
 PRODUCTION_ACCESS = {
     "can_view_production_data",
 }
+LOGISTICS_ACCESS = {"can_view_logistics"}
+LOGISTICS_MANAGE = {"can_manage_logistics"}
 INVENTORY_VIEW = {
     "can_view_inventory",
     "can_view_container",
@@ -77,6 +79,8 @@ ALL_PERMISSIONS = set().union(
     COST_MANAGE,
     FINANCE_REPORTS,
     FINANCE_DASHBOARD,
+    LOGISTICS_ACCESS,
+    LOGISTICS_MANAGE,
 )
 
 ROLE_PERMISSIONS = {
@@ -96,7 +100,7 @@ ROLE_PERMISSIONS = {
     ROLE_AFTER_SALES: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
         | INVENTORY_MANAGE | CONSUMABLE_VIEW | CONSUMABLE_MANAGE
-        | AFTER_SALES_MANAGE
+        | AFTER_SALES_MANAGE | LOGISTICS_ACCESS | LOGISTICS_MANAGE
     ),
     ROLE_FINANCE: (
         INVENTORY_VIEW | CONSUMABLE_VIEW | COST_VIEW | FINANCE_REPORTS
@@ -111,6 +115,7 @@ PAGE_ACCESS = {
     "hotstamp": "can_view_hotstamp",
     "platform": "can_view_platform",
     "production_data": "can_view_production_data",
+    "logistics": "can_view_logistics",
     "inventory": "can_view_inventory",
     "consumables": "can_view_consumables",
     "container": "can_view_container",
@@ -130,6 +135,7 @@ NAV_SECTIONS = [
         ("hotstamp", "烫印", "pages/2_烫印.py"),
         ("platform", "平台", "pages/3_平台.py"),
         ("production_data", "生产数据", "pages/7_生产数据.py"),
+        ("logistics", "物流单号追踪", "pages/11_物流追踪.py"),
     ]),
     ("库存", [
         ("inventory", "生产库存", "pages/4_库存.py"),
