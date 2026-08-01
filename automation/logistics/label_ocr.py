@@ -2,10 +2,7 @@ import hashlib
 import re
 from functools import lru_cache
 
-import numpy as np
-import pypdfium2 as pdfium
 import requests
-from rapidocr import RapidOCR
 
 
 WEIGHT_PATTERN = re.compile(
@@ -29,6 +26,9 @@ def extract_label_fields(label_url, timeout=30):
 
 
 def ocr_pdf_lines(content):
+    import numpy as np
+    import pypdfium2 as pdfium
+
     document = pdfium.PdfDocument(content)
     if len(document) < 1:
         raise ValueError("面单PDF没有页面")
@@ -94,4 +94,6 @@ def _previous_address_line(lines, address_index):
 
 @lru_cache(maxsize=1)
 def _ocr_engine():
+    from rapidocr import RapidOCR
+
     return RapidOCR()
