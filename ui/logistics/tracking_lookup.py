@@ -15,94 +15,54 @@ from automation.logistics import (
 from automation.logistics.label_ocr import extract_label_fields
 from db.logistics import (
     load_latest_label_reviews,
-    load_latest_tracking_checks,
     load_shipments_by_tracking,
     save_label_review,
-    save_tracking_checks,
 )
 from utils.auth import get_current_operator_name
 
 
 def render_tracking_lookup(supabase, database_error):
-    st.subheader("订单物流正查与面单审核")
+    st.subheader("USPS物流单号接口查询")
     st.caption(
-        "从 Excel 或 Google Sheets 粘贴订单号和物流单号；查询结果会保留订单关联。"
+        "直接粘贴物流单号进行查询；支持换行、空格、逗号或分号分隔。"
     )
-    imported = st.session_state.get("logistics_tracking_lookup_import_rows", [])
-    initial = pd.DataFrame(imported or [{
-        "ERP": "", "账号": "", "部门": "", "订单号": "", "物流单号": "",
-        "ERP状态": "", "订单阶段": "",
-    }])
-    revision = st.session_state.get(
-        "logistics_tracking_lookup_editor_revision", 0
+    raw = st.text_area(
+        "物流单号",
+        placeholder="每行一个物流单号，也可以直接粘贴一整列",
+        key="logistics_tracking_lookup_input",
+        height=180,
     )
-    edited = st.data_editor(
-        initial, num_rows="dynamic", width="stretch",
-        key=f"logistics_order_tracking_editor_{revision}",
-        column_config={
-            "ERP": st.column_config.TextColumn("ERP", disabled=True),
-            "账号": st.column_config.TextColumn("账号", disabled=True),
-            "部门": st.column_config.TextColumn("部门", disabled=True),
-            "订单号": st.column_config.TextColumn("订单号（可选）"),
-            "物流单号": st.column_config.TextColumn("物流单号（必填）"),
-            "ERP状态": st.column_config.TextColumn("ERP状态", disabled=True),
-            "订单阶段": st.column_config.TextColumn("订单阶段", disabled=True),
-        },
-    )
-    if imported:
-        st.caption(f"已从ERP同步带入 {len(initial):,} 条普通 USPS 订单。")
-    mode = st.radio(
-        "查询模式",
-        ("数据库优先，缺失时查 USPS", "强制请求 USPS（接口测试）"),
-        horizontal=True,
-        key="logistics_tracking_lookup_mode",
-    )
-    order_context = normalize_order_tracking_rows(edited)
-    numbers = list(dict.fromkeys(order_context["tracking_number"]))
+    st.caption("当前为 USPS 实时接口模式；查询结果暂不写入数据库。")
+    numbers = parse_tracking_numbers(raw)
     if not st.button(
         "开始查询", type="primary", disabled=not numbers,
         key="logistics_tracking_lookup_submit",
     ):
-        st.info("查询会写入 USPS 返回结果，供后续数据库优先模式复用。")
+        st.info("粘贴物流单号后点击查询；结果仅用于当前页面，不写入数据库。")
         return
 
-    force_usps = mode.startswith("强制")
-    try:
-        latest = load_latest_tracking_checks(supabase, numbers)
-    except Exception as error:
-        st.error(database_error(error))
-        return
-
-    cached, pending = split_tracking_cache(numbers, latest, force_usps)
-    fresh_rows = _query_usps(supabase, pending)
+    fresh_rows = _query_usps(numbers)
     if fresh_rows is None:
         return
 
-    display = pd.concat([cached, pd.DataFrame(fresh_rows)], ignore_index=True)
-    source_by_number = {
-        **{number: "数据库缓存" for number in cached.get("tracking_number", [])},
-        **{row["tracking_number"]: "USPS 实时接口" for row in fresh_rows},
-    }
+    display = pd.DataFrame(fresh_rows)
     if not display.empty:
-        display["数据来源"] = display["tracking_number"].map(source_by_number)
+        display["数据来源"] = "USPS 实时接口"
         display["USPS查询说明"] = display["has_postal_record"].map({
-            True: "USPS已返回物流状态；地址需从平台面单获取",
-            False: "USPS未发现物流记录；地址需从平台面单获取",
+            True: "USPS已返回物流状态与Tracking Events",
+            False: "USPS未发现物流记录",
         })
 
-    summary = st.columns(3)
+    summary = st.columns(2)
     summary[0].metric("输入面单号", len(numbers))
-    summary[1].metric("数据库返回", len(cached))
-    summary[2].metric("USPS 接口请求", len(pending))
-    label_details = _load_label_details(supabase, numbers, database_error)
-    combined = _merge_label_details(display, label_details)
-    combined = _apply_usps_origin_fallback(combined)
-    _render_results(_merge_order_context(combined, order_context))
+    summary[1].metric("USPS 实时查询", len(numbers))
+    display = _apply_usps_origin_fallback(display)
+    _render_results(display)
     _render_tracking_events(display)
     _render_raw_responses(display)
 
 
-def _query_usps(supabase, numbers):
+def _query_usps(numbers):
     if not numbers:
         return []
     try:
@@ -117,9 +77,6 @@ def _query_usps(supabase, numbers):
             classify_usps_response(item)
             for response in responses for item in response
         ]
-        save_tracking_checks(
-            supabase, rows, get_current_operator_name()
-        )
         return rows
     except Exception as error:
         st.error(f"USPS 接口查询失败：{error}")
@@ -131,7 +88,6 @@ def _render_results(frame):
         st.warning("数据库和 USPS 接口都没有返回可显示的数据。")
         return
     columns = [
-        "ERP", "账号", "部门", "订单号", "ERP状态", "订单阶段",
         "tracking_number",
         "USPS子类型", "实际揽收方",
         "数据来源", "provider_status",
@@ -430,37 +386,6 @@ def _merge_label_details(tracking, labels):
 def parse_tracking_numbers(raw):
     parts = re.split(r"[,，;；\s]+", str(raw or ""))
     return list(dict.fromkeys(part.strip() for part in parts if part.strip()))
-
-
-def normalize_order_tracking_rows(frame):
-    rows = []
-    columns = [
-        "ERP", "账号", "部门", "订单号", "ERP状态", "订单阶段",
-        "tracking_number",
-    ]
-    if frame is None or frame.empty:
-        return pd.DataFrame(columns=columns)
-    for item in frame.fillna("").astype(str).to_dict("records"):
-        tracking = item.get("物流单号", "").strip()
-        if tracking:
-            rows.append({
-                "ERP": item.get("ERP", "").strip(),
-                "账号": item.get("账号", "").strip(),
-                "部门": item.get("部门", "").strip(),
-                "订单号": item.get("订单号", "").strip(),
-                "ERP状态": item.get("ERP状态", "").strip(),
-                "订单阶段": item.get("订单阶段", "").strip(),
-                "tracking_number": tracking,
-            })
-    return pd.DataFrame(rows, columns=columns).drop_duplicates()
-
-
-def _merge_order_context(results, context):
-    if context.empty:
-        return results
-    if results.empty:
-        return context
-    return context.merge(results, on="tracking_number", how="left")
 
 
 def split_tracking_cache(numbers, latest, force_usps=False):

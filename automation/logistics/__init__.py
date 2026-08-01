@@ -20,6 +20,11 @@ from automation.logistics.s2b_local_auth import (
     refresh_local_s2b_token,
 )
 from automation.logistics.s2b_workbook import parse_s2b_logistics_workbook
+from automation.logistics.imports import (
+    parse_logistics_frame,
+    parse_logistics_paste,
+    parse_logistics_upload,
+)
 from automation.logistics.sds import fetch_sds_pending_shipments
 from automation.logistics.usps import USPSClient, classify_usps_response
 
@@ -31,4 +36,7 @@ __all__ = [
     "local_login_available", "refresh_local_s2b_token",
     "classify_carrier", "classify_usps_subtype", "extract_service_provider",
     "is_usps_shipment", "usps_pickup_name",
+    "parse_logistics_upload",
+    "parse_logistics_paste",
+    "parse_logistics_frame",
 ]

@@ -1,5 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -7,28 +6,19 @@ import streamlit as st
 from automation.logistics import (
     S2BAuthenticationError,
     S2BLocalLoginRequired,
-    USPSClient,
     classify_carrier,
     classify_usps_subtype,
-    classify_usps_response,
     fetch_s2b_pending_shipments,
     fetch_sds_pending_shipments,
     load_s2b_account,
     load_sds_account,
-    load_usps_credentials,
     local_login_available,
+    parse_logistics_frame,
     refresh_local_s2b_token,
     usps_pickup_name,
 )
-from db.logistics import (
-    load_latest_tracking_checks,
-    load_shipments,
-    save_tracking_checks,
-    upsert_shipments,
-)
-from utils.auth import get_current_operator_name, has_permission
+from utils.auth import has_permission
 from ui.logistics.tracking_lookup import render_tracking_lookup
-from ui.logistics.reverse_lookup import render_reverse_lookup
 
 
 SOURCES = ("SDS1", "SDS2", "S2B UV", "S2B DTF")
@@ -42,36 +32,31 @@ ORDER_STAGES = {
 def render_logistics_page(supabase):
     st.title("物流订单核查")
     st.caption(
-        "从ERP各订单阶段获取物流关系，支持订单正查、物流单号反查、"
-        "USPS状态与面单OCR审核。"
+        "从ERP实时获取物流关系，并通过USPS接口核查Tracking Events与始发地点。"
     )
-    sync_tab, lookup_tab, reverse_tab, search_tab, rules_tab = st.tabs([
-        "ERP订单获取", "订单物流核查", "物流单号反查",
-        "数据库查询", "审核规则",
+    sync_tab, lookup_tab, rules_tab = st.tabs([
+        "ERP订单获取", "USPS接口查询", "审核规则",
     ])
     with sync_tab:
         _render_sync(supabase)
-    with search_tab:
-        _render_search(supabase)
     with lookup_tab:
         render_tracking_lookup(supabase, _database_error)
-    with reverse_tab:
-        render_reverse_lookup(supabase, _database_error)
     with rules_tab:
         _render_rules()
 
 
 def _render_sync(supabase):
+    auto_tab, upload_tab = st.tabs([
+        "从ERP自动读取", "复制粘贴订单物流",
+    ])
+    with auto_tab:
+        _render_erp_sync(supabase)
+    with upload_tab:
+        _render_upload_sync()
+
+
+def _render_erp_sync(supabase):
     st.subheader("从ERP读取订单与物流单号")
-    refresh_cache = st.button(
-        "刷新数据库缓存", key="logistics_refresh_database_cache"
-    )
-    cached = _load_cached_shipments(supabase, force=refresh_cache)
-    _render_cache_status(cached)
-    if cached is not None:
-        cached_review = _classify_carrier_rows(cached.to_dict("records"))
-        st.session_state["logistics_carrier_review_rows"] = cached_review
-        _sync_tracking_lookup_from_cache(cached, cached_review)
     selected = st.multiselect("数据来源", SOURCES, default=["SDS2"])
     stage = st.selectbox("订单阶段", list(ORDER_STAGES))
     date_columns = st.columns(2)
@@ -82,7 +67,7 @@ def _render_sync(supabase):
     _render_s2b_connection_status(selected)
     show_carrier_review = bool(selected)
     if not st.button(
-        "从ERP拉取并更新缓存", type="primary", disabled=not selected,
+        "从ERP读取数据", type="primary", disabled=not selected,
         width="stretch",
     ):
         _render_carrier_review(show_carrier_review)
@@ -113,57 +98,58 @@ def _render_sync(supabase):
             errors.append(f"{source}：{error}")
         progress.progress(index / len(selected))
     if all_rows:
-        _queue_tracking_lookup_rows(all_rows)
-        try:
-            saved = upsert_shipments(supabase, all_rows)
-            st.success(f"已保存/更新 {len(saved):,} 条订单面单关系。")
-            cached = _load_cached_shipments(supabase, force=True)
-            if cached is not None:
-                st.session_state["logistics_carrier_review_rows"] = (
-                    _classify_carrier_rows(cached.to_dict("records"))
-                )
-        except Exception as error:
-            st.error(_database_error(error))
+        st.success(f"本次读取到 {len(all_rows):,} 条普通 USPS；结果未写入数据库。")
     if errors:
         st.warning("；".join(errors))
+    if carrier_review_rows:
+        st.session_state["logistics_carrier_review_rows"] = carrier_review_rows
     _render_carrier_review(show_carrier_review)
 
 
-def _load_cached_shipments(supabase, force=False):
-    key = "logistics_saved_shipments"
-    if not force and key in st.session_state:
-        return st.session_state[key]
-    try:
-        frame = load_shipments(supabase)
-    except Exception as error:
-        st.info(_database_error(error))
-        return None
-    st.session_state[key] = frame
-    return frame
-
-
-def _cache_status(frame):
-    if frame is None or frame.empty or "last_seen_at" not in frame:
-        return {"count": 0, "stored_at": "暂无缓存"}
-    timestamps = pd.to_datetime(frame["last_seen_at"], errors="coerce", utc=True)
-    latest = timestamps.max()
-    if pd.isna(latest):
-        stored_at = "时间未知"
-    else:
-        stored_at = latest.tz_convert(ZoneInfo("America/New_York")).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-    return {"count": len(frame), "stored_at": stored_at}
-
-
-def _render_cache_status(frame):
-    status = _cache_status(frame)
-    columns = st.columns(2)
-    columns[0].metric("数据库缓存订单", f"{status['count']:,} 条")
-    columns[1].metric("最近存储时间（纽约）", status["stored_at"])
+def _render_upload_sync():
+    st.subheader("复制粘贴订单与物流单号")
     st.caption(
-        "下方物流识别核对表直接使用数据库缓存；仅在需要更新时再从ERP拉取。"
+        "在Excel里复制两列，点击下方第一格后直接粘贴；"
+        "第一列订单号，第二列物流单号。"
     )
+    entry = st.data_editor(
+        pd.DataFrame([{"订单号": "", "物流单号": ""}]),
+        hide_index=True,
+        num_rows="dynamic",
+        width="stretch",
+        column_config={
+            "订单号": st.column_config.TextColumn("订单号", required=False),
+            "物流单号": st.column_config.TextColumn(
+                "物流单号", required=False
+            ),
+        },
+        key="logistics_order_tracking_paste",
+    )
+    rows, issues = parse_logistics_frame(entry)
+    if not rows and not issues:
+        st.info("填写后会先校验并进入“物流识别核对”，不会直接查询USPS。")
+    if issues:
+        st.error("导入已停止：" + "；".join(issues[:20]))
+        if len(issues) > 20:
+            st.caption(f"另有 {len(issues) - 20:,} 行错误未显示。")
+        return
+    st.caption(f"校验通过：{len(rows):,} 条订单物流记录。")
+    if not st.button(
+        "进行物流识别", type="primary", width="stretch",
+        disabled=not rows,
+    ):
+        return
+    if not has_permission("can_manage_logistics"):
+        st.error("当前账号没有导入物流数据的权限。")
+        return
+    reviewed = _classify_carrier_rows(rows)
+    st.session_state["logistics_carrier_review_rows"] = reviewed
+    usps_count = sum(_is_target_usps_review(item) for item in reviewed)
+    st.success(
+        f"已导入 {len(rows):,} 条｜普通USPS {usps_count:,} 条｜"
+        f"其他物流 {len(rows) - usps_count:,} 条"
+    )
+    _render_carrier_review(True)
 
 
 def _classify_carrier_rows(rows):
@@ -199,61 +185,6 @@ def _is_target_usps_review(item):
     )
 
 
-def _queue_tracking_lookup_rows(rows):
-    imported = _tracking_lookup_import_rows(rows)
-    st.session_state["logistics_tracking_lookup_import_rows"] = imported
-    st.session_state["logistics_tracking_lookup_editor_revision"] = (
-        int(st.session_state.get(
-            "logistics_tracking_lookup_editor_revision", 0
-        )) + 1
-    )
-
-
-def _sync_tracking_lookup_from_cache(frame, reviewed=None):
-    signature = _shipment_cache_signature(frame)
-    if st.session_state.get("logistics_tracking_lookup_cache_signature") == signature:
-        return
-    reviewed = reviewed or _classify_carrier_rows(frame.to_dict("records"))
-    target_rows = [item["row"] for item in reviewed if _is_target_usps_review(item)]
-    _queue_tracking_lookup_rows(target_rows)
-    st.session_state["logistics_tracking_lookup_cache_signature"] = signature
-
-
-def _shipment_cache_signature(frame):
-    if frame is None or frame.empty:
-        return "empty"
-    latest = ""
-    if "last_seen_at" in frame:
-        timestamps = pd.to_datetime(frame["last_seen_at"], errors="coerce", utc=True)
-        if not timestamps.dropna().empty:
-            latest = timestamps.max().isoformat()
-    return f"{len(frame)}:{latest}"
-
-
-def _tracking_lookup_import_rows(rows):
-    imported = []
-    seen = set()
-    for row in rows:
-        item = {
-            "ERP": str(row.get("erp_platform") or "").strip(),
-            "账号": str(row.get("erp_account") or "").strip(),
-            "部门": str(row.get("department") or "").strip(),
-            "订单号": str(row.get("external_order_id") or "").strip(),
-            "物流单号": str(row.get("tracking_number") or "").strip(),
-            "ERP状态": str(row.get("erp_status") or "").strip(),
-            "订单阶段": str(
-                row.get("local_acceptance_status") or ""
-            ).strip(),
-        }
-        identity = (
-            item["ERP"], item["账号"], item["订单号"], item["物流单号"],
-        )
-        if item["物流单号"] and identity not in seen:
-            imported.append(item)
-            seen.add(identity)
-    return imported
-
-
 def _render_carrier_review(show_empty=False):
     rows = st.session_state.get(
         "logistics_carrier_review_rows",
@@ -275,7 +206,7 @@ def _render_carrier_review(show_empty=False):
         ):
             selected_carriers.append(name)
     if not rows:
-        st.info("数据库缓存为空；可从ERP拉取数据后更新核对表。")
+        st.info("点击“从ERP读取数据”后，这里会显示本次物流识别结果。")
         return
     counts = pd.Series([
         row["系统判断"] for row in rows
@@ -388,112 +319,6 @@ def _render_s2b_connection_status(selected):
         )
     else:
         st.caption("云端模式：S2B账号由服务器Secrets或本地连接器提供。")
-
-
-def _render_current_shipments(supabase):
-    st.caption("数据库记录是同步后持久保存的数据；刷新页面不会重复新增。")
-    if st.button(
-        "加载数据库现有记录", key="logistics_load_saved_shipments"
-    ):
-        try:
-            st.session_state["logistics_saved_shipments"] = load_shipments(
-                supabase
-            )
-        except Exception as error:
-            st.info(_database_error(error))
-            return
-    frame = st.session_state.get("logistics_saved_shipments")
-    if frame is None:
-        return
-    if not frame.empty:
-        st.caption(f"数据库已保存订单物流关系：{len(frame):,} 条")
-        _render_rows(frame.head(200))
-    else:
-        st.info("数据库当前没有订单物流关系。")
-
-
-def _render_search(supabase):
-    st.subheader("按Order ID或Tracking Number查面单")
-    query = st.text_area(
-        "查询内容", placeholder="每行一个Order ID或Tracking Number"
-    )
-    try:
-        frame = load_shipments(supabase)
-    except Exception as error:
-        st.info(_database_error(error))
-        return
-    terms = {line.strip() for line in query.replace(",", "\n").splitlines() if line.strip()}
-    if terms:
-        match = (
-            frame["external_order_id"].astype(str).isin(terms)
-            | frame["merchant_order_id"].astype(str).isin(terms)
-            | frame["tracking_number"].astype(str).isin(terms)
-        )
-        frame = frame[match]
-    _render_rows(frame)
-
-
-def _render_usps(supabase):
-    st.subheader("USPS预扫描合规检查")
-    raw = st.text_area(
-        "Tracking Number", placeholder="每行一个；优先使用数据库缓存"
-    )
-    numbers = list(dict.fromkeys(
-        line.strip() for line in raw.replace(",", "\n").splitlines()
-        if line.strip()
-    ))
-    force = st.checkbox("忽略缓存，强制向USPS重新查询")
-    if not st.button("开始检查", disabled=not numbers, type="primary"):
-        return
-    try:
-        latest = load_latest_tracking_checks(supabase, numbers)
-    except Exception as error:
-        st.error(_database_error(error))
-        return
-    cached, pending = _split_cache(numbers, latest, force)
-    fresh_rows = []
-    if pending:
-        try:
-            credentials = load_usps_credentials(st.secrets)
-            client = USPSClient(
-                credentials["client_id"], credentials["client_secret"]
-            )
-            for start in range(0, len(pending), 35):
-                fresh_rows.extend(
-                    classify_usps_response(item)
-                    for item in client.track(pending[start:start + 35])
-                )
-            save_tracking_checks(
-                supabase, fresh_rows, get_current_operator_name()
-            )
-        except Exception as error:
-            st.error(f"USPS检查失败：{error}")
-            return
-    st.caption(
-        f"数据库缓存 {len(cached):,} 个｜本次调用USPS {len(pending):,} 个"
-    )
-    display = pd.concat([cached, pd.DataFrame(fresh_rows)], ignore_index=True)
-    if display.empty:
-        st.info("没有可显示的USPS结果。")
-        return
-    display["审核判断"] = display["has_pre_scan"].map({
-        True: "不合规：已有USPS记录/预扫描", False: "未发现USPS记录",
-    })
-    st.dataframe(
-        display[[
-            "tracking_number", "provider_status", "has_pre_scan", "审核判断"
-        ]], hide_index=True, width="stretch",
-    )
-
-
-def _split_cache(numbers, latest, force):
-    if force or latest.empty:
-        return pd.DataFrame(), numbers
-    frame = latest.copy()
-    expiry = pd.to_datetime(frame["cache_expires_at"], errors="coerce", utc=True)
-    fresh = frame[expiry > datetime.now(timezone.utc)]
-    cached_numbers = set(fresh["tracking_number"].astype(str))
-    return fresh, [number for number in numbers if number not in cached_numbers]
 
 
 def _render_rules():

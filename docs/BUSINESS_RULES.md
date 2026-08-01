@@ -124,9 +124,8 @@
 - Store append-only provider-query and compliance-decision audit records.
   Repeated ERP synchronization, label downloads, and USPS responses must be
   idempotent and must not duplicate orders, documents, or review events.
-- ERP shipment review is database-cache-first. Show the cached record count and
-  latest New York storage time before offering an explicit ERP refresh, and
-  render the carrier-review table from the persisted cache after each refresh.
+- During the current workflow-validation phase, ERP shipment review and USPS
+  tracking queries are live-only and are not persisted by the logistics page.
 - ERP and USPS credentials are tenant/account configuration. Never copy tokens
   hard-coded in the legacy USPS project into application source.
 - A local S2B connector must refresh a missing or expired account token through

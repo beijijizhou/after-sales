@@ -20,24 +20,23 @@ from automation.logistics.s2b_workbook import parse_s2b_logistics_frame
 from automation.logistics.usps import USPSClient, classify_usps_response
 from automation.logistics.label_ocr import parse_usps_label_lines
 from automation.logistics.sds import _qa_token
+from automation.logistics.imports import (
+    parse_logistics_frame,
+    parse_logistics_paste,
+    parse_logistics_upload,
+)
 from db.logistics.repository import _merge_shipment_rows
 from ui.logistics.page import (
     _classify_carrier_rows,
-    _cache_status,
     _is_target_usps_review,
-    _shipment_cache_signature,
-    _tracking_lookup_import_rows,
-    _split_cache,
 )
 from ui.logistics.tracking_lookup import (
-    _merge_order_context,
     _merge_label_details,
     _missing_label_row,
     _apply_usps_origin_fallback,
     _extract_usps_origin,
     _raw_response_rows,
     _tracking_event_rows,
-    normalize_order_tracking_rows,
     parse_tracking_numbers,
     split_tracking_cache,
 )
@@ -45,6 +44,47 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_customer_can_paste_excel_cells_into_fixed_table(self):
+        rows, issues = parse_logistics_frame(pd.DataFrame([
+            {"订单号": "ORDER-1", "物流单号": "9400111122223333444455"},
+            {"订单号": "ORDER-2", "物流单号": "1Z999AA10123456784"},
+        ]))
+
+        self.assertEqual(issues, [])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1]["external_order_id"], "ORDER-2")
+
+    def test_customer_can_paste_any_header_names(self):
+        rows, issues = parse_logistics_paste(
+            "客户自己的订单抬头\t客户自己的物流抬头\n"
+            "ORDER-1\t9400111122223333444455\n",
+            has_header=True,
+        )
+
+        self.assertEqual(issues, [])
+        self.assertEqual(rows[0]["external_order_id"], "ORDER-1")
+        self.assertEqual(rows[0]["tracking_number"], "9400111122223333444455")
+
+    def test_customer_can_import_order_and_tracking_only(self):
+        rows, issues = parse_logistics_upload(
+            "订单号,物流单号\nORDER-1,9400111122223333444455\n".encode(),
+            "orders.csv",
+            {"erp_platform": "客户A", "erp_account": "账号1"},
+        )
+
+        self.assertEqual(issues, [])
+        self.assertEqual(rows[0]["external_order_id"], "ORDER-1")
+        self.assertEqual(rows[0]["tracking_number"], "9400111122223333444455")
+        self.assertEqual(rows[0]["erp_platform"], "客户A")
+
+    def test_customer_import_reports_incomplete_row(self):
+        rows, issues = parse_logistics_upload(
+            "订单号,物流单号\nORDER-1,\n".encode(), "orders.csv"
+        )
+
+        self.assertEqual(rows, [])
+        self.assertEqual(issues, ["第 2 行缺少物流单号"])
+
     def test_logistics_page_is_limited_to_after_sales_and_admin(self):
         allowed = {"after_sales", "admin"}
         for role, permissions in ROLE_PERMISSIONS.items():
@@ -74,35 +114,6 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(first, "cached-token")
         self.assertEqual(second, "cached-token")
         self.assertEqual(post.call_count, 1)
-
-    def test_empty_order_tracking_editor_keeps_expected_columns(self):
-        normalized = normalize_order_tracking_rows(pd.DataFrame([{
-            "订单号": "", "物流单号": "",
-        }]))
-
-        self.assertEqual(
-            normalized.columns.tolist(),
-            [
-                "ERP", "账号", "部门", "订单号", "ERP状态", "订单阶段",
-                "tracking_number",
-            ],
-        )
-        self.assertTrue(normalized.empty)
-
-    def test_order_tracking_import_preserves_multiple_orders_for_one_label(self):
-        imported = normalize_order_tracking_rows(pd.DataFrame([
-            {"订单号": "ORDER-A", "物流单号": "9400", "ERP状态": "生产中"},
-            {"订单号": "ORDER-B", "物流单号": "9400", "ERP状态": "已发货"},
-        ]))
-        result = _merge_order_context(pd.DataFrame([{
-            "tracking_number": "9400", "provider_status": "In Transit",
-        }]), imported)
-
-        self.assertEqual(result["订单号"].tolist(), ["ORDER-A", "ORDER-B"])
-        self.assertEqual(result["provider_status"].tolist(), [
-            "In Transit", "In Transit",
-        ])
-        self.assertEqual(result["ERP状态"].tolist(), ["生产中", "已发货"])
 
     def test_platform_without_label_reports_address_unavailable(self):
         row = _missing_label_row("9400", "平台未提供面单下载")
@@ -252,6 +263,24 @@ class LogisticsTrackingTests(unittest.TestCase):
 
         self.assertEqual(numbers, ["9400", "9500", "9600"])
 
+    def test_live_usps_workflow_does_not_require_database_rows(self):
+        display = pd.DataFrame([classify_usps_response({
+            "trackingNumber": "9200",
+            "status": "Shipping Label Created",
+            "trackingEvents": [{
+                "eventCode": "GX", "eventType": "Shipping Label Created",
+                "eventCity": "BUFORD", "eventState": "GA",
+                "eventZIPCode": "30518",
+            }],
+        })])
+
+        result = _apply_usps_origin_fallback(display)
+
+        self.assertEqual(result.iloc[0]["发货地址"], "BUFORD, GA 30518")
+        self.assertEqual(
+            result.iloc[0]["始发地点判断"], "异常：不是纽约工厂地址"
+        )
+
     def test_tracking_lookup_uses_cache_then_requests_missing_numbers(self):
         future = datetime.now(timezone.utc) + timedelta(minutes=30)
         latest = pd.DataFrame([{
@@ -399,52 +428,6 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertFalse(_is_target_usps_review(rows[0]))
         self.assertTrue(_is_target_usps_review(rows[1]))
 
-    def test_synced_usps_rows_are_queued_for_order_tracking_review(self):
-        imported = _tracking_lookup_import_rows([
-            {
-                "external_order_id": "ORDER-1", "tracking_number": "9400",
-                "erp_status": "排单中", "local_acceptance_status": "待排产/未接单",
-                "erp_platform": "SDS", "erp_account": "2号线", "department": "DTF",
-            },
-            {
-                "external_order_id": "ORDER-1", "tracking_number": "9400",
-                "erp_status": "排单中", "local_acceptance_status": "待排产/未接单",
-                "erp_platform": "SDS", "erp_account": "2号线", "department": "DTF",
-            },
-        ])
-
-        self.assertEqual(
-            imported, [{
-                "ERP": "SDS", "账号": "2号线", "部门": "DTF",
-                "订单号": "ORDER-1", "物流单号": "9400",
-                "ERP状态": "排单中", "订单阶段": "待排产/未接单",
-            }]
-        )
-
-    def test_cache_status_uses_latest_database_storage_time(self):
-        frame = pd.DataFrame([
-            {"last_seen_at": "2026-08-01T15:00:00+00:00"},
-            {"last_seen_at": "2026-08-01T17:30:00+00:00"},
-        ])
-
-        status = _cache_status(frame)
-
-        self.assertEqual(status["count"], 2)
-        self.assertEqual(status["stored_at"], "2026-08-01 13:30:00")
-
-    def test_cache_signature_changes_when_erp_cache_updates(self):
-        before = pd.DataFrame([{
-            "last_seen_at": "2026-08-01T17:30:00+00:00",
-        }])
-        after = pd.DataFrame([{
-            "last_seen_at": "2026-08-01T18:00:00+00:00",
-        }])
-
-        self.assertNotEqual(
-            _shipment_cache_signature(before),
-            _shipment_cache_signature(after),
-        )
-
     def test_known_non_usps_carriers_are_classified_separately(self):
         cases = [
             ("FedEx Ground", "123456789012", "FedEx"),
@@ -557,18 +540,6 @@ class LogisticsTrackingTests(unittest.TestCase):
 
         self.assertTrue(result["has_postal_record"])
         self.assertTrue(result["has_pre_scan"])
-
-    def test_fresh_database_check_avoids_paid_provider_request(self):
-        future = datetime.now(timezone.utc) + timedelta(minutes=30)
-        latest = pd.DataFrame([{
-            "tracking_number": "9400",
-            "cache_expires_at": future.isoformat(),
-        }])
-
-        cached, pending = _split_cache(["9400", "9500"], latest, False)
-
-        self.assertEqual(cached["tracking_number"].tolist(), ["9400"])
-        self.assertEqual(pending, ["9500"])
 
 
 if __name__ == "__main__":
