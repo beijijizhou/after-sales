@@ -74,6 +74,26 @@ class UVSheetInventoryTests(unittest.TestCase):
         self.assertEqual(source, "secrets")
         self.assertEqual(info["client_email"], "secrets@example.com")
 
+    def test_resolves_service_account_from_named_secrets_table(self):
+        with patch.dict(
+            "os.environ",
+            {"GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON": ""},
+            clear=False,
+        ):
+            info, source = resolve_service_account_info(
+                secrets={
+                    "google_sheets_service_account": {
+                        "type": "service_account",
+                        "client_email": "reader@example.com",
+                        "private_key": "private-key",
+                    }
+                },
+                credential_path="/path/that/does/not/exist.json",
+            )
+
+        self.assertEqual(source, "secrets.google_sheets_service_account")
+        self.assertEqual(info["client_email"], "reader@example.com")
+
     def test_resolves_service_account_from_file_when_other_sources_missing(self):
         with TemporaryDirectory() as temp_dir:
             credential_path = Path(temp_dir) / "google-service-account.json"

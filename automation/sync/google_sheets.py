@@ -161,6 +161,15 @@ def resolve_service_account_info(secrets=None, credential_path=None):
         if raw:
             info = json.loads(raw) if isinstance(raw, str) else dict(raw)
             return info, "secrets"
+        for section_name in (
+            "google_sheets_service_account", "gcp_service_account",
+        ):
+            try:
+                section = secrets.get(section_name, {})
+            except FileNotFoundError:
+                section = {}
+            if section:
+                return dict(section), f"secrets.{section_name}"
 
     if credential_path is None:
         credential_path = (
@@ -179,5 +188,6 @@ def resolve_service_account_info(secrets=None, credential_path=None):
 
     raise RuntimeError(
         "尚未配置 Google Sheets 服务账号；请配置 "
-        "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON 或部署密钥"
+        "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON、"
+        "[google_sheets_service_account] 或本地部署密钥"
     )
