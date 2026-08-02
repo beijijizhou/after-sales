@@ -30,9 +30,12 @@ def ocr_pdf_lines(content):
     import pypdfium2 as pdfium
 
     document = pdfium.PdfDocument(content)
-    if len(document) < 1:
-        raise ValueError("面单PDF没有页面")
-    image = document[0].render(scale=3).to_pil().convert("RGB")
+    try:
+        if len(document) < 1:
+            raise ValueError("面单PDF没有页面")
+        image = document[0].render(scale=3).to_pil().convert("RGB")
+    finally:
+        document.close()
     result = _ocr_engine()(np.asarray(image))
     if not result or not result.txts:
         raise ValueError("OCR没有识别到面单文字")

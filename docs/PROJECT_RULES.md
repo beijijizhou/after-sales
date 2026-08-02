@@ -74,6 +74,8 @@
 - Put parameters and calculation details after the result.
 - Avoid showing the same metric in multiple places.
 - Prefer one sortable table over several redundant charts or rankings.
+- For manual bulk operational input, prefer an editable table that supports
+  pasting Excel or Google Sheets columns instead of a multiline text box.
 - Use tabs to separate daily work, analysis, history, undo, and master data.
 - Reuse shared department/category/brand/material/color/size filters.
 - A selected department controls available categories; stale selections must

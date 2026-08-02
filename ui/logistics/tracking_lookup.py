@@ -23,27 +23,41 @@ from utils.auth import get_current_operator_name
 
 def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
     st.subheader("使用USPS官方API核查")
-    suggested_numbers = list(dict.fromkeys(suggested_numbers or []))
+    suggested_rows = normalize_suggested_rows(suggested_numbers)
     use_suggested = False
-    if suggested_numbers:
+    if suggested_rows:
         use_suggested = st.checkbox(
-            f"使用上方获取的 {len(suggested_numbers):,} 个普通USPS单号",
+            f"使用上方获取的 {len(suggested_rows):,} 条订单物流记录",
             value=True,
             key="logistics_use_acquired_usps_numbers",
         )
     st.caption(
-        "默认使用上方ERP读取或表格粘贴得到的普通USPS单号；"
-        "也可以取消勾选后手工输入。"
+        "默认使用上方ERP读取的普通USPS单号；也可以取消勾选，"
+        "在下方表格手工输入或从 Excel / Google Sheets 粘贴整列。"
     )
-    raw = st.text_area(
-        "手工输入物流单号",
-        placeholder="每行一个物流单号，也可以直接粘贴一整列",
-        key="logistics_tracking_lookup_input",
-        height=180,
+    edited = st.data_editor(
+        pd.DataFrame([{"订单号": "", "物流单号": ""}]),
+        num_rows="dynamic",
+        hide_index=True,
+        width="stretch",
+        key="logistics_tracking_lookup_table",
         disabled=use_suggested,
+        column_config={
+            "订单号": st.column_config.TextColumn(
+                "订单号", help="与物流单号保持在同一行"
+            ),
+            "物流单号": st.column_config.TextColumn(
+                "物流单号", help="支持直接粘贴订单号和物流单号两列"
+            ),
+        },
     )
     st.caption("当前为 USPS 实时接口模式；查询结果暂不写入数据库。")
-    numbers = suggested_numbers if use_suggested else parse_tracking_numbers(raw)
+    context = pd.DataFrame(
+        suggested_rows if use_suggested else parse_order_tracking_table(edited)
+    )
+    numbers = list(dict.fromkeys(
+        context.get("物流单号", pd.Series(dtype=str)).astype(str)
+    ))
     if not st.button(
         "开始查询", type="primary", disabled=not numbers,
         key="logistics_tracking_lookup_submit",
@@ -62,6 +76,14 @@ def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
             True: "USPS已返回物流状态与Tracking Events",
             False: "USPS未发现物流记录",
         })
+    if not context.empty:
+        display = context.rename(columns={
+            "物流单号": "tracking_number",
+        }).merge(display, on="tracking_number", how="left")
+    label_details = _extract_live_label_details(context)
+    if not label_details.empty and "面单PDF" in label_details:
+        label_details = label_details.drop(columns=["面单PDF"])
+    display = _merge_label_details(display, label_details)
 
     summary = st.columns(2)
     summary[0].metric("输入面单号", len(numbers))
@@ -93,12 +115,61 @@ def _query_usps(numbers):
         return None
 
 
+def _extract_live_label_details(context):
+    if context.empty or "物流单号" not in context:
+        return pd.DataFrame()
+    candidates = []
+    seen = set()
+    for row in context.to_dict("records"):
+        tracking_number = str(row.get("物流单号") or "").strip()
+        label_url = row.get("面单PDF") or row.get("备用面单PDF")
+        if tracking_number and label_url and tracking_number not in seen:
+            candidates.append((tracking_number, str(label_url)))
+            seen.add(tracking_number)
+    if not candidates:
+        return pd.DataFrame()
+
+    st.caption(f"正在OCR分析 {len(candidates):,} 张可下载面单……")
+    progress = st.progress(0)
+    rows = []
+    for index, (tracking_number, label_url) in enumerate(candidates, start=1):
+        try:
+            fields = extract_label_fields(label_url)
+            rows.append(_live_label_row(
+                tracking_number, label_url, fields, "已从平台面单OCR识别"
+            ))
+        except Exception as error:
+            rows.append(_live_label_row(
+                tracking_number, label_url, {}, f"OCR失败：{error}"
+            ))
+        progress.progress(index / len(candidates))
+    progress.empty()
+    return pd.DataFrame(rows)
+
+
+def _live_label_row(tracking_number, label_url, fields, status):
+    address = " ".join(str(fields.get(field) or "").strip() for field in (
+        "extracted_street", "extracted_city", "extracted_state",
+        "extracted_postal_code",
+    )).strip()
+    return {
+        "tracking_number": tracking_number,
+        "发货地址": address or "无法获取",
+        "面单OCR地址": address,
+        "重量（oz）": fields.get("extracted_weight_oz"),
+        "地址来源": "平台面单PDF（OCR）" if address else "平台面单PDF",
+        "地址获取状态": status,
+        "无法获取原因": "" if address else status,
+        "面单PDF": label_url,
+    }
+
+
 def _render_results(frame):
     if frame.empty:
         st.warning("数据库和 USPS 接口都没有返回可显示的数据。")
         return
     columns = [
-        "tracking_number",
+        "订单号", "tracking_number",
         "USPS子类型", "实际揽收方",
         "数据来源", "provider_status",
         "USPS面单创建地点", "始发地点判断", "发货地址", "重量（oz）",
@@ -396,6 +467,58 @@ def _merge_label_details(tracking, labels):
 def parse_tracking_numbers(raw):
     parts = re.split(r"[,，;；\s]+", str(raw or ""))
     return list(dict.fromkeys(part.strip() for part in parts if part.strip()))
+
+
+def parse_tracking_table(frame):
+    if frame is None or frame.empty or "物流单号" not in frame:
+        return []
+    numbers = []
+    for value in frame["物流单号"].fillna("").astype(str):
+        numbers.extend(parse_tracking_numbers(value))
+    return list(dict.fromkeys(numbers))
+
+
+def parse_order_tracking_table(frame):
+    if frame is None or frame.empty or "物流单号" not in frame:
+        return []
+    rows = []
+    seen = set()
+    for item in frame.fillna("").astype(str).to_dict("records"):
+        order_number = item.get("订单号", "").strip()
+        for tracking_number in parse_tracking_numbers(item.get("物流单号", "")):
+            identity = (order_number, tracking_number)
+            if identity not in seen:
+                rows.append({
+                    "订单号": order_number,
+                    "物流单号": tracking_number,
+                })
+                seen.add(identity)
+    return rows
+
+
+def normalize_suggested_rows(values):
+    rows = []
+    for value in values or []:
+        if isinstance(value, dict):
+            rows.append({
+                "订单号": str(value.get("订单号") or "").strip(),
+                "物流单号": str(value.get("物流单号") or "").strip(),
+                "面单PDF": value.get("面单PDF"),
+                "备用面单PDF": value.get("备用面单PDF"),
+                "ERP平台": value.get("ERP平台", ""),
+            })
+        else:
+            rows.append({"订单号": "", "物流单号": str(value or "").strip()})
+    normalized = []
+    seen = set()
+    for row in rows:
+        for tracking_number in parse_tracking_numbers(row.get("物流单号")):
+            identity = (row.get("订单号", ""), tracking_number)
+            if identity in seen:
+                continue
+            normalized.append({**row, "物流单号": tracking_number})
+            seen.add(identity)
+    return normalized
 
 
 def split_tracking_cache(numbers, latest, force_usps=False):

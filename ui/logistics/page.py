@@ -8,20 +8,28 @@ from automation.logistics import (
     S2BLocalLoginRequired,
     classify_carrier,
     classify_usps_subtype,
+    fetch_diy19_shipments,
     fetch_s2b_pending_shipments,
     fetch_sds_pending_shipments,
     load_s2b_account,
+    load_diy19_logistics_credentials,
     load_sds_account,
     local_login_available,
     parse_logistics_frame,
     refresh_local_s2b_token,
     usps_pickup_name,
 )
+from automation.production import (
+    PLATFORMS_BY_DEPARTMENT,
+    PRODUCTION_DEPARTMENTS,
+)
 from utils.auth import has_permission
 from ui.logistics.tracking_lookup import render_tracking_lookup
 
 
-SOURCES = ("SDS1", "SDS2", "S2B UV", "S2B DTF")
+LOGISTICS_CONNECTED_PLATFORMS = {
+    "S2B", "SDS1", "SDS2", "七创", "一朵云",
+}
 ORDER_STAGES = {
     "待排产/未接单": 1,
     "生产中": 2,
@@ -61,7 +69,25 @@ def _render_sync(supabase):
 
 def _render_erp_sync(supabase):
     st.subheader("从ERP读取订单与物流单号")
-    selected = st.multiselect("数据来源", SOURCES, default=["SDS2"])
+    filter_columns = st.columns(2)
+    department = filter_columns[0].selectbox(
+        "部门", PRODUCTION_DEPARTMENTS, key="logistics_department"
+    )
+    platforms = tuple(PLATFORMS_BY_DEPARTMENT.get(department, ()))
+    selected = filter_columns[1].multiselect(
+        "生产平台",
+        platforms,
+        default=_default_logistics_platforms(platforms),
+        key=f"logistics_platforms_{department}",
+    )
+    connected = [
+        platform for platform in platforms
+        if platform in LOGISTICS_CONNECTED_PLATFORMS
+    ]
+    st.caption(
+        f"{department} 已配置平台：{'、'.join(platforms) or '暂无'}｜"
+        f"已接入物流接口：{'、'.join(connected) or '暂无'}"
+    )
     stage = st.selectbox("订单阶段", list(ORDER_STAGES))
     date_columns = st.columns(2)
     start_date = date_columns[0].date_input(
@@ -83,9 +109,12 @@ def _render_erp_sync(supabase):
     progress = st.progress(0)
     for index, source in enumerate(selected, start=1):
         try:
-            rows = _fetch_source(source, stage, start_date, end_date)
+            rows = _fetch_source(
+                source, department, stage, start_date, end_date
+            )
             for row in rows:
                 row["local_acceptance_status"] = stage
+                row["department"] = department
             reviewed = _classify_carrier_rows(rows)
             carrier_review_rows.extend(reviewed)
             usps_rows = [
@@ -101,10 +130,9 @@ def _render_erp_sync(supabase):
         except Exception as error:
             errors.append(f"{source}：{error}")
         progress.progress(index / len(selected))
-    st.session_state["logistics_usps_candidates"] = list(dict.fromkeys(
-        str(row.get("tracking_number") or "").strip()
-        for row in all_rows if row.get("tracking_number")
-    ))
+    st.session_state["logistics_usps_candidates"] = _order_tracking_pairs(
+        all_rows
+    )
     if all_rows:
         st.success(f"本次读取到 {len(all_rows):,} 条普通 USPS；结果未写入数据库。")
     if errors:
@@ -152,16 +180,36 @@ def _render_upload_sync():
         return
     reviewed = _classify_carrier_rows(rows)
     st.session_state["logistics_carrier_review_rows"] = reviewed
-    st.session_state["logistics_usps_candidates"] = list(dict.fromkeys(
-        str(item["row"].get("tracking_number") or "").strip()
-        for item in reviewed if _is_target_usps_review(item)
-    ))
+    st.session_state["logistics_usps_candidates"] = _order_tracking_pairs([
+        item["row"] for item in reviewed if _is_target_usps_review(item)
+    ])
     usps_count = sum(_is_target_usps_review(item) for item in reviewed)
     st.success(
         f"已导入 {len(rows):,} 条｜普通USPS {usps_count:,} 条｜"
         f"其他物流 {len(rows) - usps_count:,} 条"
     )
     _render_carrier_review(True)
+
+
+def _order_tracking_pairs(rows):
+    pairs = []
+    seen = set()
+    for row in rows:
+        pair = {
+            "订单号": str(row.get("external_order_id") or "").strip(),
+            "物流单号": str(row.get("tracking_number") or "").strip(),
+        }
+        optional = {
+            "面单PDF": row.get("label_url"),
+            "备用面单PDF": row.get("backup_label_url"),
+            "ERP平台": row.get("erp_platform"),
+        }
+        pair.update({key: value for key, value in optional.items() if value})
+        identity = (pair["订单号"], pair["物流单号"])
+        if pair["物流单号"] and identity not in seen:
+            pairs.append(pair)
+            seen.add(identity)
+    return pairs
 
 
 def _classify_carrier_rows(rows):
@@ -260,8 +308,25 @@ def _render_carrier_review(show_empty=False):
     )
 
 
-def _fetch_source(source, stage, start_date, end_date):
+def _default_logistics_platforms(platforms):
+    if "SDS2" in platforms:
+        return ["SDS2"]
+    return [
+        platform for platform in platforms
+        if platform in LOGISTICS_CONNECTED_PLATFORMS
+    ][:1]
+
+
+def _fetch_source(source, department, stage, start_date, end_date):
     status = ORDER_STAGES[stage]
+    if source in {"七创", "一朵云"}:
+        return fetch_diy19_shipments(
+            source,
+            load_diy19_logistics_credentials(st.secrets, source),
+            start_date,
+            end_date,
+            stage=status,
+        )
     if source.startswith("SDS"):
         profile = "1号线" if source == "SDS1" else "2号线"
         return fetch_sds_pending_shipments(
@@ -269,7 +334,11 @@ def _fetch_source(source, stage, start_date, end_date):
             status=status,
             time_range=_erp_time_range(start_date, end_date),
         )
-    account = "UV" if source == "S2B UV" else "DTF"
+    if source != "S2B":
+        raise ValueError(
+            f"{source} 已存在于生产数据平台目录，但尚未接入订单物流接口"
+        )
+    account = "UV" if department == "UV" else "DTF"
     credentials = _s2b_credentials(account)
     try:
         return fetch_s2b_pending_shipments(
@@ -319,8 +388,7 @@ def _refresh_s2b_session(account):
 
 def _render_s2b_connection_status(selected):
     accounts = [
-        "UV" if source == "S2B UV" else "DTF"
-        for source in selected if source.startswith("S2B")
+        "S2B" for source in selected if source == "S2B"
     ]
     if not accounts:
         return
@@ -335,7 +403,7 @@ def _render_s2b_connection_status(selected):
 
 def _render_rules():
     st.subheader("当前面单审核规则")
-    st.write("寄件街道：25 Ryanic Road")
+    st.write("寄件街道：25 Ranic Road")
     st.write("寄件州：New York")
     st.write("USPS状态：不能已有Pre-Shipment、Pre-Scan或后续记录")
     st.write("单件衣服参考重量：3–4 oz或略高；明显达到磅级进入调查")

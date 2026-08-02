@@ -25,25 +25,98 @@ from automation.logistics.imports import (
     parse_logistics_paste,
     parse_logistics_upload,
 )
+from automation.logistics.diy19 import (
+    _list_form as _diy19_list_form,
+    _normalize_record as _normalize_diy19_record,
+)
 from db.logistics.repository import _merge_shipment_rows
 from ui.logistics.page import (
     _classify_carrier_rows,
+    _default_logistics_platforms,
     _is_target_usps_review,
+    _order_tracking_pairs,
 )
 from ui.logistics.tracking_lookup import (
     _merge_label_details,
     _missing_label_row,
     _apply_usps_origin_fallback,
     _extract_usps_origin,
+    _live_label_row,
     _raw_response_rows,
     _tracking_event_rows,
     parse_tracking_numbers,
+    parse_order_tracking_table,
+    parse_tracking_table,
+    normalize_suggested_rows,
     split_tracking_cache,
 )
 from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_diy19_logistics_maps_ui_stage_to_customer_order_state(self):
+        form = _diy19_list_form(
+            1, 1000, datetime(2026, 8, 1), datetime(2026, 8, 2), 6
+        )
+
+        self.assertEqual(form["QueryItems[2][FieldName]"], "OrderState")
+        self.assertEqual(form["QueryItems[2][FieldValue]"], "2")
+        self.assertEqual(
+            form["QueryItems[0][FieldValue]"], "2026/08/01 00:00:00"
+        )
+
+    def test_diy19_order_normalizes_tracking_and_label_without_excel(self):
+        record = {
+            "OrderNo": "PO-1",
+            "CustomerOrderNo": "SHOP-1",
+            "LogisticsTrackingNo": "92001",
+            "LogisticsMethonAliseName": "USPS",
+            "LogisticsLabelFileOrign": "http://labels.test/92001.pdf",
+            "LogisticsLabelFileImage": "OrderAttachment/92001.png",
+            "OrderState": "2",
+            "OrderState_Name": "已发货",
+        }
+
+        rows = _normalize_diy19_record(
+            record, "七创", "http://us.qcpod.19diy.com"
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["external_order_id"], "PO-1")
+        self.assertEqual(rows[0]["merchant_order_id"], "SHOP-1")
+        self.assertEqual(rows[0]["tracking_number"], "92001")
+        self.assertEqual(rows[0]["carrier"], "USPS")
+        self.assertEqual(rows[0]["label_url"], "http://labels.test/92001.pdf")
+        self.assertEqual(
+            rows[0]["backup_label_url"],
+            "http://us.qcpod.19diy.com/OrderAttachment/92001.png",
+        )
+
+    def test_erp_suggestion_preserves_label_for_live_ocr(self):
+        rows = normalize_suggested_rows([{
+            "订单号": "PO-1",
+            "物流单号": "92001",
+            "面单PDF": "http://labels.test/92001.pdf",
+            "ERP平台": "七创",
+        }])
+
+        self.assertEqual(rows[0]["物流单号"], "92001")
+        self.assertEqual(rows[0]["面单PDF"], "http://labels.test/92001.pdf")
+        self.assertEqual(rows[0]["ERP平台"], "七创")
+
+    def test_live_ocr_result_exposes_address_weight_and_label(self):
+        row = _live_label_row("92001", "http://labels.test/92001.pdf", {
+            "extracted_street": "25 RYANIC RD",
+            "extracted_city": "HEWLETT",
+            "extracted_state": "NY",
+            "extracted_postal_code": "11557",
+            "extracted_weight_oz": 4,
+        }, "已从平台面单OCR识别")
+
+        self.assertEqual(row["发货地址"], "25 RYANIC RD HEWLETT NY 11557")
+        self.assertEqual(row["重量（oz）"], 4)
+        self.assertEqual(row["面单PDF"], "http://labels.test/92001.pdf")
+
     def test_customer_can_paste_excel_cells_into_fixed_table(self):
         rows, issues = parse_logistics_frame(pd.DataFrame([
             {"订单号": "ORDER-1", "物流单号": "9400111122223333444455"},
@@ -262,6 +335,41 @@ class LogisticsTrackingTests(unittest.TestCase):
         numbers = parse_tracking_numbers("9400, 9500\n9400；9600")
 
         self.assertEqual(numbers, ["9400", "9500", "9600"])
+
+    def test_tracking_table_accepts_pasted_column_and_removes_duplicates(self):
+        frame = pd.DataFrame({
+            "物流单号": ["9400", "9500", "9400", "9600\n9700"],
+        })
+
+        self.assertEqual(
+            parse_tracking_table(frame), ["9400", "9500", "9600", "9700"]
+        )
+
+    def test_order_and_tracking_number_stay_together(self):
+        frame = pd.DataFrame([
+            {"订单号": "ORDER-A", "物流单号": "9400"},
+            {"订单号": "ORDER-B", "物流单号": "9400"},
+        ])
+
+        self.assertEqual(parse_order_tracking_table(frame), [
+            {"订单号": "ORDER-A", "物流单号": "9400"},
+            {"订单号": "ORDER-B", "物流单号": "9400"},
+        ])
+
+    def test_erp_candidates_include_order_and_tracking_number(self):
+        pairs = _order_tracking_pairs([{
+            "external_order_id": "ORDER-A", "tracking_number": "9400",
+        }])
+
+        self.assertEqual(
+            pairs, [{"订单号": "ORDER-A", "物流单号": "9400"}]
+        )
+
+    def test_logistics_platform_default_reuses_department_platforms(self):
+        self.assertEqual(
+            _default_logistics_platforms(("汉森", "SDS1", "SDS2")),
+            ["SDS2"],
+        )
 
     def test_live_usps_workflow_does_not_require_database_rows(self):
         display = pd.DataFrame([classify_usps_response({

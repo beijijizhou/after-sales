@@ -73,6 +73,9 @@
 
 ## Logistics Tracking
 
+- Logistics acquisition reuses the production-data department and platform
+  catalog. Users select department first and then a platform belonging to that
+  department; do not maintain a separate hard-coded platform list.
 - The initial logistics module is a pre-production shipping-label compliance
   review, not long-term delivery tracking.
 - A pending-acceptance shipment is an ERP order that already has a tracking
@@ -87,7 +90,7 @@
   successful automated S2B export must parse and persist those logistics fields
   immediately; users must not need to copy tracking numbers between pages.
 - A compliant label must use the configured factory return address. The current
-  factory street is `25 Ryanic Road` and the state must be New York; the full
+  factory street is `25 Ranic Road` and the state must be New York; the full
   normalized address belongs in company configuration rather than validation
   source code.
 - Orders showing USPS pre-scan/pre-shipment or any later postal scan are not
@@ -126,6 +129,10 @@
   idempotent and must not duplicate orders, documents, or review events.
 - During the current workflow-validation phase, ERP shipment review and USPS
   tracking queries are live-only and are not persisted by the logistics page.
+- Seven Creation (`七创`) and Yiduoyun (`一朵云`) share the 19DIY ERP contract.
+  Read their customer-order API by date and order stage and consume the order
+  number, tracking number, carrier, and label URL directly; do not generate or
+  parse an Excel export when those fields are already present in the response.
 - ERP and USPS credentials are tenant/account configuration. Never copy tokens
   hard-coded in the legacy USPS project into application source.
 - A local S2B connector must refresh a missing or expired account token through
