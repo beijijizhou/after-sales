@@ -50,6 +50,7 @@ from ui.logistics.page import (
     _ocr_progress_text,
     _resolve_ocr_workers,
     _review_selection_defaults,
+    _store_review_ocr_results,
 )
 from ui.logistics.tracking_lookup import (
     _merge_label_details,
@@ -69,6 +70,31 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    @patch("ui.logistics.page.st.session_state", new_callable=dict)
+    def test_ocr_completion_refreshes_review_and_usps_context(self, state):
+        row = {
+            "external_order_id": "ORDER-1",
+            "tracking_number": "92001",
+            "ocr_address": "25 RYANIC RD HEWLETT NY 11557",
+            "ocr_weight_oz": 4,
+            "ocr_status": "已识别",
+        }
+        reviewed = [{
+            "系统判断": "USPS",
+            "USPS子类型": "普通USPS",
+            "row": row,
+        }]
+
+        _store_review_ocr_results(reviewed, None)
+
+        self.assertIs(state["logistics_carrier_review_rows"], reviewed)
+        self.assertEqual(
+            state["logistics_usps_candidates"][0]["面单OCR地址"],
+            "25 RYANIC RD HEWLETT NY 11557",
+        )
+        self.assertEqual(state["logistics_review_data_version"], 1)
+        self.assertIn("已回填", state["logistics_review_ocr_notice"])
+
     def test_review_selection_supports_all_and_repeatable_random_sample(self):
         rows = [
             {"row": {"label_url": f"{index}.pdf"}} for index in range(5)

@@ -137,7 +137,9 @@
   and available label links. It must not automatically OCR normal shipments.
   Users select suspicious labels directly in the shared logistics review
   table; only those selected documents are downloaded and analyzed, and the
-  results are reflected back into that same table.
+  results are reflected back into that same table. Completing OCR must refresh
+  the editable-table state and the ordinary-USPS candidate context so newly
+  extracted address, ounce/pound weight, and status are immediately visible.
 - The shared logistics review supports manual selection, selecting every row
   with a downloadable label, and a user-sized random sample. Authorized users
   can also download all available label documents from the current review as

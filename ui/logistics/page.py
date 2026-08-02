@@ -598,6 +598,9 @@ def _render_carrier_review(show_empty=False):
     if not rows and not show_empty:
         return
     st.subheader("物流识别核对")
+    ocr_notice = st.session_state.pop("logistics_review_ocr_notice", "")
+    if ocr_notice:
+        st.success(ocr_notice)
     carrier_names = (
         "USPS", "CBS", "CBT", "GOFO", "FedEx", "UPS", "UniUni", "SwiftX",
         "其他待确认",
@@ -731,18 +734,15 @@ def _render_review_ocr_actions(reviewed, selected_rows):
         if not has_permission("can_manage_logistics"):
             st.error("当前账号没有面单OCR权限。")
             return
-        _apply_erp_label_ocr(
+        summary = _apply_erp_label_ocr(
             available_rows,
             "物流识别核对",
             max_labels=None,
             ocr_workers=ocr_workers,
             ordinary_usps_only=False,
         )
-        st.session_state["logistics_carrier_review_rows"] = reviewed
-        st.session_state["logistics_usps_candidates"] = _order_tracking_pairs([
-            item["row"] for item in reviewed if _is_target_usps_review(item)
-        ])
-        st.caption("OCR结果已回填到本表和下方普通USPS核查数据。")
+        _store_review_ocr_results(reviewed, summary)
+        st.rerun()
     _render_label_archive_download(action_columns[3], reviewed)
     if missing_count:
         st.warning(f"已选记录中有 {missing_count:,} 条没有可下载面单，无法OCR。")
@@ -825,6 +825,18 @@ def _reset_review_selection():
     st.session_state.pop("logistics_label_archive", None)
     st.session_state.pop("logistics_label_archive_errors", None)
     st.session_state.pop("logistics_label_archive_fingerprint", None)
+
+
+def _store_review_ocr_results(reviewed, summary):
+    st.session_state["logistics_carrier_review_rows"] = reviewed
+    st.session_state["logistics_usps_candidates"] = _order_tracking_pairs([
+        item["row"] for item in reviewed if _is_target_usps_review(item)
+    ])
+    _reset_review_selection()
+    st.session_state["logistics_review_ocr_notice"] = (
+        "OCR结果已回填到本表和下方普通USPS核查数据。"
+        + (f" {_ocr_summary_text(summary)}" if summary else "")
+    )
 
 
 def _carrier_filter_name(row):
