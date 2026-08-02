@@ -94,6 +94,14 @@ def _render_erp_sync(supabase):
         f"已接入物流接口：{'、'.join(connected) or '暂无'}"
     )
     stage = st.selectbox("订单阶段", list(ORDER_STAGES))
+    ocr_limit = st.number_input(
+        "本次OCR面单数量",
+        min_value=1,
+        max_value=500,
+        value=5,
+        step=5,
+        help="物流数据会完整读取；仅限制本次下载和OCR的面单数量。",
+    )
     date_columns = st.columns(2)
     start_date = date_columns[0].date_input(
         "开始日期", value=date.today() - timedelta(days=1),
@@ -121,7 +129,9 @@ def _render_erp_sync(supabase):
                 row["local_acceptance_status"] = stage
                 row["department"] = department
             reviewed = _classify_carrier_rows(rows)
-            ocr_summary = _apply_erp_label_ocr(reviewed, source)
+            ocr_summary = _apply_erp_label_ocr(
+                reviewed, source, max_labels=int(ocr_limit)
+            )
             carrier_review_rows.extend(reviewed)
             usps_rows = [
                 item["row"] for item in reviewed
@@ -253,14 +263,14 @@ def _classify_carrier_rows(rows):
     return reviewed
 
 
-def _apply_erp_label_ocr(reviewed, source):
+def _apply_erp_label_ocr(reviewed, source, max_labels=5):
     target_rows = [item for item in reviewed if _is_target_usps_review(item)]
-    candidates = []
+    available_candidates = []
     for item in target_rows:
         row = item["row"]
         label_url = row.get("label_url") or row.get("backup_label_url")
         if label_url:
-            candidates.append(item)
+            available_candidates.append(item)
             continue
         row["ocr_address"] = ""
         row["ocr_weight_oz"] = None
@@ -268,9 +278,20 @@ def _apply_erp_label_ocr(reviewed, source):
         item["OCR寄件地址"] = ""
         item["OCR重量（oz）"] = None
         item["OCR状态"] = "平台未提供可下载面单"
+    candidates = available_candidates[:max_labels]
+    skipped = available_candidates[max_labels:]
+    for item in skipped:
+        row = item["row"]
+        row["ocr_address"] = ""
+        row["ocr_weight_oz"] = None
+        row["ocr_status"] = "本次未解析（超过测试数量）"
+        item["OCR寄件地址"] = ""
+        item["OCR重量（oz）"] = None
+        item["OCR状态"] = "本次未解析（超过测试数量）"
     if not candidates:
         return {
-            "target": len(target_rows), "available": 0,
+            "target": len(target_rows), "available": len(available_candidates),
+            "processed": 0, "skipped": len(skipped),
             "missing": len(target_rows), "cache_hits": 0,
             "downloaded": 0, "address_ok": 0, "weight_ok": 0,
             "failed": 0,
@@ -278,7 +299,8 @@ def _apply_erp_label_ocr(reviewed, source):
     stage_message = st.empty()
     stage_message.info(
         f"{source}：已取得物流数据；普通USPS {len(target_rows):,} 条，"
-        f"可下载面单 {len(candidates):,} 张。正在检查缓存……"
+        f"可下载面单 {len(available_candidates):,} 张，"
+        f"本次OCR {len(candidates):,} 张。正在检查缓存……"
     )
     progress = st.progress(0)
     if st.session_state.get("logistics_label_ocr_cache_version") == (
@@ -378,8 +400,10 @@ def _apply_erp_label_ocr(reviewed, source):
     failed = len(candidates) - address_ok
     summary = {
         "target": len(target_rows),
-        "available": len(candidates),
-        "missing": len(target_rows) - len(candidates),
+        "available": len(available_candidates),
+        "processed": len(candidates),
+        "skipped": len(skipped),
+        "missing": len(target_rows) - len(available_candidates),
         "cache_hits": len(candidates) - len(pending),
         "downloaded": downloaded_count,
         "address_ok": address_ok,
@@ -400,6 +424,8 @@ def _apply_erp_label_ocr(reviewed, source):
 def _ocr_summary_text(summary):
     return (
         f"面单可下载 {summary['available']:,}｜"
+        f"本次OCR {summary.get('processed', summary['available']):,}｜"
+        f"未解析 {summary.get('skipped', 0):,}｜"
         f"无面单 {summary['missing']:,}｜"
         f"缓存命中 {summary['cache_hits']:,}｜"
         f"新下载 {summary['downloaded']:,}｜"

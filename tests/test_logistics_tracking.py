@@ -158,12 +158,15 @@ class LogisticsTrackingTests(unittest.TestCase):
 
     def test_ocr_status_has_multiple_operational_dimensions(self):
         text = _ocr_summary_text({
-            "available": 12, "missing": 2, "cache_hits": 5,
+            "available": 12, "processed": 5, "skipped": 7,
+            "missing": 2, "cache_hits": 5,
             "downloaded": 7, "address_ok": 10, "weight_ok": 9,
             "failed": 2,
         })
 
         self.assertIn("面单可下载 12", text)
+        self.assertIn("本次OCR 5", text)
+        self.assertIn("未解析 7", text)
         self.assertIn("缓存命中 5", text)
         self.assertIn("OCR地址成功 10", text)
         self.assertIn("重量成功 9", text)
