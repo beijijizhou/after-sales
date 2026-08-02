@@ -18,7 +18,9 @@ from db.logistics import (
     load_shipments_by_tracking,
     save_label_review,
 )
+from db.logistics.usps_usage import record_usps_usage
 from utils.auth import get_current_operator_name
+from ui.logistics.usps_usage import render_usps_usage
 
 
 def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
@@ -51,7 +53,10 @@ def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
             ),
         },
     )
-    st.caption("当前为 USPS 实时接口模式；查询结果暂不写入数据库。")
+    st.caption(
+        "当前为USPS实时接口模式；物流响应暂不写入数据库，"
+        "仅保存每日和每月用量统计。"
+    )
     context = pd.DataFrame(
         suggested_rows if use_suggested else parse_order_tracking_table(edited)
     )
@@ -62,10 +67,12 @@ def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
         "开始查询", type="primary", disabled=not numbers,
         key="logistics_tracking_lookup_submit",
     ):
+        render_usps_usage(supabase, database_error)
         st.info("粘贴物流单号后点击查询；结果仅用于当前页面，不写入数据库。")
         return
 
-    fresh_rows = _query_usps(numbers)
+    fresh_rows = _query_usps(numbers, supabase, database_error)
+    render_usps_usage(supabase, database_error)
     if fresh_rows is None:
         return
 
@@ -94,7 +101,7 @@ def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
     _render_raw_responses(display)
 
 
-def _query_usps(numbers):
+def _query_usps(numbers, supabase=None, database_error=None):
     if not numbers:
         return []
     try:
@@ -109,10 +116,39 @@ def _query_usps(numbers):
             classify_usps_response(item)
             for response in responses for item in response
         ]
+        _record_usage(
+            supabase, len(numbers), len(batches), len(rows),
+            max(0, len(numbers) - len(rows)), database_error,
+        )
         return rows
     except Exception as error:
+        _record_usage(
+            supabase, len(numbers), len(batches) if "batches" in locals() else 0,
+            0, len(numbers), database_error,
+        )
         st.error(f"USPS 接口查询失败：{error}")
         return None
+
+
+def _record_usage(
+    supabase, tracking_count, request_count, successful_count, failed_count,
+    database_error,
+):
+    if supabase is None:
+        return
+    try:
+        record_usps_usage(
+            supabase,
+            tracking_count,
+            request_count,
+            successful_count,
+            failed_count,
+            get_current_operator_name(),
+        )
+    except Exception as error:
+        st.warning("USPS查询已完成，但本次用量未能写入统计表。")
+        if database_error:
+            st.caption(database_error(error))
 
 
 def _extract_live_label_details(context):

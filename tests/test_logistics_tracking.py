@@ -2,6 +2,7 @@ import unittest
 from io import BytesIO
 from zipfile import ZipFile
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from unittest.mock import Mock, patch
 
 import pandas as pd
@@ -65,11 +66,59 @@ from ui.logistics.tracking_lookup import (
     parse_tracking_table,
     normalize_suggested_rows,
     split_tracking_cache,
+    _query_usps,
 )
+from ui.logistics.usps_usage import summarize_usps_usage
 from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_usps_usage_uses_official_baseline_and_daily_query_counts(self):
+        events = pd.DataFrame([
+            {
+                "event_type": "query", "tracking_count": 100,
+                "request_count": 3, "created_at": "2026-08-02T10:00:00Z",
+            },
+            {
+                "event_type": "query", "tracking_count": 25,
+                "request_count": 1, "created_at": "2026-08-02T14:00:00Z",
+            },
+        ])
+        baseline = {
+            "official_count": 408,
+            "created_at": "2026-08-02T12:00:00Z",
+        }
+        now = datetime(2026, 8, 2, 12, tzinfo=ZoneInfo("America/New_York"))
+
+        summary, daily = summarize_usps_usage(events, baseline, now, 100000)
+
+        self.assertEqual(summary["today"], 125)
+        self.assertEqual(summary["month_used"], 433)
+        self.assertEqual(summary["remaining"], 99567)
+        self.assertEqual(summary["request_count"], 4)
+        self.assertEqual(daily.iloc[0]["查询面单数"], 125)
+
+    @patch("ui.logistics.tracking_lookup.record_usps_usage")
+    @patch("ui.logistics.tracking_lookup.get_current_operator_name", return_value="Andy")
+    @patch("ui.logistics.tracking_lookup.load_usps_credentials")
+    @patch("ui.logistics.tracking_lookup.USPSClient")
+    def test_live_usps_query_records_tracking_and_batch_usage(
+        self, client_class, credentials, _operator, record_usage
+    ):
+        credentials.return_value = {"client_id": "id", "client_secret": "secret"}
+        client_class.return_value.track.return_value = [
+            {"trackingNumber": "92001", "status": "Created"},
+            {"trackingNumber": "92002", "status": "Created"},
+        ]
+        supabase = Mock()
+
+        rows = _query_usps(["92001", "92002"], supabase=supabase)
+
+        self.assertEqual(len(rows), 2)
+        record_usage.assert_called_once_with(
+            supabase, 2, 1, 2, 0, "Andy"
+        )
+
     @patch("ui.logistics.page.st.session_state", new_callable=dict)
     def test_ocr_completion_refreshes_review_and_usps_context(self, state):
         row = {

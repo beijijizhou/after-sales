@@ -978,6 +978,10 @@ def _render_rows(frame):
 
 
 def _database_error(error):
+    if "logistics_usps_usage_events" in str(error) and (
+        "does not exist" in str(error) or "schema cache" in str(error)
+    ):
+        return "USPS用量统计表尚未初始化，请运行 sql/logistics/02_usps_usage.sql。"
     if "logistics_" in str(error) and (
         "does not exist" in str(error) or "schema cache" in str(error)
     ):

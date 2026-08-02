@@ -124,6 +124,13 @@
   revalidate when its cache expires, the label/tracking changes, the label hash
   changes, the compliance rules change, or an authorized reviewer requests a
   refresh.
+- Record USPS usage separately from provider responses. Each live query event
+  stores the submitted tracking-number count, HTTP batch count, success/failure
+  totals, operator, and New York reporting day. Display today's usage, the
+  current month's calibrated usage, remaining monthly allowance, percentage,
+  and daily detail. The default monthly allowance is 100,000 and may be
+  overridden per environment; an authorized user calibrates it against the
+  USPS developer portal without storing response payloads.
 - Store append-only provider-query and compliance-decision audit records.
   Repeated ERP synchronization, label downloads, and USPS responses must be
   idempotent and must not duplicate orders, documents, or review events.
