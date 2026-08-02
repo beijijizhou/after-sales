@@ -14,9 +14,18 @@ CITY_STATE_ZIP_PATTERN = re.compile(
 
 
 def extract_label_fields(label_url, timeout=30):
+    return extract_label_content_fields(
+        download_label_content(label_url, timeout=timeout)
+    )
+
+
+def download_label_content(label_url, timeout=30):
     response = requests.get(label_url, timeout=timeout)
     response.raise_for_status()
-    content = response.content
+    return response.content
+
+
+def extract_label_content_fields(content):
     lines = ocr_pdf_lines(content)
     parsed = parse_usps_label_lines(lines)
     return {

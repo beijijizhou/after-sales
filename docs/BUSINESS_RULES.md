@@ -129,6 +129,10 @@
   idempotent and must not duplicate orders, documents, or review events.
 - During the current workflow-validation phase, ERP shipment review and USPS
   tracking queries are live-only and are not persisted by the logistics page.
+- Cache downloaded label documents and OCR results in server memory by label
+  URL for 24 hours during workflow validation. Repeated page refreshes and
+  users on the same running server should reuse that cache; deployment or
+  server restart may clear it because database persistence is not enabled yet.
 - Seven Creation (`七创`) and Yiduoyun (`一朵云`) share the 19DIY ERP contract.
   Read their customer-order API by date and order stage and consume the order
   number, tracking number, carrier, and label URL directly; do not generate or

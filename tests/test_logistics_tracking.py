@@ -19,6 +19,7 @@ from automation.logistics.carriers import (
 from automation.logistics.s2b_workbook import parse_s2b_logistics_frame
 from automation.logistics.usps import USPSClient, classify_usps_response
 from automation.logistics.label_ocr import parse_usps_label_lines
+from automation.logistics.label_ocr import extract_label_content_fields
 from automation.logistics.sds import _qa_token
 from automation.logistics.imports import (
     parse_logistics_frame,
@@ -31,6 +32,7 @@ from automation.logistics.diy19 import (
 )
 from db.logistics.repository import _merge_shipment_rows
 from ui.logistics.page import (
+    _cached_label_content,
     _classify_carrier_rows,
     _default_logistics_platforms,
     _is_target_usps_review,
@@ -55,6 +57,19 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_label_download_is_reused_from_server_cache(self):
+        _cached_label_content.clear()
+        with patch(
+            "ui.logistics.page.download_label_content",
+            return_value=b"label-pdf",
+        ) as download:
+            first = _cached_label_content("http://labels.test/92001.pdf")
+            second = _cached_label_content("http://labels.test/92001.pdf")
+
+        self.assertEqual(first, b"label-pdf")
+        self.assertEqual(second, b"label-pdf")
+        self.assertEqual(download.call_count, 1)
+
     def test_diy19_logistics_maps_ui_stage_to_customer_order_state(self):
         form = _diy19_list_form(
             1, 1000, datetime(2026, 8, 1), datetime(2026, 8, 2), 6
@@ -139,6 +154,19 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(row["发货地址"], "25 RYANIC RD HEWLETT NY 11557")
         self.assertEqual(row["重量（oz）"], 4)
         self.assertEqual(row["面单PDF"], "http://labels.test/92001.pdf")
+
+    @patch("automation.logistics.label_ocr.ocr_pdf_lines")
+    def test_downloaded_label_content_can_be_ocr_parsed(self, ocr_lines):
+        ocr_lines.return_value = [
+            {"text": "25 RYANIC RD", "score": 0.98, "x": 1, "y": 1},
+            {"text": "HEWLETT NY 11557", "score": 0.99, "x": 1, "y": 2},
+            {"text": "0 LB 4 OZ", "score": 0.97, "x": 1, "y": 3},
+        ]
+
+        fields = extract_label_content_fields(b"pdf-content")
+
+        self.assertEqual(fields["extracted_state"], "NY")
+        self.assertEqual(fields["extracted_weight_oz"], 4)
 
     def test_customer_can_paste_excel_cells_into_fixed_table(self):
         rows, issues = parse_logistics_frame(pd.DataFrame([

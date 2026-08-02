@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import streamlit as st
@@ -23,7 +24,10 @@ from automation.production import (
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
 )
-from automation.logistics.label_ocr import extract_label_fields
+from automation.logistics.label_ocr import (
+    download_label_content,
+    extract_label_content_fields,
+)
 from utils.auth import has_permission
 from ui.logistics.tracking_lookup import render_tracking_lookup
 
@@ -36,6 +40,21 @@ ORDER_STAGES = {
     "生产中": 2,
     "已完成/已发货": 6,
 }
+LABEL_CACHE_TTL_SECONDS = 24 * 60 * 60
+
+
+@st.cache_data(
+    ttl=LABEL_CACHE_TTL_SECONDS, max_entries=2000, show_spinner=False,
+)
+def _cached_label_content(label_url):
+    return download_label_content(label_url)
+
+
+@st.cache_data(
+    ttl=LABEL_CACHE_TTL_SECONDS, max_entries=2000, show_spinner=False,
+)
+def _cached_label_fields(label_url, _content):
+    return extract_label_content_fields(_content)
 
 
 def render_logistics_page(supabase):
@@ -117,8 +136,7 @@ def _render_erp_sync(supabase):
                 row["local_acceptance_status"] = stage
                 row["department"] = department
             reviewed = _classify_carrier_rows(rows)
-            if source in {"七创", "一朵云"}:
-                _apply_erp_label_ocr(reviewed, source)
+            _apply_erp_label_ocr(reviewed, source)
             carrier_review_rows.extend(reviewed)
             usps_rows = [
                 item["row"] for item in reviewed
@@ -248,23 +266,62 @@ def _classify_carrier_rows(rows):
 
 
 def _apply_erp_label_ocr(reviewed, source):
-    candidates = [
-        item for item in reviewed
-        if _is_target_usps_review(item)
-        and (item["row"].get("label_url") or item["row"].get("backup_label_url"))
-    ]
+    target_rows = [item for item in reviewed if _is_target_usps_review(item)]
+    candidates = []
+    for item in target_rows:
+        row = item["row"]
+        label_url = row.get("label_url") or row.get("backup_label_url")
+        if label_url:
+            candidates.append(item)
+            continue
+        row["ocr_address"] = ""
+        row["ocr_weight_oz"] = None
+        row["ocr_status"] = "平台未提供可下载面单"
+        item["OCR寄件地址"] = ""
+        item["OCR重量（oz）"] = None
+        item["OCR状态"] = "平台未提供可下载面单"
     if not candidates:
         return
     st.caption(f"{source}：正在OCR分析 {len(candidates):,} 张普通USPS面单")
     progress = st.progress(0)
     cache = dict(st.session_state.get("logistics_label_ocr_cache", {}))
-    for index, item in enumerate(candidates, start=1):
+    pending = {}
+    for item in candidates:
+        row = item["row"]
+        label_url = row.get("label_url") or row.get("backup_label_url")
+        if label_url not in cache:
+            pending[label_url] = item
+    completed = 0
+    if pending:
+        with ThreadPoolExecutor(max_workers=min(8, len(pending))) as executor:
+            futures = {
+                executor.submit(_cached_label_content, label_url): label_url
+                for label_url in pending
+            }
+            for future in as_completed(futures):
+                label_url = futures[future]
+                try:
+                    content = future.result()
+                    cache[label_url] = {
+                        "fields": _cached_label_fields(label_url, content),
+                        "error": "",
+                    }
+                except Exception as error:
+                    cache[label_url] = {"fields": {}, "error": str(error)}
+                completed += 1
+                progress.progress(completed / len(pending))
+    for item in candidates:
         row = item["row"]
         label_url = row.get("label_url") or row.get("backup_label_url")
         cached = cache.get(label_url)
         if cached is None:
             try:
-                cached = {"fields": extract_label_fields(label_url), "error": ""}
+                cached = {
+                    "fields": _cached_label_fields(
+                        label_url, _cached_label_content(label_url)
+                    ),
+                    "error": "",
+                }
             except Exception as error:
                 cached = {"fields": {}, "error": str(error)}
             cache[label_url] = cached
@@ -281,7 +338,7 @@ def _apply_erp_label_ocr(reviewed, source):
         item["OCR寄件地址"] = address
         item["OCR重量（oz）"] = fields.get("extracted_weight_oz")
         item["OCR状态"] = status
-        progress.progress(index / len(candidates))
+    progress.progress(1.0)
     st.session_state["logistics_label_ocr_cache"] = cache
     progress.empty()
 
