@@ -41,6 +41,7 @@ from ui.logistics.page import (
     _order_tracking_pairs,
     _ocr_address,
     _ocr_summary_text,
+    _format_duration,
 )
 from ui.logistics.tracking_lookup import (
     _merge_label_details,
@@ -171,6 +172,20 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertIn("OCR地址成功 10", text)
         self.assertIn("重量成功 9", text)
         self.assertIn("失败 2", text)
+
+    def test_ocr_status_displays_elapsed_time_and_average(self):
+        text = _ocr_summary_text({
+            "available": 10, "processed": 10, "skipped": 0,
+            "missing": 0, "cache_hits": 0, "downloaded": 10,
+            "address_ok": 10, "weight_ok": 10, "failed": 0,
+            "total_seconds": 125, "ocr_seconds": 95,
+        })
+
+        self.assertIn("总耗时 2分5秒", text)
+        self.assertIn("OCR耗时 1分35秒", text)
+        self.assertIn("下载及等待 30秒", text)
+        self.assertIn("新面单平均 12.5秒/张", text)
+        self.assertEqual(_format_duration(3661), "1小时1分1秒")
 
     def test_live_ocr_result_exposes_address_weight_and_label(self):
         row = _live_label_row("92001", "http://labels.test/92001.pdf", {

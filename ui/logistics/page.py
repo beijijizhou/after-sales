@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from time import perf_counter
 
 import pandas as pd
 import streamlit as st
@@ -272,6 +273,7 @@ def _classify_carrier_rows(rows):
 
 
 def _apply_erp_label_ocr(reviewed, source, max_labels=5):
+    started_at = perf_counter()
     target_rows = [item for item in reviewed if _is_target_usps_review(item)]
     available_candidates = []
     for item in target_rows:
@@ -334,6 +336,7 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
             pending[label_url] = item
     completed = 0
     downloaded_count = 0
+    ocr_seconds = 0.0
     if pending:
         stage_message.info(
             f"{source}：缓存命中 {len(candidates) - len(pending):,} 张；"
@@ -351,9 +354,11 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
                 }
                 for future in as_completed(futures):
                     label_url = futures[future]
+                    ocr_started_at = None
                     try:
                         content = future.result()
                         downloaded_count += 1
+                        ocr_started_at = perf_counter()
                         cache[label_url] = {
                             "fields": _cached_label_fields(label_url, content),
                             "error": "", "stage": "",
@@ -363,6 +368,9 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
                         cache[label_url] = {
                             "fields": {}, "error": str(error), "stage": stage,
                         }
+                    finally:
+                        if ocr_started_at is not None:
+                            ocr_seconds += perf_counter() - ocr_started_at
                     completed += 1
                     progress.progress(completed / len(pending))
                     stage_message.info(
@@ -421,6 +429,8 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
         "address_ok": address_ok,
         "weight_ok": weight_ok,
         "failed": failed,
+        "total_seconds": perf_counter() - started_at,
+        "ocr_seconds": ocr_seconds,
     }
     stage_message.success(f"{source}：{_ocr_summary_text(summary)}")
     reasons = _ocr_failure_reasons(candidates, cache)
@@ -434,7 +444,7 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
 
 
 def _ocr_summary_text(summary):
-    return (
+    text = (
         f"面单可下载 {summary['available']:,}｜"
         f"本次OCR {summary.get('processed', summary['available']):,}｜"
         f"未解析 {summary.get('skipped', 0):,}｜"
@@ -445,6 +455,34 @@ def _ocr_summary_text(summary):
         f"重量成功 {summary['weight_ok']:,}｜"
         f"失败 {summary['failed']:,}"
     )
+    if "total_seconds" not in summary:
+        return text
+    total_seconds = float(summary.get("total_seconds") or 0)
+    ocr_seconds = float(summary.get("ocr_seconds") or 0)
+    network_seconds = max(0.0, total_seconds - ocr_seconds)
+    processed = int(summary.get("downloaded") or 0)
+    average_seconds = total_seconds / processed if processed else 0
+    return (
+        text
+        + f"｜总耗时 {_format_duration(total_seconds)}"
+        + f"｜OCR耗时 {_format_duration(ocr_seconds)}"
+        + f"｜下载及等待 {_format_duration(network_seconds)}"
+        + (
+            f"｜新面单平均 {average_seconds:.1f}秒/张"
+            if processed else ""
+        )
+    )
+
+
+def _format_duration(seconds):
+    seconds = max(0, int(round(float(seconds or 0))))
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}小时{minutes}分{seconds}秒"
+    if minutes:
+        return f"{minutes}分{seconds}秒"
+    return f"{seconds}秒"
 
 
 def _ocr_failure_reasons(candidates, cache):
