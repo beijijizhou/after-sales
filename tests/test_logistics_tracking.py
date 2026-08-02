@@ -33,11 +33,13 @@ from automation.logistics.diy19 import (
 from db.logistics.repository import _merge_shipment_rows
 from ui.logistics.page import (
     _cached_label_content,
+    _carrier_filter_name,
     _classify_carrier_rows,
     _default_logistics_platforms,
     _is_target_usps_review,
     _order_tracking_pairs,
     _ocr_address,
+    _ocr_summary_text,
 )
 from ui.logistics.tracking_lookup import (
     _merge_label_details,
@@ -57,6 +59,17 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_cbs_and_cbt_have_independent_carrier_filters(self):
+        self.assertEqual(_carrier_filter_name({
+            "系统判断": "USPS", "USPS子类型": "CBS",
+        }), "CBS")
+        self.assertEqual(_carrier_filter_name({
+            "系统判断": "USPS", "USPS子类型": "CBT",
+        }), "CBT")
+        self.assertEqual(_carrier_filter_name({
+            "系统判断": "USPS", "USPS子类型": "普通USPS",
+        }), "USPS")
+
     def test_label_download_is_reused_from_server_cache(self):
         _cached_label_content.clear()
         with patch(
@@ -141,6 +154,19 @@ class LogisticsTrackingTests(unittest.TestCase):
             "extracted_state": "NY",
             "extracted_postal_code": "11557",
         }), "25 RYANIC RD HEWLETT NY 11557")
+
+    def test_ocr_status_has_multiple_operational_dimensions(self):
+        text = _ocr_summary_text({
+            "available": 12, "missing": 2, "cache_hits": 5,
+            "downloaded": 7, "address_ok": 10, "weight_ok": 9,
+            "failed": 2,
+        })
+
+        self.assertIn("面单可下载 12", text)
+        self.assertIn("缓存命中 5", text)
+        self.assertIn("OCR地址成功 10", text)
+        self.assertIn("重量成功 9", text)
+        self.assertIn("失败 2", text)
 
     def test_live_ocr_result_exposes_address_weight_and_label(self):
         row = _live_label_row("92001", "http://labels.test/92001.pdf", {

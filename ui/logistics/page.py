@@ -136,18 +136,21 @@ def _render_erp_sync(supabase):
                 row["local_acceptance_status"] = stage
                 row["department"] = department
             reviewed = _classify_carrier_rows(rows)
-            _apply_erp_label_ocr(reviewed, source)
+            ocr_summary = _apply_erp_label_ocr(reviewed, source)
             carrier_review_rows.extend(reviewed)
             usps_rows = [
                 item["row"] for item in reviewed
                 if _is_target_usps_review(item)
             ]
             all_rows.extend(usps_rows)
-            st.write(
+            status_text = (
                 f"{source}：读取 {len(rows):,} 条｜"
                 f"USPS {len(usps_rows):,} 条｜"
                 f"已过滤 {len(rows) - len(usps_rows):,} 条"
             )
+            if ocr_summary:
+                status_text += "｜" + _ocr_summary_text(ocr_summary)
+            st.write(status_text)
         except Exception as error:
             errors.append(f"{source}：{error}")
         progress.progress(index / len(selected))
@@ -281,8 +284,17 @@ def _apply_erp_label_ocr(reviewed, source):
         item["OCR重量（oz）"] = None
         item["OCR状态"] = "平台未提供可下载面单"
     if not candidates:
-        return
-    st.caption(f"{source}：正在OCR分析 {len(candidates):,} 张普通USPS面单")
+        return {
+            "target": len(target_rows), "available": 0,
+            "missing": len(target_rows), "cache_hits": 0,
+            "downloaded": 0, "address_ok": 0, "weight_ok": 0,
+            "failed": 0,
+        } if target_rows else None
+    stage_message = st.empty()
+    stage_message.info(
+        f"{source}：已取得物流数据；普通USPS {len(target_rows):,} 条，"
+        f"可下载面单 {len(candidates):,} 张。正在检查缓存……"
+    )
     progress = st.progress(0)
     cache = dict(st.session_state.get("logistics_label_ocr_cache", {}))
     pending = {}
@@ -292,7 +304,12 @@ def _apply_erp_label_ocr(reviewed, source):
         if label_url not in cache:
             pending[label_url] = item
     completed = 0
+    downloaded = {}
     if pending:
+        stage_message.info(
+            f"{source}：缓存命中 {len(candidates) - len(pending):,} 张；"
+            f"正在并发下载 {len(pending):,} 张面单（最多8线程）……"
+        )
         with ThreadPoolExecutor(max_workers=min(8, len(pending))) as executor:
             futures = {
                 executor.submit(_cached_label_content, label_url): label_url
@@ -301,15 +318,40 @@ def _apply_erp_label_ocr(reviewed, source):
             for future in as_completed(futures):
                 label_url = futures[future]
                 try:
-                    content = future.result()
+                    downloaded[label_url] = future.result()
+                except Exception as error:
                     cache[label_url] = {
-                        "fields": _cached_label_fields(label_url, content),
-                        "error": "",
+                        "fields": {}, "error": str(error), "stage": "下载",
+                    }
+                completed += 1
+                progress.progress(0.5 * completed / len(pending))
+    if downloaded:
+        stage_message.info(
+            f"{source}：面单下载完成，正在并发OCR分析 "
+            f"{len(downloaded):,} 张（最多2线程）……"
+        )
+        ocr_completed = 0
+        with ThreadPoolExecutor(max_workers=min(2, len(downloaded))) as executor:
+            futures = {
+                executor.submit(
+                    _cached_label_fields, label_url, content
+                ): label_url
+                for label_url, content in downloaded.items()
+            }
+            for future in as_completed(futures):
+                label_url = futures[future]
+                try:
+                    cache[label_url] = {
+                        "fields": future.result(), "error": "", "stage": "",
                     }
                 except Exception as error:
-                    cache[label_url] = {"fields": {}, "error": str(error)}
-                completed += 1
-                progress.progress(completed / len(pending))
+                    cache[label_url] = {
+                        "fields": {}, "error": str(error), "stage": "OCR",
+                    }
+                ocr_completed += 1
+                progress.progress(
+                    0.5 + 0.5 * ocr_completed / len(downloaded)
+                )
     for item in candidates:
         row = item["row"]
         label_url = row.get("label_url") or row.get("backup_label_url")
@@ -321,16 +363,18 @@ def _apply_erp_label_ocr(reviewed, source):
                         label_url, _cached_label_content(label_url)
                     ),
                     "error": "",
+                    "stage": "",
                 }
             except Exception as error:
-                cached = {"fields": {}, "error": str(error)}
+                cached = {"fields": {}, "error": str(error), "stage": "OCR"}
             cache[label_url] = cached
         fields = cached.get("fields") or {}
         address = _ocr_address(fields)
         status = (
             "已识别"
             if address
-            else f"识别失败：{cached.get('error') or '未找到寄件地址'}"
+            else f"{cached.get('stage') or 'OCR'}失败："
+                 f"{cached.get('error') or '未找到寄件地址'}"
         )
         row["ocr_address"] = address
         row["ocr_weight_oz"] = fields.get("extracted_weight_oz")
@@ -341,6 +385,35 @@ def _apply_erp_label_ocr(reviewed, source):
     progress.progress(1.0)
     st.session_state["logistics_label_ocr_cache"] = cache
     progress.empty()
+    address_ok = sum(bool(item["row"].get("ocr_address")) for item in candidates)
+    weight_ok = sum(
+        item["row"].get("ocr_weight_oz") is not None for item in candidates
+    )
+    failed = len(candidates) - address_ok
+    summary = {
+        "target": len(target_rows),
+        "available": len(candidates),
+        "missing": len(target_rows) - len(candidates),
+        "cache_hits": len(candidates) - len(pending),
+        "downloaded": len(downloaded),
+        "address_ok": address_ok,
+        "weight_ok": weight_ok,
+        "failed": failed,
+    }
+    stage_message.success(f"{source}：{_ocr_summary_text(summary)}")
+    return summary
+
+
+def _ocr_summary_text(summary):
+    return (
+        f"面单可下载 {summary['available']:,}｜"
+        f"无面单 {summary['missing']:,}｜"
+        f"缓存命中 {summary['cache_hits']:,}｜"
+        f"新下载 {summary['downloaded']:,}｜"
+        f"OCR地址成功 {summary['address_ok']:,}｜"
+        f"重量成功 {summary['weight_ok']:,}｜"
+        f"失败 {summary['failed']:,}"
+    )
 
 
 def _ocr_address(fields):
@@ -366,7 +439,7 @@ def _render_carrier_review(show_empty=False):
         return
     st.subheader("物流识别核对")
     carrier_names = (
-        "USPS", "GOFO", "FedEx", "UPS", "UniUni", "SwiftX",
+        "USPS", "CBS", "CBT", "GOFO", "FedEx", "UPS", "UniUni", "SwiftX",
         "其他待确认",
     )
     filter_columns = st.columns(4)
@@ -381,8 +454,7 @@ def _render_carrier_review(show_empty=False):
         st.info("点击“从ERP读取数据”后，这里会显示本次物流识别结果。")
         return
     counts = pd.Series([
-        row["系统判断"] for row in rows
-        if row["系统判断"] != "USPS" or _is_target_usps_review(row)
+        _carrier_filter_name(row) for row in rows
     ]).value_counts()
     excluded_usps = sum(
         row.get("USPS子类型") in {"CBS", "CBT"} for row in rows
@@ -392,13 +464,12 @@ def _render_carrier_review(show_empty=False):
             f"{name} {int(counts.get(name, 0)):,} 条"
             for name in carrier_names
         )
-        + (f"｜已排除 CBS/CBT {excluded_usps:,} 条" if excluded_usps else "")
+        + (f"｜CBS/CBT 独立分类 {excluded_usps:,} 条" if excluded_usps else "")
     )
     display = pd.DataFrame([
         {key: value for key, value in row.items() if key != "row"}
         for row in rows
-        if row["系统判断"] in selected_carriers
-        and (row["系统判断"] != "USPS" or _is_target_usps_review(row))
+        if _carrier_filter_name(row) in selected_carriers
     ])
     if display.empty:
         st.info("当前没有勾选物流商的匹配记录。")
@@ -415,9 +486,16 @@ def _render_carrier_review(show_empty=False):
             },
         )
     st.caption(
-        "只有普通 USPS 会写入物流数据库；CBS（GOFO揽收）和"
-        "CBT（TikTok指定物流商揽收）会自动排除。"
+        "CBS（GOFO揽收）和CBT（TikTok指定物流商揽收）可单独筛选；"
+        "它们不会进入普通USPS核查候选。"
     )
+
+
+def _carrier_filter_name(row):
+    subtype = row.get("USPS子类型")
+    if subtype in {"CBS", "CBT"}:
+        return subtype
+    return row.get("系统判断", "其他待确认")
 
 
 def _default_logistics_platforms(platforms):

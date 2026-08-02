@@ -1,6 +1,6 @@
 import hashlib
 import re
-from functools import lru_cache
+import threading
 
 import requests
 
@@ -104,8 +104,14 @@ def _previous_address_line(lines, address_index):
     return ""
 
 
-@lru_cache(maxsize=1)
 def _ocr_engine():
-    from rapidocr import RapidOCR
+    engine = getattr(_OCR_THREAD_LOCAL, "engine", None)
+    if engine is None:
+        from rapidocr import RapidOCR
 
-    return RapidOCR()
+        engine = RapidOCR()
+        _OCR_THREAD_LOCAL.engine = engine
+    return engine
+
+
+_OCR_THREAD_LOCAL = threading.local()
