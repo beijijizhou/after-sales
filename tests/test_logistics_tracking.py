@@ -43,6 +43,7 @@ from ui.logistics.page import (
     _ocr_summary_text,
     _format_duration,
     _ocr_progress_text,
+    _resolve_ocr_workers,
 )
 from ui.logistics.tracking_lookup import (
     _merge_label_details,
@@ -199,6 +200,19 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertIn("平均 1.0秒/张", text)
         self.assertIn("预计还需 1分20秒", text)
         self.assertIn("OCR双线程加速模式", text)
+
+    def test_double_ocr_is_guarded_on_python_314_and_large_batches(self):
+        workers, reason = _resolve_ocr_workers(2, (3, 14), False, 5)
+        self.assertEqual(workers, 1)
+        self.assertIn("Python 3.14", reason)
+
+        workers, reason = _resolve_ocr_workers(2, (3, 12), True, 5)
+        self.assertEqual(workers, 1)
+        self.assertIn("最多20张", reason)
+
+        workers, reason = _resolve_ocr_workers(2, (3, 12), False, 5)
+        self.assertEqual(workers, 2)
+        self.assertEqual(reason, "")
 
     def test_live_ocr_result_exposes_address_weight_and_label(self):
         row = _live_label_row("92001", "http://labels.test/92001.pdf", {

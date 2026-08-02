@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import perf_counter
 from zoneinfo import ZoneInfo
+import sys
 
 import pandas as pd
 import streamlit as st
@@ -115,8 +116,16 @@ def _render_erp_sync(supabase):
         ("稳定模式（单线程）", "加速模式（双线程）"),
         help="双线程速度更快，但会加载两套OCR模型并使用更多云端内存。",
     )
-    ocr_workers = 2 if ocr_mode.startswith("加速") else 1
-    if ocr_workers == 2:
+    requested_ocr_workers = 2 if ocr_mode.startswith("加速") else 1
+    ocr_workers, ocr_safety_reason = _resolve_ocr_workers(
+        requested_ocr_workers,
+        sys.version_info[:2],
+        ocr_all,
+        int(ocr_limit),
+    )
+    if ocr_safety_reason:
+        st.warning(ocr_safety_reason)
+    elif ocr_workers == 2:
         st.warning(
             "当前选择双线程OCR：建议先解析5张观察速度和稳定性，"
             "确认正常后再选择全部。"
@@ -537,6 +546,22 @@ def _ocr_progress_text(source, completed, total, started_at, ocr_workers):
         f"预计完成 {finish_at:%H:%M:%S}（纽约）｜"
         f"下载4线程｜OCR{mode}模式"
     )
+
+
+def _resolve_ocr_workers(requested, python_version, ocr_all, ocr_limit):
+    if requested != 2:
+        return 1, ""
+    if tuple(python_version) >= (3, 14):
+        return 1, (
+            "当前部署使用Python 3.14；为避免ONNX原生库再次导致进程崩溃，"
+            "已自动切换到单线程。请使用Python 3.12重新部署后再测试双线程。"
+        )
+    if ocr_all or ocr_limit > 20:
+        return 1, (
+            "双线程OCR仅用于最多20张的小批测试；当前范围较大，"
+            "已自动切换到单线程稳定模式。"
+        )
+    return 2, ""
 
 
 def _format_duration(seconds):
