@@ -38,6 +38,7 @@ from ui.logistics.page import (
     _classify_carrier_rows,
     _default_logistics_platforms,
     _is_target_usps_review,
+    _label_ocr_candidates,
     _order_tracking_pairs,
     _ocr_address,
     _ocr_summary_text,
@@ -63,6 +64,17 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_suspicious_ocr_candidates_include_any_carrier_with_label(self):
+        rows = [
+            {"系统判断": "USPS", "row": {"label_url": "usps.pdf"}},
+            {"系统判断": "CBS", "row": {"backup_label_url": "cbs.png"}},
+            {"系统判断": "UPS", "row": {}},
+        ]
+
+        candidates = _label_ocr_candidates(rows)
+
+        self.assertEqual(candidates, rows[:2])
+
     def test_cbs_and_cbt_have_independent_carrier_filters(self):
         self.assertEqual(_carrier_filter_name({
             "系统判断": "USPS", "USPS子类型": "CBS",

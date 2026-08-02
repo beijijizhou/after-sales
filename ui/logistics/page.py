@@ -66,13 +66,15 @@ def render_logistics_page(supabase):
 
 
 def _render_sync(supabase):
-    auto_tab, upload_tab = st.tabs([
-        "从ERP自动读取", "复制粘贴订单物流",
+    auto_tab, upload_tab, ocr_tab = st.tabs([
+        "从ERP自动读取", "复制粘贴订单物流", "可疑面单OCR",
     ])
     with auto_tab:
         _render_erp_sync(supabase)
     with upload_tab:
         _render_upload_sync()
+    with ocr_tab:
+        _render_suspicious_label_ocr()
 
 
 def _render_erp_sync(supabase):
@@ -97,39 +99,6 @@ def _render_erp_sync(supabase):
         f"已接入物流接口：{'、'.join(connected) or '暂无'}"
     )
     stage = st.selectbox("订单阶段", list(ORDER_STAGES))
-    ocr_all = st.checkbox(
-        "解析全部可下载面单",
-        value=False,
-        help="勾选后忽略下方数量限制，OCR当前筛选结果的全部可下载面单。",
-    )
-    ocr_limit = st.number_input(
-        "本次OCR面单数量",
-        min_value=1,
-        max_value=500,
-        value=5,
-        step=5,
-        disabled=ocr_all,
-        help="物流数据会完整读取；仅限制本次下载和OCR的面单数量。",
-    )
-    ocr_mode = st.selectbox(
-        "OCR速度模式",
-        ("稳定模式（单线程）", "加速模式（双线程）"),
-        help="双线程速度更快，但会加载两套OCR模型并使用更多云端内存。",
-    )
-    requested_ocr_workers = 2 if ocr_mode.startswith("加速") else 1
-    ocr_workers, ocr_safety_reason = _resolve_ocr_workers(
-        requested_ocr_workers,
-        sys.version_info[:2],
-        ocr_all,
-        int(ocr_limit),
-    )
-    if ocr_safety_reason:
-        st.warning(ocr_safety_reason)
-    elif ocr_workers == 2:
-        st.warning(
-            "当前选择双线程OCR：建议先解析5张观察速度和稳定性，"
-            "确认正常后再选择全部。"
-        )
     date_columns = st.columns(2)
     start_date = date_columns[0].date_input(
         "开始日期", value=date.today() - timedelta(days=1),
@@ -157,25 +126,19 @@ def _render_erp_sync(supabase):
                 row["local_acceptance_status"] = stage
                 row["department"] = department
             reviewed = _classify_carrier_rows(rows)
-            ocr_summary = _apply_erp_label_ocr(
-                reviewed,
-                source,
-                max_labels=None if ocr_all else int(ocr_limit),
-                ocr_workers=ocr_workers,
-            )
             carrier_review_rows.extend(reviewed)
             usps_rows = [
                 item["row"] for item in reviewed
                 if _is_target_usps_review(item)
             ]
             all_rows.extend(usps_rows)
+            label_count = len(_label_ocr_candidates(reviewed))
             status_text = (
                 f"{source}：读取 {len(rows):,} 条｜"
                 f"USPS {len(usps_rows):,} 条｜"
+                f"可下载面单 {label_count:,} 张｜"
                 f"已过滤 {len(rows) - len(usps_rows):,} 条"
             )
-            if ocr_summary:
-                status_text += "｜" + _ocr_summary_text(ocr_summary)
             st.write(status_text)
         except Exception as error:
             errors.append(f"{source}：{error}")
@@ -187,8 +150,8 @@ def _render_erp_sync(supabase):
         st.success(f"本次读取到 {len(all_rows):,} 条普通 USPS；结果未写入数据库。")
     if errors:
         st.warning("；".join(errors))
-    if carrier_review_rows:
-        st.session_state["logistics_carrier_review_rows"] = carrier_review_rows
+    st.session_state["logistics_carrier_review_rows"] = carrier_review_rows
+    st.session_state.pop("logistics_suspicious_ocr_selection", None)
     _render_carrier_review(show_carrier_review)
 
 
@@ -239,6 +202,95 @@ def _render_upload_sync():
         f"其他物流 {len(rows) - usps_count:,} 条"
     )
     _render_carrier_review(True)
+
+
+def _render_suspicious_label_ocr():
+    st.subheader("可疑面单OCR")
+    st.caption(
+        "这里只分析您勾选的可疑面单。先从ERP读取订单和面单链接；"
+        "正常订单无需OCR，也不会下载面单。"
+    )
+    reviewed = st.session_state.get("logistics_carrier_review_rows", [])
+    candidates = _label_ocr_candidates(reviewed)
+    if not candidates:
+        st.info("当前没有可下载面单。请先在“从ERP自动读取”中获取物流数据。")
+        return
+    display = pd.DataFrame([{
+        "选择": False,
+        "平台": item.get("平台", ""),
+        "Order ID": item.get("Order ID", ""),
+        "Tracking Number": item.get("Tracking Number", ""),
+        "系统判断": item.get("系统判断", ""),
+        "USPS子类型": item.get("USPS子类型", ""),
+        "面单": (
+            item["row"].get("label_url")
+            or item["row"].get("backup_label_url")
+        ),
+        "OCR寄件地址": item.get("OCR寄件地址", ""),
+        "OCR重量（oz）": item.get("OCR重量（oz）"),
+        "OCR重量（lb）": item.get("OCR重量（lb）"),
+        "OCR状态": item.get("OCR状态", ""),
+    } for item in candidates])
+    edited = st.data_editor(
+        display,
+        hide_index=True,
+        width="stretch",
+        height=420,
+        disabled=[column for column in display.columns if column != "选择"],
+        column_config={
+            "选择": st.column_config.CheckboxColumn(
+                "选择", help="只勾选需要核查的可疑面单。"
+            ),
+            "面单": st.column_config.LinkColumn(display_text="打开面单"),
+        },
+        key="logistics_suspicious_ocr_selection",
+    )
+    selected_indices = [
+        index for index, value in enumerate(edited["选择"].tolist())
+        if bool(value)
+    ]
+    selected_rows = [candidates[index] for index in selected_indices]
+    control_columns = st.columns([2, 1])
+    ocr_mode = control_columns[0].selectbox(
+        "OCR速度模式",
+        ("稳定模式（单线程）", "加速模式（双线程）"),
+        help="双线程仅开放给最多20张的小批量测试，并使用更多云端内存。",
+        key="logistics_suspicious_ocr_mode",
+    )
+    control_columns[1].metric("已选择", f"{len(selected_rows):,} 张")
+    requested_workers = 2 if ocr_mode.startswith("加速") else 1
+    ocr_workers, safety_reason = _resolve_ocr_workers(
+        requested_workers,
+        sys.version_info[:2],
+        False,
+        len(selected_rows),
+    )
+    if safety_reason:
+        st.warning(safety_reason)
+    elif ocr_workers == 2:
+        st.warning("当前使用双线程OCR；建议先选择少量面单确认云端稳定性。")
+    if not st.button(
+        "OCR分析所选面单",
+        type="primary",
+        width="stretch",
+        disabled=not selected_rows,
+    ):
+        return
+    if not has_permission("can_manage_logistics"):
+        st.error("当前账号没有面单OCR权限。")
+        return
+    _apply_erp_label_ocr(
+        selected_rows,
+        "所选可疑面单",
+        max_labels=None,
+        ocr_workers=ocr_workers,
+        ordinary_usps_only=False,
+    )
+    st.session_state["logistics_carrier_review_rows"] = reviewed
+    st.session_state["logistics_usps_candidates"] = _order_tracking_pairs([
+        item["row"] for item in reviewed if _is_target_usps_review(item)
+    ])
+    st.caption("OCR结果已同步到“物流识别核对”和下方普通USPS核查数据。")
 
 
 def _order_tracking_pairs(rows):
@@ -296,9 +348,26 @@ def _classify_carrier_rows(rows):
     return reviewed
 
 
-def _apply_erp_label_ocr(reviewed, source, max_labels=5, ocr_workers=1):
+def _label_ocr_candidates(reviewed):
+    return [
+        item for item in reviewed
+        if item.get("row", {}).get("label_url")
+        or item.get("row", {}).get("backup_label_url")
+    ]
+
+
+def _apply_erp_label_ocr(
+    reviewed,
+    source,
+    max_labels=5,
+    ocr_workers=1,
+    ordinary_usps_only=True,
+):
     started_at = perf_counter()
-    target_rows = [item for item in reviewed if _is_target_usps_review(item)]
+    target_rows = (
+        [item for item in reviewed if _is_target_usps_review(item)]
+        if ordinary_usps_only else list(reviewed)
+    )
     available_candidates = []
     for item in target_rows:
         row = item["row"]
@@ -339,8 +408,9 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5, ocr_workers=1):
             "failed": 0,
         } if target_rows else None
     stage_message = st.empty()
+    target_name = "普通USPS" if ordinary_usps_only else "已选面单"
     stage_message.info(
-        f"{source}：已取得物流数据；普通USPS {len(target_rows):,} 条，"
+        f"{source}：{target_name} {len(target_rows):,} 张，"
         f"可下载面单 {len(available_candidates):,} 张，"
         f"本次OCR {len(candidates):,} 张。正在检查缓存……"
     )
