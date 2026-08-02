@@ -21,19 +21,29 @@ from db.logistics import (
 from utils.auth import get_current_operator_name
 
 
-def render_tracking_lookup(supabase, database_error):
-    st.subheader("USPS物流单号接口查询")
+def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
+    st.subheader("使用USPS官方API核查")
+    suggested_numbers = list(dict.fromkeys(suggested_numbers or []))
+    use_suggested = False
+    if suggested_numbers:
+        use_suggested = st.checkbox(
+            f"使用上方获取的 {len(suggested_numbers):,} 个普通USPS单号",
+            value=True,
+            key="logistics_use_acquired_usps_numbers",
+        )
     st.caption(
-        "直接粘贴物流单号进行查询；支持换行、空格、逗号或分号分隔。"
+        "默认使用上方ERP读取或表格粘贴得到的普通USPS单号；"
+        "也可以取消勾选后手工输入。"
     )
     raw = st.text_area(
-        "物流单号",
+        "手工输入物流单号",
         placeholder="每行一个物流单号，也可以直接粘贴一整列",
         key="logistics_tracking_lookup_input",
         height=180,
+        disabled=use_suggested,
     )
     st.caption("当前为 USPS 实时接口模式；查询结果暂不写入数据库。")
-    numbers = parse_tracking_numbers(raw)
+    numbers = suggested_numbers if use_suggested else parse_tracking_numbers(raw)
     if not st.button(
         "开始查询", type="primary", disabled=not numbers,
         key="logistics_tracking_lookup_submit",

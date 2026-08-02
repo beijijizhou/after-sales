@@ -34,13 +34,17 @@ def render_logistics_page(supabase):
     st.caption(
         "从ERP实时获取物流关系，并通过USPS接口核查Tracking Events与始发地点。"
     )
-    sync_tab, lookup_tab, rules_tab = st.tabs([
-        "ERP订单获取", "USPS接口查询", "审核规则",
+    review_tab, rules_tab = st.tabs([
+        "物流单号获取与USPS核查", "审核规则",
     ])
-    with sync_tab:
+    with review_tab:
         _render_sync(supabase)
-    with lookup_tab:
-        render_tracking_lookup(supabase, _database_error)
+        st.divider()
+        render_tracking_lookup(
+            supabase,
+            _database_error,
+            st.session_state.get("logistics_usps_candidates", []),
+        )
     with rules_tab:
         _render_rules()
 
@@ -97,6 +101,10 @@ def _render_erp_sync(supabase):
         except Exception as error:
             errors.append(f"{source}：{error}")
         progress.progress(index / len(selected))
+    st.session_state["logistics_usps_candidates"] = list(dict.fromkeys(
+        str(row.get("tracking_number") or "").strip()
+        for row in all_rows if row.get("tracking_number")
+    ))
     if all_rows:
         st.success(f"本次读取到 {len(all_rows):,} 条普通 USPS；结果未写入数据库。")
     if errors:
@@ -144,6 +152,10 @@ def _render_upload_sync():
         return
     reviewed = _classify_carrier_rows(rows)
     st.session_state["logistics_carrier_review_rows"] = reviewed
+    st.session_state["logistics_usps_candidates"] = list(dict.fromkeys(
+        str(item["row"].get("tracking_number") or "").strip()
+        for item in reviewed if _is_target_usps_review(item)
+    ))
     usps_count = sum(_is_target_usps_review(item) for item in reviewed)
     st.success(
         f"已导入 {len(rows):,} 条｜普通USPS {usps_count:,} 条｜"

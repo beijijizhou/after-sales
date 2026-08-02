@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from pathlib import Path
 from urllib.parse import quote
 
 import jwt
@@ -25,13 +26,12 @@ class GoogleSheetsClient:
         self._expires_at = 0
 
     @classmethod
-    def from_environment(cls):
-        raw = os.environ.get("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "")
-        if not raw:
-            raise RuntimeError(
-                "缺少 GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON"
-            )
-        return cls(json.loads(raw))
+    def from_environment(cls, secrets=None, credential_path=None):
+        info, _source = resolve_service_account_info(
+            secrets=secrets,
+            credential_path=credential_path,
+        )
+        return cls(info)
 
     def list_sheets(self, spreadsheet_id):
         payload = self._request(
@@ -146,3 +146,38 @@ class GoogleSheetsClient:
         self._access_token = payload["access_token"]
         self._expires_at = now + int(payload.get("expires_in", 3600))
         return self._access_token
+
+
+def resolve_service_account_info(secrets=None, credential_path=None):
+    raw = os.environ.get("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "")
+    if raw:
+        return json.loads(raw), "env"
+
+    if secrets is not None:
+        try:
+            raw = secrets.get("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "")
+        except FileNotFoundError:
+            raw = ""
+        if raw:
+            info = json.loads(raw) if isinstance(raw, str) else dict(raw)
+            return info, "secrets"
+
+    if credential_path is None:
+        credential_path = (
+            Path(__file__).resolve().parents[2]
+            / ".streamlit"
+            / "google-service-account.json"
+        )
+    else:
+        credential_path = Path(credential_path)
+
+    if credential_path.is_file():
+        return (
+            json.loads(credential_path.read_text(encoding="utf-8")),
+            "file",
+        )
+
+    raise RuntimeError(
+        "尚未配置 Google Sheets 服务账号；请配置 "
+        "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON 或部署密钥"
+    )

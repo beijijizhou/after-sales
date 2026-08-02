@@ -1,12 +1,13 @@
-import json
-import os
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from automation.production_period import load_period_production_model
-from automation.sync.google_sheets import GoogleSheetsClient
+from automation.sync.google_sheets import (
+    GoogleSheetsClient,
+    resolve_service_account_info,
+)
 from automation.sync.uv_daily_operation import (
     SYNCABLE_STATUSES,
     apply_daily_sync,
@@ -353,27 +354,16 @@ def _render_uv_daily_deduction(supabase, current_date, spreadsheet_id):
 
 
 def _google_sheets_client():
-    raw = os.environ.get("GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", "")
-    if not raw:
-        try:
-            raw = st.secrets.get(
-                "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON", ""
-            )
-        except FileNotFoundError:
-            raw = ""
-    if not raw:
-        credential_file = (
-            Path(__file__).resolve().parents[3]
-            / ".streamlit"
-            / "google-service-account.json"
-        )
-        if credential_file.is_file():
-            raw = credential_file.read_text(encoding="utf-8")
-    if not raw:
-        raise RuntimeError(
-            "尚未配置 Google Sheets 服务账号，无法读取私有表格"
-        )
-    info = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    credential_file = (
+        Path(__file__).resolve().parents[3]
+        / ".streamlit"
+        / "google-service-account.json"
+    )
+    info, source = resolve_service_account_info(
+        secrets=st.secrets,
+        credential_path=credential_file,
+    )
+    st.session_state["google_sheets_credential_source"] = source
     return GoogleSheetsClient(info)
 
 

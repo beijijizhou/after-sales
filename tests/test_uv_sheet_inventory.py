@@ -1,11 +1,17 @@
 import unittest
 from datetime import date
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from automation.sync.uv_sheet_inventory import (
     load_daily_product_usage,
     load_daily_summary,
 )
-from automation.sync.google_sheets import GoogleSheetsClient
+from automation.sync.google_sheets import (
+    GoogleSheetsClient,
+    resolve_service_account_info,
+)
 
 
 class FakeSheets:
@@ -31,6 +37,63 @@ class FakeSheets:
 
 
 class UVSheetInventoryTests(unittest.TestCase):
+    def test_resolves_service_account_from_environment_first(self):
+        env_json = (
+            '{"client_email":"env@example.com","private_key":"env-key"}'
+        )
+        with patch.dict(
+            "os.environ",
+            {"GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON": env_json},
+            clear=False,
+        ):
+            info, source = resolve_service_account_info()
+
+        self.assertEqual(source, "env")
+        self.assertEqual(info["client_email"], "env@example.com")
+
+    def test_resolves_service_account_from_secrets_when_env_missing(self):
+        secrets_json = (
+            '{"client_email":"secrets@example.com","private_key":"secret-key"}'
+        )
+
+        class Secrets(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+        with patch.dict(
+            "os.environ",
+            {"GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON": ""},
+            clear=False,
+        ):
+            info, source = resolve_service_account_info(
+                secrets=Secrets({
+                    "GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON": secrets_json
+                })
+            )
+
+        self.assertEqual(source, "secrets")
+        self.assertEqual(info["client_email"], "secrets@example.com")
+
+    def test_resolves_service_account_from_file_when_other_sources_missing(self):
+        with TemporaryDirectory() as temp_dir:
+            credential_path = Path(temp_dir) / "google-service-account.json"
+            credential_path.write_text(
+                '{"client_email":"file@example.com","private_key":"file-key"}',
+                encoding="utf-8",
+            )
+            with patch.dict(
+                "os.environ",
+                {"GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON": ""},
+                clear=False,
+            ):
+                info, source = resolve_service_account_info(
+                    secrets={},
+                    credential_path=credential_path,
+                )
+
+        self.assertEqual(source, "file")
+        self.assertEqual(info["client_email"], "file@example.com")
+
     def test_lists_all_spreadsheets_in_shared_folder(self):
         client = GoogleSheetsClient({
             "client_email": "test@example.com",
