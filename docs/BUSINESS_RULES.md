@@ -152,6 +152,8 @@
   with a downloadable label, and a user-sized random sample. Authorized users
   can also download all available label documents from the current review as
   one ZIP archive, independent of the active carrier filter.
+- The default label-selection mode is selecting every downloadable label.
+  Manual row selection is used only after the user explicitly switches to it.
 - Seven Creation (`七创`) and Yiduoyun (`一朵云`) share the 19DIY ERP contract.
   Read their customer-order API by date and order stage and consume the order
   number, tracking number, carrier, and label URL directly; do not generate or
@@ -163,6 +165,9 @@
   lets an administrator complete any required slider or human verification,
   then retries the API synchronization. Requiring a local user to configure a
   transient S2B token in Streamlit Secrets is not the normal local workflow.
+- DTF, UV, and 3D use separate S2B accounts. Each account has an independent
+  token, dedicated local Chrome profile, production cache scope, department,
+  and ERP-account identity even though the shared platform name is S2B.
 
 ## Access
 

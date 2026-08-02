@@ -4,6 +4,7 @@ from db.supabase_client import supabase
 from automation.production import (
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
+    production_data_key,
 )
 from automation.production_batch import ALL_CLOTHING_PLATFORMS
 from utils.erp import (
@@ -59,6 +60,7 @@ def render_production_data_page():
     )
     if submitted:
         fetch_and_store_production_data(
+            department,
             platform,
             *selected_range,
             start_hour=start_hour,
@@ -67,7 +69,8 @@ def render_production_data_page():
         )
     else:
         sync_session_from_local_cache(
-            platform, *selected_range, start_hour, end_hour
+            production_data_key(department, platform),
+            *selected_range, start_hour, end_hour
         )
 
     if not platform:
@@ -75,7 +78,7 @@ def render_production_data_page():
         return
 
     platform_data = st.session_state.get("production_data_by_platform", {})
-    source = platform_data.get(platform)
+    source = platform_data.get(production_data_key(department, platform))
     if source is None:
         st.info(f"尚未获取{platform}生产数据。")
         return

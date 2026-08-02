@@ -75,10 +75,11 @@ def _normalize_order(order, account_name):
         details.get("code") or details.get("order_code")
         or details.get("order_id") or order.get("id") or ""
     ).strip()
-    department = "UV" if account_name.upper() == "UV" else "DTF"
+    account = str(account_name or "DTF").upper()
+    department = account if account in {"UV", "3D"} else "DTF"
     return {
         "tenant_code": "default", "erp_platform": "S2B",
-        "erp_account": account_name, "department": department,
+        "erp_account": account, "department": department,
         "external_order_id": order_id,
         "merchant_order_id": str(
             details.get("third_order_id") or details.get("order_no") or ""

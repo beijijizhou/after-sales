@@ -11,6 +11,7 @@ from automation.production import (
     ProductionLoginRequired,
     SDS_PLATFORM_PROFILES,
     load_production_data,
+    production_data_key,
 )
 from automation.production_batch import (
     ALL_CLOTHING_PLATFORMS,
@@ -29,6 +30,7 @@ from ui.production_data.cache_state import (
 
 
 def fetch_and_store_production_data(
+    department,
     platform,
     start_date,
     end_date,
@@ -42,8 +44,9 @@ def fetch_and_store_production_data(
         status.write(message)
 
     try:
+        cache_key = production_data_key(department, platform)
         cached = None if force_refresh else load_production_cache(
-            platform, start_date, end_date, start_hour, end_hour
+            cache_key, start_date, end_date, start_hour, end_hour
         )
         if cached is not None:
             missing = aggregate_missing(
@@ -66,7 +69,7 @@ def fetch_and_store_production_data(
             else:
                 source = f"本地缓存 {cached.saved_at} / {cached.source}"
                 store_production_data(
-                    platform, cached.data, source, cached.saved_at
+                    cache_key, cached.data, source, cached.saved_at
                 )
                 status.update(
                     label=f"已从本地缓存读取：{cached.saved_at}",
@@ -88,9 +91,10 @@ def fetch_and_store_production_data(
                 credentials=_credentials_for(platform),
                 start_hour=start_hour,
                 end_hour=end_hour,
+                account_name=department if platform == "S2B" else None,
             )
             saved_at = save_cache_safely(
-                platform,
+                cache_key,
                 start_date,
                 end_date,
                 start_hour,
@@ -100,10 +104,10 @@ def fetch_and_store_production_data(
                 report,
             )
             store_production_data(
-                platform, result.data, result.source, saved_at
+                cache_key, result.data, result.source, saved_at
             )
             if platform == "S2B":
-                _sync_s2b_logistics(result.source, report)
+                _sync_s2b_logistics(result.source, report, department)
             source, errors = result.source, {}
         status.update(
             label=f"生产数据获取完成：{source}",
@@ -133,13 +137,13 @@ def fetch_and_store_production_data(
             st.caption("已记录当前页面控件，便于校准自动化流程。")
 
 
-def _sync_s2b_logistics(source_file, report):
+def _sync_s2b_logistics(source_file, report, account="DTF"):
     path = DOWNLOAD_DIR / source_file
     if not path.is_file():
         report("S2B物流单号同步跳过：没有找到刚下载的Excel")
         return 0
     try:
-        rows = parse_s2b_logistics_workbook(path.read_bytes(), account="DTF")
+        rows = parse_s2b_logistics_workbook(path.read_bytes(), account=account)
         saved = upsert_shipments(supabase, rows)
     except Exception as error:
         report(f"S2B物流单号暂未写入数据库：{error}")

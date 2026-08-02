@@ -12,14 +12,27 @@ PARCEL_URL = "https://pod-api.sdspod.com/pod/parcel/qc/{order_id}/detail"
 
 
 def fetch_sds_pending_shipments(
-    profile, account, max_pages=5, status=1, time_range=None,
+    profile,
+    account,
+    max_pages=5,
+    status=1,
+    time_range=None,
+    platform_name=None,
+    department="DTF",
 ):
     client, token, _factory_id = login_sds_factory(account["factory"])
     records = _fetch_order_records(
         client, token, max_pages, status=status, time_range=time_range
     )
     qa_token = _login_qa(client, account["qa"])
-    return _fetch_parcels(client, qa_token, records, profile)
+    return _fetch_parcels(
+        client,
+        qa_token,
+        records,
+        profile,
+        platform_name or profile,
+        department,
+    )
 
 
 def _fetch_order_records(
@@ -77,12 +90,22 @@ def _qa_token(payload):
     )
 
 
-def _fetch_parcels(client, qa_token, records, profile):
+def _fetch_parcels(
+    client, qa_token, records, profile, platform_name, department
+):
     headers = {"access-token": qa_token, "User-Agent": USER_AGENT}
     results = []
     with ThreadPoolExecutor(max_workers=min(12, max(1, len(records)))) as pool:
         futures = {
-            pool.submit(_parcel_rows, client, headers, record, profile): record
+            pool.submit(
+                _parcel_rows,
+                client,
+                headers,
+                record,
+                profile,
+                platform_name,
+                department,
+            ): record
             for record in records if _order_id(record)
         }
         for future in as_completed(futures):
@@ -90,7 +113,9 @@ def _fetch_parcels(client, qa_token, records, profile):
     return results
 
 
-def _parcel_rows(client, headers, record, profile):
+def _parcel_rows(
+    client, headers, record, profile, platform_name=None, department="DTF"
+):
     response = client.get(
         PARCEL_URL.format(order_id=_order_id(record)),
         params={"t": int(time.time() * 1000)}, headers=headers, timeout=(5, 30),
@@ -102,8 +127,10 @@ def _parcel_rows(client, headers, record, profile):
         if not tracking:
             continue
         rows.append({
-            "tenant_code": "default", "erp_platform": "SDS",
-            "erp_account": profile, "department": "DTF",
+            "tenant_code": "default",
+            "erp_platform": platform_name or profile,
+            "erp_account": profile,
+            "department": department,
             "external_order_id": str(record.get("no") or ""),
             "merchant_order_id": str(record.get("merchantOrderNo") or ""),
             "tracking_number": tracking,

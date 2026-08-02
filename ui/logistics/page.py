@@ -27,6 +27,7 @@ from automation.logistics import (
 from automation.production import (
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
+    SDS_PLATFORM_PROFILES,
 )
 from automation.logistics.label_cache import (
     cached_label_content as _cached_label_content,
@@ -39,7 +40,7 @@ from ui.logistics.tracking_lookup import render_tracking_lookup
 
 
 LOGISTICS_CONNECTED_PLATFORMS = {
-    "S2B", "SDS1", "SDS2", "七创", "一朵云",
+    "S2B", "七创", "一朵云", *SDS_PLATFORM_PROFILES,
 }
 ORDER_STAGES = {
     "待排产/未接单": 1,
@@ -639,6 +640,7 @@ def _render_carrier_review(show_empty=False):
     selection_mode = selection_columns[0].radio(
         "面单选择方式",
         ("手工勾选", "全选可下载", "随机抽查"),
+        index=1,
         horizontal=True,
         key="logistics_review_selection_mode",
     )
@@ -865,18 +867,20 @@ def _fetch_source(source, department, stage, start_date, end_date):
             end_date,
             stage=status,
         )
-    if source.startswith("SDS"):
-        profile = "1号线" if source == "SDS1" else "2号线"
+    if source in SDS_PLATFORM_PROFILES:
+        profile = SDS_PLATFORM_PROFILES[source]
         return fetch_sds_pending_shipments(
             profile, load_sds_account(st.secrets, profile), 100,
             status=status,
             time_range=_erp_time_range(start_date, end_date),
+            platform_name=source,
+            department=department,
         )
     if source != "S2B":
         raise ValueError(
             f"{source} 已存在于生产数据平台目录，但尚未接入订单物流接口"
         )
-    account = "UV" if department == "UV" else "DTF"
+    account = department if department in {"UV", "3D"} else "DTF"
     credentials = _s2b_credentials(account)
     try:
         return fetch_s2b_pending_shipments(

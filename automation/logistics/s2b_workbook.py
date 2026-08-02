@@ -33,7 +33,9 @@ def parse_s2b_logistics_frame(source, account="DTF"):
         rows.append({
             "tenant_code": "default", "erp_platform": "S2B",
             "erp_account": account,
-            "department": "UV" if account.upper() == "UV" else "DTF",
+            "department": (
+                account.upper() if account.upper() in {"UV", "3D"} else "DTF"
+            ),
             "external_order_id": order_id,
             "merchant_order_id": _text(record.get("商户订单号")),
             "tracking_number": tracking,

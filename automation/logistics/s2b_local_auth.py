@@ -24,11 +24,15 @@ def refresh_local_s2b_token(account_name):
 
     from playwright.sync_api import sync_playwright
 
-    from automation.playwright.chrome_session import connect_debug_chrome
+    from automation.playwright.s2b.account_session import (
+        connect_s2b_account_chrome,
+    )
 
     captured = {}
     with sync_playwright() as playwright:
-        browser = connect_debug_chrome(playwright, S2B_ORDER_URL)
+        browser = connect_s2b_account_chrome(
+            playwright, S2B_ORDER_URL, account_name
+        )
         page = _find_s2b_page(browser)
         if "/login" in page.url:
             raise S2BLocalLoginRequired(

@@ -45,9 +45,9 @@ PRODUCTION_PLATFORM_NAMES = (
 PRODUCTION_DEPARTMENTS = ("DTF", "3D", "UV")
 PLATFORMS_BY_DEPARTMENT = {
     "DTF": DTF_PRODUCTION_PLATFORMS,
-    "3D": ("一朵云", "方果", "3D热转印"),
+    "3D": ("S2B", "一朵云", "方果", "3D热转印"),
     "UV": (
-        "汉森", "一朵云", "方果", "SDS1", "SDS2", "忆点万象",
+        "S2B", "汉森", "一朵云", "方果", "SDS1", "SDS2", "忆点万象",
     ),
 }
 
@@ -66,6 +66,7 @@ def load_production_data(
     credentials=None,
     start_hour=0,
     end_hour=23,
+    account_name=None,
 ):
     if platform in ERP_PLATFORM_NAMES:
         records = fetch_humbird_production_records(
@@ -190,6 +191,7 @@ def load_production_data(
         start_date,
         end_date,
         report_progress,
+        account_name=account_name,
     )
     data = filter_production_time(
         parse_platform_workbook(file_path.read_bytes(), platform),
@@ -198,18 +200,23 @@ def load_production_data(
         start_hour,
         end_hour,
     )
+    if platform == "S2B" and account_name:
+        data["部门"] = str(account_name).upper()
     return ProductionDataResult(
         data=data,
         source=file_path.name,
     )
 
 
-def _download_workbook(platform, start_date, end_date, report_progress):
+def _download_workbook(
+    platform, start_date, end_date, report_progress, account_name=None
+):
     if platform == "S2B":
         return download_s2b_workbook(
             start_date,
             end_date,
             report_progress,
+            account_name=account_name or "DTF",
         )
     return download_production_workbook(
         start_date,
@@ -219,12 +226,20 @@ def _download_workbook(platform, start_date, end_date, report_progress):
     )
 
 
+def production_data_key(department, platform):
+    account = str(department).upper()
+    if platform == "S2B" and account != "DTF":
+        return f"{account}::S2B"
+    return platform
+
+
 __all__ = [
     "DIAGNOSTIC_PATH",
     "DTF_PRODUCTION_PLATFORMS",
     "PRODUCTION_PLATFORM_NAMES",
     "PRODUCTION_DEPARTMENTS",
     "PLATFORMS_BY_DEPARTMENT",
+    "production_data_key",
     "ProductionLoginRequired",
     "SDS_PLATFORM_PROFILES",
     "load_production_data",

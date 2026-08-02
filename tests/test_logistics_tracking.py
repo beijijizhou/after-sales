@@ -12,6 +12,8 @@ from automation.logistics.s2b import (
     _normalize_order,
     _order_payload,
 )
+from automation.production import PLATFORMS_BY_DEPARTMENT, production_data_key
+from automation.playwright.s2b.account_session import normalize_s2b_account
 from automation.logistics.carriers import (
     classify_carrier,
     classify_usps_subtype,
@@ -26,6 +28,7 @@ from automation.logistics.label_ocr import extract_label_content_fields
 from automation.logistics.label_cache import clear_label_cache
 from automation.logistics.label_downloads import build_label_archive
 from automation.logistics.sds import _qa_token
+from automation.logistics.sds import _parcel_rows as _sds_parcel_rows
 from automation.logistics.imports import (
     parse_logistics_frame,
     parse_logistics_paste,
@@ -74,6 +77,41 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_sds_shared_logistics_interface_preserves_uv_platform_scope(self):
+        client = Mock()
+        client.get.return_value.json.return_value = {
+            "detailList": [{
+                "carriageNo": "92001",
+                "carriageName": "USPS",
+                "pdfUrl": "label.pdf",
+            }]
+        }
+        client.get.return_value.raise_for_status.return_value = None
+
+        rows = _sds_parcel_rows(
+            client,
+            {"access-token": "token"},
+            {"orderId": "1", "no": "ORDER-1"},
+            "忆点万象",
+            platform_name="忆点万象",
+            department="UV",
+        )
+
+        self.assertEqual(rows[0]["erp_platform"], "忆点万象")
+        self.assertEqual(rows[0]["erp_account"], "忆点万象")
+        self.assertEqual(rows[0]["department"], "UV")
+
+    def test_uv_department_exposes_its_s2b_account_platform(self):
+        self.assertIn("S2B", PLATFORMS_BY_DEPARTMENT["UV"])
+        self.assertEqual(production_data_key("UV", "S2B"), "UV::S2B")
+        self.assertEqual(production_data_key("DTF", "S2B"), "S2B")
+        self.assertEqual(normalize_s2b_account("uv"), "UV")
+
+    def test_3d_department_exposes_independent_s2b_account(self):
+        self.assertIn("S2B", PLATFORMS_BY_DEPARTMENT["3D"])
+        self.assertEqual(production_data_key("3D", "S2B"), "3D::S2B")
+        self.assertEqual(normalize_s2b_account("3d"), "3D")
+
     def test_usps_usage_event_records_user_without_tenant_code(self):
         supabase = Mock()
         execute = (
