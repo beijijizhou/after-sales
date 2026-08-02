@@ -94,12 +94,18 @@ def _render_erp_sync(supabase):
         f"已接入物流接口：{'、'.join(connected) or '暂无'}"
     )
     stage = st.selectbox("订单阶段", list(ORDER_STAGES))
+    ocr_all = st.checkbox(
+        "解析全部可下载面单",
+        value=False,
+        help="勾选后忽略下方数量限制，OCR当前筛选结果的全部可下载面单。",
+    )
     ocr_limit = st.number_input(
         "本次OCR面单数量",
         min_value=1,
         max_value=500,
         value=5,
         step=5,
+        disabled=ocr_all,
         help="物流数据会完整读取；仅限制本次下载和OCR的面单数量。",
     )
     date_columns = st.columns(2)
@@ -130,7 +136,9 @@ def _render_erp_sync(supabase):
                 row["department"] = department
             reviewed = _classify_carrier_rows(rows)
             ocr_summary = _apply_erp_label_ocr(
-                reviewed, source, max_labels=int(ocr_limit)
+                reviewed,
+                source,
+                max_labels=None if ocr_all else int(ocr_limit),
             )
             carrier_review_rows.extend(reviewed)
             usps_rows = [
@@ -278,8 +286,12 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
         item["OCR寄件地址"] = ""
         item["OCR重量（oz）"] = None
         item["OCR状态"] = "平台未提供可下载面单"
-    candidates = available_candidates[:max_labels]
-    skipped = available_candidates[max_labels:]
+    if max_labels is None:
+        candidates = available_candidates
+        skipped = []
+    else:
+        candidates = available_candidates[:max_labels]
+        skipped = available_candidates[max_labels:]
     for item in skipped:
         row = item["row"]
         row["ocr_address"] = ""
