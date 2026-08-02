@@ -135,9 +135,9 @@
   server restart may clear it because database persistence is not enabled yet.
 - ERP synchronization only reads orders, tracking numbers, carrier decisions,
   and available label links. It must not automatically OCR normal shipments.
-  Users select suspicious labels in the dedicated label-OCR table; only those
-  selected documents are downloaded and analyzed, and the results are then
-  reflected in the shared logistics review data.
+  Users select suspicious labels directly in the shared logistics review
+  table; only those selected documents are downloaded and analyzed, and the
+  results are reflected back into that same table.
 - Seven Creation (`七创`) and Yiduoyun (`一朵云`) share the 19DIY ERP contract.
   Read their customer-order API by date and order stage and consume the order
   number, tracking number, carrier, and label URL directly; do not generate or
