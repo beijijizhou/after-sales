@@ -1,4 +1,6 @@
 import unittest
+from io import BytesIO
+from zipfile import ZipFile
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
@@ -21,6 +23,7 @@ from automation.logistics.usps import USPSClient, classify_usps_response
 from automation.logistics.label_ocr import parse_usps_label_lines, _weight_ounces
 from automation.logistics.label_ocr import extract_label_content_fields
 from automation.logistics.label_cache import clear_label_cache
+from automation.logistics.label_downloads import build_label_archive
 from automation.logistics.sds import _qa_token
 from automation.logistics.imports import (
     parse_logistics_frame,
@@ -39,12 +42,14 @@ from ui.logistics.page import (
     _default_logistics_platforms,
     _is_target_usps_review,
     _label_ocr_candidates,
+    _label_documents,
     _order_tracking_pairs,
     _ocr_address,
     _ocr_summary_text,
     _format_duration,
     _ocr_progress_text,
     _resolve_ocr_workers,
+    _review_selection_defaults,
 )
 from ui.logistics.tracking_lookup import (
     _merge_label_details,
@@ -64,6 +69,54 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_review_selection_supports_all_and_repeatable_random_sample(self):
+        rows = [
+            {"row": {"label_url": f"{index}.pdf"}} for index in range(5)
+        ] + [{"row": {}}]
+
+        self.assertEqual(
+            _review_selection_defaults(rows, "全选可下载", 5, 0),
+            [True, True, True, True, True, False],
+        )
+        first = _review_selection_defaults(rows, "随机抽查", 2, 7)
+        second = _review_selection_defaults(rows, "随机抽查", 2, 7)
+        self.assertEqual(first, second)
+        self.assertEqual(sum(first), 2)
+        self.assertFalse(first[-1])
+
+    def test_all_label_download_builds_one_zip_and_deduplicates_urls(self):
+        documents = [
+            {"url": "https://x.test/a.pdf", "order_id": "ORDER/1"},
+            {"url": "https://x.test/a.pdf", "order_id": "DUPLICATE"},
+            {"url": "https://x.test/b", "tracking_number": "92002"},
+        ]
+
+        archive, errors, count = build_label_archive(
+            documents,
+            lambda url: b"%PDF-label" if url.endswith("a.pdf") else b"\x89PNG",
+            max_workers=2,
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(count, 2)
+        with ZipFile(BytesIO(archive)) as output:
+            self.assertEqual(len(output.namelist()), 2)
+            self.assertTrue(any(name.endswith(".pdf") for name in output.namelist()))
+            self.assertTrue(any(name.endswith(".png") for name in output.namelist()))
+
+    def test_label_documents_include_all_carriers_with_downloads(self):
+        reviewed = [
+            {"平台": "S2B", "Order ID": "1", "Tracking Number": "A",
+             "row": {"label_url": "a.pdf"}},
+            {"平台": "七创", "Order ID": "2", "Tracking Number": "B",
+             "row": {"backup_label_url": "b.png"}},
+            {"平台": "SDS", "Order ID": "3", "row": {}},
+        ]
+
+        documents = _label_documents(reviewed)
+
+        self.assertEqual([item["url"] for item in documents], ["a.pdf", "b.png"])
+
     def test_suspicious_ocr_candidates_include_any_carrier_with_label(self):
         rows = [
             {"系统判断": "USPS", "row": {"label_url": "usps.pdf"}},

@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
 from time import perf_counter
 from zoneinfo import ZoneInfo
 import sys
@@ -32,6 +33,7 @@ from automation.logistics.label_cache import (
     cached_label_fields as _cached_label_fields,
     get_cached_label_fields,
 )
+from automation.logistics.label_downloads import build_label_archive
 from utils.auth import has_permission
 from ui.logistics.tracking_lookup import render_tracking_lookup
 
@@ -149,7 +151,7 @@ def _render_erp_sync(supabase):
     if errors:
         st.warning("；".join(errors))
     st.session_state["logistics_carrier_review_rows"] = carrier_review_rows
-    st.session_state.pop("logistics_carrier_review_editor", None)
+    _reset_review_selection()
 
 
 def _render_upload_sync():
@@ -193,7 +195,7 @@ def _render_upload_sync():
     st.session_state["logistics_usps_candidates"] = _order_tracking_pairs([
         item["row"] for item in reviewed if _is_target_usps_review(item)
     ])
-    st.session_state.pop("logistics_carrier_review_editor", None)
+    _reset_review_selection()
     usps_count = sum(_is_target_usps_review(item) for item in reviewed)
     st.success(
         f"已导入 {len(rows):,} 条｜普通USPS {usps_count:,} 条｜"
@@ -628,10 +630,41 @@ def _render_carrier_review(show_empty=False):
         row for row in rows
         if _carrier_filter_name(row) in selected_carriers
     ]
+    selectable_count = len(_label_ocr_candidates(filtered_rows))
+    review_version = int(st.session_state.get("logistics_review_data_version", 0))
+    selection_columns = st.columns([2, 1, 1])
+    selection_mode = selection_columns[0].radio(
+        "面单选择方式",
+        ("手工勾选", "全选可下载", "随机抽查"),
+        horizontal=True,
+        key="logistics_review_selection_mode",
+    )
+    random_count = selection_columns[1].number_input(
+        "随机抽查数量",
+        min_value=1,
+        max_value=max(1, selectable_count),
+        value=min(5, max(1, selectable_count)),
+        disabled=selection_mode != "随机抽查" or not selectable_count,
+        key=(
+            f"logistics_review_random_count_{review_version}_"
+            f"{'_'.join(selected_carriers)}"
+        ),
+    )
+    random_seed = int(st.session_state.get("logistics_review_random_seed", 0))
+    if selection_columns[2].button(
+        "重新随机",
+        width="stretch",
+        disabled=selection_mode != "随机抽查" or not selectable_count,
+    ):
+        random_seed += 1
+        st.session_state["logistics_review_random_seed"] = random_seed
+    defaults = _review_selection_defaults(
+        filtered_rows, selection_mode, int(random_count), random_seed
+    )
     display = pd.DataFrame([{
-        "OCR选择": False,
+        "OCR选择": defaults[index],
         **{key: value for key, value in row.items() if key != "row"},
-    } for row in filtered_rows])
+    } for index, row in enumerate(filtered_rows)])
     if not filtered_rows:
         st.info("当前没有勾选物流商的匹配记录。")
     else:
@@ -653,7 +686,11 @@ def _render_carrier_review(show_empty=False):
                     display_text="备用面单"
                 ),
             },
-            key="logistics_carrier_review_editor",
+            key=(
+                "logistics_carrier_review_editor_"
+                f"{review_version}_"
+                f"{selection_mode}_{random_seed}_{'_'.join(selected_carriers)}"
+            ),
         )
         selected_rows = [
             filtered_rows[index]
@@ -670,7 +707,7 @@ def _render_carrier_review(show_empty=False):
 def _render_review_ocr_actions(reviewed, selected_rows):
     available_rows = _label_ocr_candidates(selected_rows)
     missing_count = len(selected_rows) - len(available_rows)
-    action_columns = st.columns([2, 1, 2])
+    action_columns = st.columns([2, 1, 2, 2])
     ocr_mode = action_columns[0].selectbox(
         "OCR速度模式",
         ("稳定模式（单线程）", "加速模式（双线程）"),
@@ -706,12 +743,88 @@ def _render_review_ocr_actions(reviewed, selected_rows):
             item["row"] for item in reviewed if _is_target_usps_review(item)
         ])
         st.caption("OCR结果已回填到本表和下方普通USPS核查数据。")
+    _render_label_archive_download(action_columns[3], reviewed)
     if missing_count:
         st.warning(f"已选记录中有 {missing_count:,} 条没有可下载面单，无法OCR。")
     if safety_reason:
         st.warning(safety_reason)
     elif ocr_workers == 2:
         st.warning("当前使用双线程OCR；建议先选择少量面单确认云端稳定性。")
+
+
+def _review_selection_defaults(rows, mode, random_count, random_seed):
+    available_indices = [
+        index for index, item in enumerate(rows)
+        if _label_ocr_candidates([item])
+    ]
+    if mode == "全选可下载":
+        selected = set(available_indices)
+    elif mode == "随机抽查" and available_indices:
+        sample_size = min(max(0, random_count), len(available_indices))
+        selected = set(random.Random(random_seed).sample(
+            available_indices, sample_size
+        ))
+    else:
+        selected = set()
+    return [index in selected for index in range(len(rows))]
+
+
+def _render_label_archive_download(container, reviewed):
+    documents = _label_documents(reviewed)
+    fingerprint = tuple(document["url"] for document in documents)
+    if st.session_state.get("logistics_label_archive_fingerprint") != fingerprint:
+        st.session_state.pop("logistics_label_archive", None)
+        st.session_state.pop("logistics_label_archive_errors", None)
+    if container.button(
+        "打包全部面单",
+        width="stretch",
+        disabled=not documents,
+        help="打包本次物流识别数据中的全部可下载面单，不受物流商筛选影响。",
+    ):
+        if not has_permission("can_manage_logistics"):
+            st.error("当前账号没有批量下载面单的权限。")
+            return
+        with st.spinner(f"正在下载并打包 {len(documents):,} 张面单……"):
+            archive, errors, downloaded = build_label_archive(
+                documents, _cached_label_content, max_workers=4
+            )
+        st.session_state["logistics_label_archive"] = archive
+        st.session_state["logistics_label_archive_errors"] = errors
+        st.session_state["logistics_label_archive_fingerprint"] = fingerprint
+        st.success(
+            f"面单包已生成：成功 {downloaded:,} 张｜失败 {len(errors):,} 张"
+        )
+    archive = st.session_state.get("logistics_label_archive")
+    if archive:
+        container.download_button(
+            "下载全部面单 ZIP",
+            data=archive,
+            file_name=f"shipping_labels_{date.today():%Y%m%d}.zip",
+            mime="application/zip",
+            width="stretch",
+        )
+    errors = st.session_state.get("logistics_label_archive_errors") or []
+    if errors:
+        st.warning(f"有 {len(errors):,} 张面单下载失败，可稍后重新打包。")
+
+
+def _label_documents(reviewed):
+    return [{
+        "url": item["row"].get("label_url")
+        or item["row"].get("backup_label_url"),
+        "platform": item.get("平台"),
+        "order_id": item.get("Order ID"),
+        "tracking_number": item.get("Tracking Number"),
+    } for item in _label_ocr_candidates(reviewed)]
+
+
+def _reset_review_selection():
+    st.session_state["logistics_review_data_version"] = (
+        int(st.session_state.get("logistics_review_data_version", 0)) + 1
+    )
+    st.session_state.pop("logistics_label_archive", None)
+    st.session_state.pop("logistics_label_archive_errors", None)
+    st.session_state.pop("logistics_label_archive_fingerprint", None)
 
 
 def _carrier_filter_name(row):

@@ -138,6 +138,10 @@
   Users select suspicious labels directly in the shared logistics review
   table; only those selected documents are downloaded and analyzed, and the
   results are reflected back into that same table.
+- The shared logistics review supports manual selection, selecting every row
+  with a downloadable label, and a user-sized random sample. Authorized users
+  can also download all available label documents from the current review as
+  one ZIP archive, independent of the active carrier filter.
 - Seven Creation (`七创`) and Yiduoyun (`一朵云`) share the 19DIY ERP contract.
   Read their customer-order API by date and order stage and consume the order
   number, tracking number, carrier, and label URL directly; do not generate or
