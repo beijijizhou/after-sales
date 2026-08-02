@@ -1,6 +1,7 @@
 from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import perf_counter
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -109,6 +110,17 @@ def _render_erp_sync(supabase):
         disabled=ocr_all,
         help="物流数据会完整读取；仅限制本次下载和OCR的面单数量。",
     )
+    ocr_mode = st.selectbox(
+        "OCR速度模式",
+        ("稳定模式（单线程）", "加速模式（双线程）"),
+        help="双线程速度更快，但会加载两套OCR模型并使用更多云端内存。",
+    )
+    ocr_workers = 2 if ocr_mode.startswith("加速") else 1
+    if ocr_workers == 2:
+        st.warning(
+            "当前选择双线程OCR：建议先解析5张观察速度和稳定性，"
+            "确认正常后再选择全部。"
+        )
     date_columns = st.columns(2)
     start_date = date_columns[0].date_input(
         "开始日期", value=date.today() - timedelta(days=1),
@@ -140,6 +152,7 @@ def _render_erp_sync(supabase):
                 reviewed,
                 source,
                 max_labels=None if ocr_all else int(ocr_limit),
+                ocr_workers=ocr_workers,
             )
             carrier_review_rows.extend(reviewed)
             usps_rows = [
@@ -274,7 +287,7 @@ def _classify_carrier_rows(rows):
     return reviewed
 
 
-def _apply_erp_label_ocr(reviewed, source, max_labels=5):
+def _apply_erp_label_ocr(reviewed, source, max_labels=5, ocr_workers=1):
     started_at = perf_counter()
     target_rows = [item for item in reviewed if _is_target_usps_review(item)]
     available_candidates = []
@@ -344,45 +357,70 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
     downloaded_count = 0
     ocr_seconds = 0.0
     if pending:
+        mode_name = "双线程加速模式" if ocr_workers == 2 else "单线程稳定模式"
         stage_message.info(
             f"{source}：缓存命中 {len(candidates) - len(pending):,} 张；"
             f"正在分批下载并识别 {len(pending):,} 张面单"
-            f"（下载最多4线程，OCR单线程安全模式）……"
+            f"（下载最多4线程，OCR{mode_name}）……"
         )
         pending_urls = list(pending)
         batch_size = 8
-        for start in range(0, len(pending_urls), batch_size):
-            batch = pending_urls[start:start + batch_size]
-            with ThreadPoolExecutor(max_workers=min(4, len(batch))) as executor:
-                futures = {
-                    executor.submit(_cached_label_content, label_url): label_url
+        processing_started_at = perf_counter()
+        with (
+            ThreadPoolExecutor(max_workers=4) as download_executor,
+            ThreadPoolExecutor(max_workers=ocr_workers) as ocr_executor,
+        ):
+            for start in range(0, len(pending_urls), batch_size):
+                batch = pending_urls[start:start + batch_size]
+                download_futures = {
+                    download_executor.submit(
+                        _cached_label_content, label_url
+                    ): label_url
                     for label_url in batch
                 }
-                for future in as_completed(futures):
-                    label_url = futures[future]
-                    ocr_started_at = None
+                contents = {}
+                for future in as_completed(download_futures):
+                    label_url = download_futures[future]
                     try:
-                        content = future.result()
+                        contents[label_url] = future.result()
                         downloaded_count += 1
-                        ocr_started_at = perf_counter()
+                    except Exception as error:
                         cache[label_url] = {
-                            "fields": _cached_label_fields(label_url, content),
+                            "fields": {}, "error": str(error), "stage": "下载",
+                        }
+                        completed += 1
+                        progress.progress(completed / len(pending))
+                        stage_message.info(_ocr_progress_text(
+                            source, completed, len(pending),
+                            processing_started_at, ocr_workers,
+                        ))
+                if not contents:
+                    continue
+                ocr_batch_started_at = perf_counter()
+                ocr_futures = {
+                    ocr_executor.submit(
+                        _cached_label_fields, label_url, content
+                    ): label_url
+                    for label_url, content in contents.items()
+                }
+                for future in as_completed(ocr_futures):
+                    label_url = ocr_futures[future]
+                    try:
+                        cache[label_url] = {
+                            "fields": future.result(),
                             "error": "", "stage": "",
                         }
                     except Exception as error:
-                        stage = "下载" if future.exception() else "OCR"
                         cache[label_url] = {
-                            "fields": {}, "error": str(error), "stage": stage,
+                            "fields": {}, "error": str(error), "stage": "OCR",
                         }
-                    finally:
-                        if ocr_started_at is not None:
-                            ocr_seconds += perf_counter() - ocr_started_at
                     completed += 1
                     progress.progress(completed / len(pending))
-                    stage_message.info(
-                        f"{source}：已处理 {completed:,}/{len(pending):,} 张｜"
-                        "下载最多4线程｜OCR单线程安全模式"
-                    )
+                    stage_message.info(_ocr_progress_text(
+                        source, completed, len(pending),
+                        processing_started_at, ocr_workers,
+                    ))
+                ocr_seconds += perf_counter() - ocr_batch_started_at
     for item in candidates:
         row = item["row"]
         label_url = row.get("label_url") or row.get("backup_label_url")
@@ -479,6 +517,25 @@ def _ocr_summary_text(summary):
             f"｜新面单平均 {average_seconds:.1f}秒/张"
             if processed else ""
         )
+    )
+
+
+def _ocr_progress_text(source, completed, total, started_at, ocr_workers):
+    elapsed = max(0.0, perf_counter() - started_at)
+    average = elapsed / completed if completed else 0
+    remaining_count = max(0, total - completed)
+    remaining_seconds = average * remaining_count
+    finish_at = datetime.now(ZoneInfo("America/New_York")) + timedelta(
+        seconds=remaining_seconds
+    )
+    mode = "双线程加速" if ocr_workers == 2 else "单线程稳定"
+    return (
+        f"{source}：已处理 {completed:,}/{total:,} 张｜"
+        f"剩余 {remaining_count:,} 张｜已用 {_format_duration(elapsed)}｜"
+        f"平均 {average:.1f}秒/张｜预计还需 "
+        f"{_format_duration(remaining_seconds)}｜"
+        f"预计完成 {finish_at:%H:%M:%S}（纽约）｜"
+        f"下载4线程｜OCR{mode}模式"
     )
 
 

@@ -42,6 +42,7 @@ from ui.logistics.page import (
     _ocr_address,
     _ocr_summary_text,
     _format_duration,
+    _ocr_progress_text,
 )
 from ui.logistics.tracking_lookup import (
     _merge_label_details,
@@ -186,6 +187,18 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertIn("下载及等待 30秒", text)
         self.assertIn("新面单平均 12.5秒/张", text)
         self.assertEqual(_format_duration(3661), "1小时1分1秒")
+
+    @patch("ui.logistics.page.perf_counter", return_value=20)
+    def test_ocr_progress_displays_eta_and_thread_mode(self, _clock):
+        text = _ocr_progress_text(
+            "S2B", completed=20, total=100, started_at=0, ocr_workers=2
+        )
+
+        self.assertIn("已处理 20/100", text)
+        self.assertIn("剩余 80", text)
+        self.assertIn("平均 1.0秒/张", text)
+        self.assertIn("预计还需 1分20秒", text)
+        self.assertIn("OCR双线程加速模式", text)
 
     def test_live_ocr_result_exposes_address_weight_and_label(self):
         row = _live_label_row("92001", "http://labels.test/92001.pdf", {
