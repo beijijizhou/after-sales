@@ -18,7 +18,7 @@ from automation.logistics.carriers import (
 )
 from automation.logistics.s2b_workbook import parse_s2b_logistics_frame
 from automation.logistics.usps import USPSClient, classify_usps_response
-from automation.logistics.label_ocr import parse_usps_label_lines
+from automation.logistics.label_ocr import parse_usps_label_lines, _weight_ounces
 from automation.logistics.label_ocr import extract_label_content_fields
 from automation.logistics.label_cache import clear_label_cache
 from automation.logistics.sds import _qa_token
@@ -426,6 +426,13 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(parsed["extracted_state"], "NY")
         self.assertEqual(parsed["extracted_postal_code"], "11788")
         self.assertEqual(parsed["extracted_weight_oz"], 5)
+        self.assertEqual(parsed["extracted_weight_lb"], 0.3125)
+        self.assertEqual(parsed["extracted_weight_display"], "5 oz")
+
+    def test_label_weight_distinguishes_pounds_and_ounces(self):
+        self.assertEqual(_weight_ounces("1 LB 4 OZ"), 20)
+        self.assertEqual(_weight_ounces("WEIGHT 6 OZ"), 6)
+        self.assertEqual(_weight_ounces("WEIGHT 1.5 LB"), 24)
 
     def test_tracking_lookup_parses_common_separators_and_removes_duplicates(self):
         numbers = parse_tracking_numbers("9400, 9500\n9400；9600")

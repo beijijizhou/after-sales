@@ -233,6 +233,7 @@ def _order_tracking_pairs(rows):
             "ERP平台": row.get("erp_platform"),
             "面单OCR地址": row.get("ocr_address"),
             "重量（oz）": row.get("ocr_weight_oz"),
+            "重量（lb）": row.get("ocr_weight_lb"),
             "OCR状态": row.get("ocr_status"),
         }
         pair.update({key: value for key, value in optional.items() if value})
@@ -266,6 +267,7 @@ def _classify_carrier_rows(rows):
             "备用面单": row.get("backup_label_url"),
             "OCR寄件地址": row.get("ocr_address", ""),
             "OCR重量（oz）": row.get("ocr_weight_oz"),
+            "OCR重量（lb）": row.get("ocr_weight_lb"),
             "OCR状态": row.get("ocr_status", ""),
             "row": row,
         })
@@ -284,9 +286,11 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
             continue
         row["ocr_address"] = ""
         row["ocr_weight_oz"] = None
+        row["ocr_weight_lb"] = None
         row["ocr_status"] = "平台未提供可下载面单"
         item["OCR寄件地址"] = ""
         item["OCR重量（oz）"] = None
+        item["OCR重量（lb）"] = None
         item["OCR状态"] = "平台未提供可下载面单"
     if max_labels is None:
         candidates = available_candidates
@@ -298,9 +302,11 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
         row = item["row"]
         row["ocr_address"] = ""
         row["ocr_weight_oz"] = None
+        row["ocr_weight_lb"] = None
         row["ocr_status"] = "本次未解析（超过测试数量）"
         item["OCR寄件地址"] = ""
         item["OCR重量（oz）"] = None
+        item["OCR重量（lb）"] = None
         item["OCR状态"] = "本次未解析（超过测试数量）"
     if not candidates:
         return {
@@ -403,9 +409,11 @@ def _apply_erp_label_ocr(reviewed, source, max_labels=5):
         )
         row["ocr_address"] = address
         row["ocr_weight_oz"] = fields.get("extracted_weight_oz")
+        row["ocr_weight_lb"] = _weight_lb(fields.get("extracted_weight_oz"))
         row["ocr_status"] = status
         item["OCR寄件地址"] = address
         item["OCR重量（oz）"] = fields.get("extracted_weight_oz")
+        item["OCR重量（lb）"] = row["ocr_weight_lb"]
         item["OCR状态"] = status
     progress.progress(1.0)
     st.session_state["logistics_label_ocr_cache"] = cache
@@ -505,6 +513,12 @@ def _ocr_address(fields):
         "extracted_street", "extracted_city", "extracted_state",
         "extracted_postal_code",
     )).strip()
+
+
+def _weight_lb(weight_oz):
+    if weight_oz is None:
+        return None
+    return round(float(weight_oz) / 16, 4)
 
 
 def _is_target_usps_review(item):
