@@ -109,7 +109,13 @@ def _ocr_engine():
     if engine is None:
         from rapidocr import RapidOCR
 
-        engine = RapidOCR()
+        engine = RapidOCR(params={
+            "EngineConfig.onnxruntime.intra_op_num_threads": 1,
+            "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+            "Rec.rec_batch_num": 4,
+            "Cls.cls_batch_num": 4,
+            "Global.log_level": "warning",
+        })
         _OCR_THREAD_LOCAL.engine = engine
     return engine
 

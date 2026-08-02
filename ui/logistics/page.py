@@ -27,6 +27,7 @@ from automation.production import (
 from automation.logistics.label_cache import (
     cached_label_content as _cached_label_content,
     cached_label_fields as _cached_label_fields,
+    get_cached_label_fields,
 )
 from utils.auth import has_permission
 from ui.logistics.tracking_lookup import render_tracking_lookup
@@ -40,7 +41,7 @@ ORDER_STAGES = {
     "生产中": 2,
     "已完成/已发货": 6,
 }
-LABEL_OCR_CACHE_VERSION = 2
+LABEL_OCR_CACHE_VERSION = 3
 def render_logistics_page(supabase):
     st.title("物流订单核查")
     st.caption(
@@ -290,57 +291,50 @@ def _apply_erp_label_ocr(reviewed, source):
     for item in candidates:
         row = item["row"]
         label_url = row.get("label_url") or row.get("backup_label_url")
-        if label_url not in cache:
+        if label_url in cache:
+            continue
+        fields = get_cached_label_fields(label_url)
+        if fields is not None:
+            cache[label_url] = {"fields": fields, "error": "", "stage": ""}
+        else:
             pending[label_url] = item
     completed = 0
-    downloaded = {}
+    downloaded_count = 0
     if pending:
         stage_message.info(
             f"{source}：缓存命中 {len(candidates) - len(pending):,} 张；"
-            f"正在并发下载 {len(pending):,} 张面单（最多8线程）……"
+            f"正在分批下载并识别 {len(pending):,} 张面单"
+            f"（下载最多4线程，OCR单线程安全模式）……"
         )
-        with ThreadPoolExecutor(max_workers=min(8, len(pending))) as executor:
-            futures = {
-                executor.submit(_cached_label_content, label_url): label_url
-                for label_url in pending
-            }
-            for future in as_completed(futures):
-                label_url = futures[future]
-                try:
-                    downloaded[label_url] = future.result()
-                except Exception as error:
-                    cache[label_url] = {
-                        "fields": {}, "error": str(error), "stage": "下载",
-                    }
-                completed += 1
-                progress.progress(0.5 * completed / len(pending))
-    if downloaded:
-        stage_message.info(
-            f"{source}：面单下载完成，正在并发OCR分析 "
-            f"{len(downloaded):,} 张（最多2线程）……"
-        )
-        ocr_completed = 0
-        with ThreadPoolExecutor(max_workers=min(2, len(downloaded))) as executor:
-            futures = {
-                executor.submit(
-                    _cached_label_fields, label_url, content
-                ): label_url
-                for label_url, content in downloaded.items()
-            }
-            for future in as_completed(futures):
-                label_url = futures[future]
-                try:
-                    cache[label_url] = {
-                        "fields": future.result(), "error": "", "stage": "",
-                    }
-                except Exception as error:
-                    cache[label_url] = {
-                        "fields": {}, "error": str(error), "stage": "OCR",
-                    }
-                ocr_completed += 1
-                progress.progress(
-                    0.5 + 0.5 * ocr_completed / len(downloaded)
-                )
+        pending_urls = list(pending)
+        batch_size = 8
+        for start in range(0, len(pending_urls), batch_size):
+            batch = pending_urls[start:start + batch_size]
+            with ThreadPoolExecutor(max_workers=min(4, len(batch))) as executor:
+                futures = {
+                    executor.submit(_cached_label_content, label_url): label_url
+                    for label_url in batch
+                }
+                for future in as_completed(futures):
+                    label_url = futures[future]
+                    try:
+                        content = future.result()
+                        downloaded_count += 1
+                        cache[label_url] = {
+                            "fields": _cached_label_fields(label_url, content),
+                            "error": "", "stage": "",
+                        }
+                    except Exception as error:
+                        stage = "下载" if future.exception() else "OCR"
+                        cache[label_url] = {
+                            "fields": {}, "error": str(error), "stage": stage,
+                        }
+                    completed += 1
+                    progress.progress(completed / len(pending))
+                    stage_message.info(
+                        f"{source}：已处理 {completed:,}/{len(pending):,} 张｜"
+                        "下载最多4线程｜OCR单线程安全模式"
+                    )
     for item in candidates:
         row = item["row"]
         label_url = row.get("label_url") or row.get("backup_label_url")
@@ -387,7 +381,7 @@ def _apply_erp_label_ocr(reviewed, source):
         "available": len(candidates),
         "missing": len(target_rows) - len(candidates),
         "cache_hits": len(candidates) - len(pending),
-        "downloaded": len(downloaded),
+        "downloaded": downloaded_count,
         "address_ok": address_ok,
         "weight_ok": weight_ok,
         "failed": failed,

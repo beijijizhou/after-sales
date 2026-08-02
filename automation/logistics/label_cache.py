@@ -9,7 +9,7 @@ from automation.logistics.label_ocr import (
 
 
 LABEL_CACHE_TTL_SECONDS = 24 * 60 * 60
-_CONTENT_CACHE = TTLCache(maxsize=2000, ttl=LABEL_CACHE_TTL_SECONDS)
+_CONTENT_CACHE = TTLCache(maxsize=32, ttl=LABEL_CACHE_TTL_SECONDS)
 _FIELDS_CACHE = TTLCache(maxsize=2000, ttl=LABEL_CACHE_TTL_SECONDS)
 _CACHE_LOCK = RLock()
 
@@ -34,6 +34,11 @@ def cached_label_fields(label_url, content):
     with _CACHE_LOCK:
         _FIELDS_CACHE[label_url] = fields
     return fields
+
+
+def get_cached_label_fields(label_url):
+    with _CACHE_LOCK:
+        return _FIELDS_CACHE.get(label_url)
 
 
 def clear_label_cache():
