@@ -10,7 +10,21 @@ PENDING_COOKIE_ACTION = "pending_auth_cookie_action"
 
 
 def read_auth_cookie():
-    return st.context.cookies.get(AUTH_COOKIE_NAME)
+    manager = stx.CookieManager(key="auth_cookie_reader")
+    value = None
+    try:
+        value = manager.get(AUTH_COOKIE_NAME)
+    except Exception:
+        value = None
+    if value:
+        return value
+    try:
+        cookies = manager.get_all() or {}
+    except Exception:
+        cookies = {}
+    return cookies.get(AUTH_COOKIE_NAME) or st.context.cookies.get(
+        AUTH_COOKIE_NAME
+    )
 
 
 def queue_auth_cookie(token):
@@ -35,17 +49,17 @@ def render_pending_auth_cookie():
 
 
 def _write_auth_cookie(token):
-    manager = stx.CookieManager(key="auth_cookie_writer")
+    manager = stx.CookieManager(key="auth_cookie_manager")
     manager.set(
         AUTH_COOKIE_NAME,
         token,
         key="set_after_sales_auth",
         path="/",
         expires_at=datetime.now() + timedelta(days=COOKIE_LIFETIME_DAYS),
-        same_site="strict",
+        same_site="lax",
     )
 
 
 def _delete_auth_cookie():
-    manager = stx.CookieManager(key="auth_cookie_deleter")
+    manager = stx.CookieManager(key="auth_cookie_manager")
     manager.delete(AUTH_COOKIE_NAME, key="delete_after_sales_auth")
