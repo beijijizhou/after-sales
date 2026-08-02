@@ -33,15 +33,19 @@ def download_label_content(label_url, timeout=30):
 
 
 def extract_label_content_fields(content):
-    lines = ocr_pdf_lines(content)
-    parsed = parse_usps_label_lines(lines)
+    try:
+        parsed = parse_usps_label_lines(
+            ocr_pdf_lines(content, crop_ratio=0.62)
+        )
+    except ValueError:
+        parsed = parse_usps_label_lines(ocr_pdf_lines(content))
     return {
         **parsed,
         "label_content_hash": hashlib.sha256(content).hexdigest(),
     }
 
 
-def ocr_pdf_lines(content):
+def ocr_pdf_lines(content, crop_ratio=None):
     import numpy as np
     import pypdfium2 as pdfium
 
@@ -49,9 +53,13 @@ def ocr_pdf_lines(content):
     try:
         if len(document) < 1:
             raise ValueError("面单PDF没有页面")
-        image = document[0].render(scale=2.5).to_pil().convert("RGB")
+        image = document[0].render(scale=2.25).to_pil().convert("RGB")
     finally:
         document.close()
+    if crop_ratio:
+        image = image.crop((
+            0, 0, image.width, int(image.height * crop_ratio)
+        ))
     result = _ocr_engine()(np.asarray(image))
     if not result or not result.txts:
         raise ValueError("OCR没有识别到面单文字")

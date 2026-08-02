@@ -212,6 +212,22 @@ class LogisticsTrackingTests(unittest.TestCase):
 
         self.assertEqual(fields["extracted_state"], "NY")
         self.assertEqual(fields["extracted_weight_oz"], 4)
+        ocr_lines.assert_called_once_with(b"pdf-content", crop_ratio=0.62)
+
+    @patch("automation.logistics.label_ocr.ocr_pdf_lines")
+    def test_label_ocr_falls_back_to_full_page_when_crop_misses(self, ocr_lines):
+        good_lines = [
+            {"text": "25 RYANIC RD", "score": 0.98, "x": 1, "y": 1},
+            {"text": "HEWLETT NY 11557", "score": 0.99, "x": 1, "y": 2},
+            {"text": "0 LB 4 OZ", "score": 0.97, "x": 1, "y": 3},
+        ]
+        ocr_lines.side_effect = [[], good_lines]
+
+        fields = extract_label_content_fields(b"pdf-content")
+
+        self.assertEqual(fields["extracted_weight_oz"], 4)
+        self.assertEqual(ocr_lines.call_count, 2)
+        self.assertEqual(ocr_lines.call_args_list[1].args, (b"pdf-content",))
 
     def test_customer_can_paste_excel_cells_into_fixed_table(self):
         rows, issues = parse_logistics_frame(pd.DataFrame([

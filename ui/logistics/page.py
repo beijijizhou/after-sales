@@ -42,7 +42,7 @@ ORDER_STAGES = {
     "生产中": 2,
     "已完成/已发货": 6,
 }
-LABEL_OCR_CACHE_VERSION = 3
+LABEL_OCR_CACHE_VERSION = 4
 def render_logistics_page(supabase):
     st.title("物流订单核查")
     st.caption(
