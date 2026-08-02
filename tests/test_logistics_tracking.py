@@ -36,6 +36,7 @@ from automation.logistics.diy19 import (
     _normalize_record as _normalize_diy19_record,
 )
 from db.logistics.repository import _merge_shipment_rows
+from db.logistics.usps_usage import record_usps_usage
 from ui.logistics.page import (
     _cached_label_content,
     _carrier_filter_name,
@@ -73,6 +74,19 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_usps_usage_event_records_user_without_tenant_code(self):
+        supabase = Mock()
+        execute = (
+            supabase.table.return_value.insert.return_value.execute
+        )
+        execute.return_value.data = [{"id": "usage-1"}]
+
+        record_usps_usage(supabase, 10, 1, 9, 1, "Andy")
+
+        payload = supabase.table.return_value.insert.call_args.args[0]
+        self.assertEqual(payload["created_by"], "Andy")
+        self.assertNotIn("tenant_code", payload)
+
     def test_usps_usage_uses_official_baseline_and_daily_query_counts(self):
         events = pd.DataFrame([
             {

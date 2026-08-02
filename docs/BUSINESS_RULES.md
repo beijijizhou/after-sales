@@ -126,7 +126,8 @@
   refresh.
 - Record USPS usage separately from provider responses. Each live query event
   stores the submitted tracking-number count, HTTP batch count, success/failure
-  totals, operator, and New York reporting day. Display today's usage, the
+  totals, querying user, and New York reporting day. USPS usage events do not
+  use a tenant placeholder; `created_by` identifies the user. Display today's usage, the
   current month's calibrated usage, remaining monthly allowance, percentage,
   and daily detail. The default monthly allowance is 100,000 and may be
   overridden per environment; an authorized user calibrates it against the

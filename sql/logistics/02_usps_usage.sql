@@ -2,7 +2,6 @@ begin;
 
 create table if not exists public.logistics_usps_usage_events (
     id uuid primary key default gen_random_uuid(),
-    tenant_code text not null default 'default',
     event_type text not null default 'query'
         check (event_type in ('query', 'baseline')),
     tracking_count integer not null default 0 check (tracking_count >= 0),
@@ -14,9 +13,15 @@ create table if not exists public.logistics_usps_usage_events (
     created_at timestamptz not null default now()
 );
 
-create index if not exists logistics_usps_usage_month_idx
-    on public.logistics_usps_usage_events (
-        tenant_code, created_at desc
-    );
+drop index if exists public.logistics_usps_usage_month_idx;
+
+alter table public.logistics_usps_usage_events
+    drop column if exists tenant_code;
+
+create index if not exists logistics_usps_usage_created_idx
+    on public.logistics_usps_usage_events (created_at desc);
+
+create index if not exists logistics_usps_usage_user_idx
+    on public.logistics_usps_usage_events (created_by, created_at desc);
 
 commit;
