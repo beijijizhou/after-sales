@@ -35,6 +35,7 @@ from ui.logistics.page import (
     _default_logistics_platforms,
     _is_target_usps_review,
     _order_tracking_pairs,
+    _ocr_address,
 )
 from ui.logistics.tracking_lookup import (
     _merge_label_details,
@@ -103,6 +104,28 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(rows[0]["物流单号"], "92001")
         self.assertEqual(rows[0]["面单PDF"], "http://labels.test/92001.pdf")
         self.assertEqual(rows[0]["ERP平台"], "七创")
+
+    def test_erp_candidate_preserves_existing_ocr_result(self):
+        pairs = _order_tracking_pairs([{
+            "external_order_id": "PO-1",
+            "tracking_number": "92001",
+            "label_url": "http://labels.test/92001.pdf",
+            "ocr_address": "25 RYANIC RD HEWLETT NY 11557",
+            "ocr_weight_oz": 4,
+            "ocr_status": "已识别",
+        }])
+
+        self.assertEqual(pairs[0]["面单OCR地址"], "25 RYANIC RD HEWLETT NY 11557")
+        self.assertEqual(pairs[0]["重量（oz）"], 4)
+        self.assertEqual(pairs[0]["OCR状态"], "已识别")
+
+    def test_ocr_address_joins_return_address_fields(self):
+        self.assertEqual(_ocr_address({
+            "extracted_street": "25 RYANIC RD",
+            "extracted_city": "HEWLETT",
+            "extracted_state": "NY",
+            "extracted_postal_code": "11557",
+        }), "25 RYANIC RD HEWLETT NY 11557")
 
     def test_live_ocr_result_exposes_address_weight_and_label(self):
         row = _live_label_row("92001", "http://labels.test/92001.pdf", {

@@ -119,19 +119,33 @@ def _extract_live_label_details(context):
     if context.empty or "物流单号" not in context:
         return pd.DataFrame()
     candidates = []
+    rows = []
     seen = set()
     for row in context.to_dict("records"):
         tracking_number = str(row.get("物流单号") or "").strip()
         label_url = row.get("面单PDF") or row.get("备用面单PDF")
+        prior_status = str(row.get("OCR状态") or "").strip()
+        if tracking_number and prior_status:
+            rows.append({
+                "tracking_number": tracking_number,
+                "发货地址": row.get("面单OCR地址") or "无法获取",
+                "面单OCR地址": row.get("面单OCR地址") or "",
+                "重量（oz）": row.get("重量（oz）"),
+                "地址来源": "平台面单PDF（OCR）",
+                "地址获取状态": prior_status,
+                "无法获取原因": "" if row.get("面单OCR地址") else prior_status,
+                "面单PDF": label_url,
+            })
+            seen.add(tracking_number)
+            continue
         if tracking_number and label_url and tracking_number not in seen:
             candidates.append((tracking_number, str(label_url)))
             seen.add(tracking_number)
     if not candidates:
-        return pd.DataFrame()
+        return pd.DataFrame(rows)
 
     st.caption(f"正在OCR分析 {len(candidates):,} 张可下载面单……")
     progress = st.progress(0)
-    rows = []
     for index, (tracking_number, label_url) in enumerate(candidates, start=1):
         try:
             fields = extract_label_fields(label_url)
@@ -506,6 +520,9 @@ def normalize_suggested_rows(values):
                 "面单PDF": value.get("面单PDF"),
                 "备用面单PDF": value.get("备用面单PDF"),
                 "ERP平台": value.get("ERP平台", ""),
+                "面单OCR地址": value.get("面单OCR地址", ""),
+                "重量（oz）": value.get("重量（oz）"),
+                "OCR状态": value.get("OCR状态", ""),
             })
         else:
             rows.append({"订单号": "", "物流单号": str(value or "").strip()})

@@ -23,6 +23,7 @@ from automation.production import (
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
 )
+from automation.logistics.label_ocr import extract_label_fields
 from utils.auth import has_permission
 from ui.logistics.tracking_lookup import render_tracking_lookup
 
@@ -116,6 +117,8 @@ def _render_erp_sync(supabase):
                 row["local_acceptance_status"] = stage
                 row["department"] = department
             reviewed = _classify_carrier_rows(rows)
+            if source in {"七创", "一朵云"}:
+                _apply_erp_label_ocr(reviewed, source)
             carrier_review_rows.extend(reviewed)
             usps_rows = [
                 item["row"] for item in reviewed
@@ -203,6 +206,9 @@ def _order_tracking_pairs(rows):
             "面单PDF": row.get("label_url"),
             "备用面单PDF": row.get("backup_label_url"),
             "ERP平台": row.get("erp_platform"),
+            "面单OCR地址": row.get("ocr_address"),
+            "重量（oz）": row.get("ocr_weight_oz"),
+            "OCR状态": row.get("ocr_status"),
         }
         pair.update({key: value for key, value in optional.items() if value})
         identity = (pair["订单号"], pair["物流单号"])
@@ -233,9 +239,58 @@ def _classify_carrier_rows(rows):
             "实际揽收方": usps_pickup_name(usps_subtype),
             "面单": row.get("label_url"),
             "备用面单": row.get("backup_label_url"),
+            "OCR寄件地址": row.get("ocr_address", ""),
+            "OCR重量（oz）": row.get("ocr_weight_oz"),
+            "OCR状态": row.get("ocr_status", ""),
             "row": row,
         })
     return reviewed
+
+
+def _apply_erp_label_ocr(reviewed, source):
+    candidates = [
+        item for item in reviewed
+        if _is_target_usps_review(item)
+        and (item["row"].get("label_url") or item["row"].get("backup_label_url"))
+    ]
+    if not candidates:
+        return
+    st.caption(f"{source}：正在OCR分析 {len(candidates):,} 张普通USPS面单")
+    progress = st.progress(0)
+    cache = dict(st.session_state.get("logistics_label_ocr_cache", {}))
+    for index, item in enumerate(candidates, start=1):
+        row = item["row"]
+        label_url = row.get("label_url") or row.get("backup_label_url")
+        cached = cache.get(label_url)
+        if cached is None:
+            try:
+                cached = {"fields": extract_label_fields(label_url), "error": ""}
+            except Exception as error:
+                cached = {"fields": {}, "error": str(error)}
+            cache[label_url] = cached
+        fields = cached.get("fields") or {}
+        address = _ocr_address(fields)
+        status = (
+            "已识别"
+            if address
+            else f"识别失败：{cached.get('error') or '未找到寄件地址'}"
+        )
+        row["ocr_address"] = address
+        row["ocr_weight_oz"] = fields.get("extracted_weight_oz")
+        row["ocr_status"] = status
+        item["OCR寄件地址"] = address
+        item["OCR重量（oz）"] = fields.get("extracted_weight_oz")
+        item["OCR状态"] = status
+        progress.progress(index / len(candidates))
+    st.session_state["logistics_label_ocr_cache"] = cache
+    progress.empty()
+
+
+def _ocr_address(fields):
+    return " ".join(str(fields.get(field) or "").strip() for field in (
+        "extracted_street", "extracted_city", "extracted_state",
+        "extracted_postal_code",
+    )).strip()
 
 
 def _is_target_usps_review(item):
