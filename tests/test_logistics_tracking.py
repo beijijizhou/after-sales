@@ -20,6 +20,7 @@ from automation.logistics.s2b_workbook import parse_s2b_logistics_frame
 from automation.logistics.usps import USPSClient, classify_usps_response
 from automation.logistics.label_ocr import parse_usps_label_lines
 from automation.logistics.label_ocr import extract_label_content_fields
+from automation.logistics.label_cache import clear_label_cache
 from automation.logistics.sds import _qa_token
 from automation.logistics.imports import (
     parse_logistics_frame,
@@ -71,9 +72,9 @@ class LogisticsTrackingTests(unittest.TestCase):
         }), "USPS")
 
     def test_label_download_is_reused_from_server_cache(self):
-        _cached_label_content.clear()
+        clear_label_cache()
         with patch(
-            "ui.logistics.page.download_label_content",
+            "automation.logistics.label_cache.download_label_content",
             return_value=b"label-pdf",
         ) as download:
             first = _cached_label_content("http://labels.test/92001.pdf")
@@ -444,8 +445,14 @@ class LogisticsTrackingTests(unittest.TestCase):
 
     def test_logistics_platform_default_reuses_department_platforms(self):
         self.assertEqual(
+            _default_logistics_platforms(("汉森", "S2B", "SDS2")),
+            ["S2B"],
+        )
+
+    def test_logistics_platform_default_falls_back_when_s2b_is_unavailable(self):
+        self.assertEqual(
             _default_logistics_platforms(("汉森", "SDS1", "SDS2")),
-            ["SDS2"],
+            ["SDS1"],
         )
 
     def test_live_usps_workflow_does_not_require_database_rows(self):

@@ -24,9 +24,9 @@ from automation.production import (
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
 )
-from automation.logistics.label_ocr import (
-    download_label_content,
-    extract_label_content_fields,
+from automation.logistics.label_cache import (
+    cached_label_content as _cached_label_content,
+    cached_label_fields as _cached_label_fields,
 )
 from utils.auth import has_permission
 from ui.logistics.tracking_lookup import render_tracking_lookup
@@ -40,23 +40,7 @@ ORDER_STAGES = {
     "生产中": 2,
     "已完成/已发货": 6,
 }
-LABEL_CACHE_TTL_SECONDS = 24 * 60 * 60
-
-
-@st.cache_data(
-    ttl=LABEL_CACHE_TTL_SECONDS, max_entries=2000, show_spinner=False,
-)
-def _cached_label_content(label_url):
-    return download_label_content(label_url)
-
-
-@st.cache_data(
-    ttl=LABEL_CACHE_TTL_SECONDS, max_entries=2000, show_spinner=False,
-)
-def _cached_label_fields(label_url, _content):
-    return extract_label_content_fields(_content)
-
-
+LABEL_OCR_CACHE_VERSION = 2
 def render_logistics_page(supabase):
     st.title("物流订单核查")
     st.caption(
@@ -296,7 +280,12 @@ def _apply_erp_label_ocr(reviewed, source):
         f"可下载面单 {len(candidates):,} 张。正在检查缓存……"
     )
     progress = st.progress(0)
-    cache = dict(st.session_state.get("logistics_label_ocr_cache", {}))
+    if st.session_state.get("logistics_label_ocr_cache_version") == (
+        LABEL_OCR_CACHE_VERSION
+    ):
+        cache = dict(st.session_state.get("logistics_label_ocr_cache", {}))
+    else:
+        cache = {}
     pending = {}
     for item in candidates:
         row = item["row"]
@@ -384,6 +373,9 @@ def _apply_erp_label_ocr(reviewed, source):
         item["OCR状态"] = status
     progress.progress(1.0)
     st.session_state["logistics_label_ocr_cache"] = cache
+    st.session_state["logistics_label_ocr_cache_version"] = (
+        LABEL_OCR_CACHE_VERSION
+    )
     progress.empty()
     address_ok = sum(bool(item["row"].get("ocr_address")) for item in candidates)
     weight_ok = sum(
@@ -401,6 +393,13 @@ def _apply_erp_label_ocr(reviewed, source):
         "failed": failed,
     }
     stage_message.success(f"{source}：{_ocr_summary_text(summary)}")
+    reasons = _ocr_failure_reasons(candidates, cache)
+    if reasons:
+        st.warning(
+            f"{source} OCR失败原因：" + "；".join(
+                f"{reason}（{count:,}张）" for reason, count in reasons
+            )
+        )
     return summary
 
 
@@ -414,6 +413,21 @@ def _ocr_summary_text(summary):
         f"重量成功 {summary['weight_ok']:,}｜"
         f"失败 {summary['failed']:,}"
     )
+
+
+def _ocr_failure_reasons(candidates, cache):
+    counts = {}
+    for item in candidates:
+        row = item["row"]
+        label_url = row.get("label_url") or row.get("backup_label_url")
+        cached = cache.get(label_url) or {}
+        if row.get("ocr_address"):
+            continue
+        stage = cached.get("stage") or "OCR"
+        detail = str(cached.get("error") or "未找到寄件地址").strip()
+        reason = f"{stage}失败：{detail}"[:180]
+        counts[reason] = counts.get(reason, 0) + 1
+    return sorted(counts.items(), key=lambda item: item[1], reverse=True)[:3]
 
 
 def _ocr_address(fields):
@@ -499,8 +513,8 @@ def _carrier_filter_name(row):
 
 
 def _default_logistics_platforms(platforms):
-    if "SDS2" in platforms:
-        return ["SDS2"]
+    if "S2B" in platforms:
+        return ["S2B"]
     return [
         platform for platform in platforms
         if platform in LOGISTICS_CONNECTED_PLATFORMS
