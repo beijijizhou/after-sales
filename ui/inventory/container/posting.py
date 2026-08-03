@@ -91,21 +91,33 @@ def render_pending_container_posting(supabase, raw_df):
     auto_save_container_costs(
         supabase, raw_df, container_key, edited_detail_df
     )
+    render_container_posting_action(
+        supabase, target, container_key, key_prefix="pending_container"
+    )
+
+
+def render_container_posting_action(
+    supabase, target, container_key, key_prefix="container_posting",
+):
+    if target.empty:
+        return
     if not has_permission("can_edit_container"):
         st.info("当前账号可以查看，但不能确认入库")
         return
 
     note = st.text_input(
         "入库备注",
-        key=f"container_posting_note_{container_key}",
+        key=f"{key_prefix}_note_{container_key}",
     )
-    total = int(pd.to_numeric(target["quantity"]).sum())
+    total = int(
+        pd.to_numeric(target["quantity"], errors="coerce").fillna(0).sum()
+    )
     st.warning(f"确认后库存将增加 {total:,} 件")
     if not st.button(
         "确认入库",
         type="primary",
         width="stretch",
-        key=f"post_container_{container_key}",
+        key=f"{key_prefix}_post_{container_key}",
     ):
         return
     try:

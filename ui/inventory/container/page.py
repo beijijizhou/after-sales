@@ -109,10 +109,13 @@ def render_in_transit_table(
     if view == "在途列表":
         render_arrival_alerts(progress_df)
         selection_df = progress_df.drop(columns=["货柜记录ID"])
-        st.dataframe(
+        selected = st.dataframe(
             selection_df,
             hide_index=True,
             width="stretch",
+            on_select="rerun",
+            selection_mode="single-row",
+            key="transit_container_list_selection",
             column_config={
                 "发货日期": st.column_config.DateColumn("发货日期"),
                 "预计到货日期": st.column_config.DateColumn("预计到货日期"),
@@ -132,6 +135,14 @@ def render_in_transit_table(
                 ),
             },
         )
+        if selected.selection.rows:
+            selected_index = selected.selection.rows[0]
+            container_key = progress_df.iloc[selected_index]["货柜记录ID"]
+            _render_transit_container_operation(
+                supabase, raw_df, container_key
+            )
+        else:
+            st.caption("点选一行即可查看明细、确认到柜或直接入库。")
     elif view == "筛选汇总":
         render_filtered_container_summary(raw_df)
     else:
@@ -149,24 +160,32 @@ def render_in_transit_table(
             ),
         )
         if container_key:
-            target_raw_df = raw_df[raw_df["container_key"] == container_key]
-            target_display_df = build_container_display(
-                target_raw_df,
-                include_cost=has_permission("can_view_cost"),
+            _render_transit_container_operation(
+                supabase, raw_df, container_key
             )
-            render_container_detail(
-                target_display_df,
-                container_key,
-                editable_cost=False,
-                show_items=False,
-            )
-            render_container_item_editor(
-                supabase, target_raw_df, container_key,
-                has_permission("can_edit_container"),
-            )
-            if has_permission("can_edit_container"):
-                render_status_update(supabase, raw_df, container_key)
     return raw_df
+
+
+def _render_transit_container_operation(supabase, raw_df, container_key):
+    target_raw_df = raw_df[raw_df["container_key"] == container_key]
+    target_display_df = build_container_display(
+        target_raw_df,
+        include_cost=has_permission("can_view_cost"),
+    )
+    render_container_detail(
+        target_display_df,
+        container_key,
+        editable_cost=False,
+        show_items=False,
+    )
+    can_edit = has_permission("can_edit_container")
+    render_container_item_editor(
+        supabase, target_raw_df, container_key, can_edit,
+    )
+    if can_edit:
+        render_status_update(supabase, target_raw_df, container_key)
+    else:
+        st.info("当前账号可以查看货柜，但不能确认到柜或入库")
 
 
 def render_inventory_container_page(supabase):

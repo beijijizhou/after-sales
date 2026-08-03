@@ -36,7 +36,9 @@ def build_container_choices(raw_df, allowed_statuses=None):
     return choices, labels
 
 
-def render_status_update(supabase, raw_df, container_key):
+def render_status_update(
+    supabase, raw_df, container_key, key_prefix="container_status",
+):
     if not container_key or raw_df.empty:
         return
     target = raw_df[
@@ -57,18 +59,21 @@ def render_status_update(supabase, raw_df, container_key):
     arrival_date = st.date_input(
         "确认到柜日期",
         value=expected_date,
-        key=f"container_status_date_{container_key}",
+        key=f"{key_prefix}_date_{container_key}",
     )
     note = st.text_input(
         "备注",
-        key=f"container_status_note_{container_key}",
+        key=f"{key_prefix}_note_{container_key}",
     )
     st.caption(
         "日期可以是明天或后天。点击后货柜进入“已到柜”，"
         "下一步确认入库；直接入库会自动同时记录当天到柜。"
     )
     arrival_col, post_col = st.columns(2)
-    if arrival_col.button("确认到柜", width="stretch"):
+    if arrival_col.button(
+        "确认到柜", width="stretch",
+        key=f"{key_prefix}_arrival_{container_key}",
+    ):
         try:
             confirm_container_arrival_date(
                 supabase,
@@ -87,6 +92,7 @@ def render_status_update(supabase, raw_df, container_key):
         "到柜并直接入库",
         type="primary",
         width="stretch",
+        key=f"{key_prefix}_direct_post_{container_key}",
     ):
         try:
             post_container_inventory(

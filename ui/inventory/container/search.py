@@ -7,8 +7,13 @@ from db.inventory.container.history import (
 )
 from db.inventory.container.repository import load_container_search_records
 from db.inventory.container.tables import build_container_display
+from ui.inventory.container.events import render_status_update
+from ui.inventory.container.posting import render_container_posting_action
 from ui.inventory.container.tables import render_container_detail
 from utils.auth import has_permission
+
+
+ARRIVAL_STATUSES = {"未到货", "延迟", "在途"}
 
 
 def build_container_search_choices(raw_df):
@@ -67,11 +72,51 @@ def render_container_search(supabase):
         ),
         container_key,
     )
+    _render_search_action(supabase, target, container_key)
     _render_search_history(supabase, container_key)
 
 
 def _has_value(value):
     return value is not None and not pd.isna(value) and str(value).strip()
+
+
+def get_container_search_action(raw_df):
+    if raw_df.empty or "status" not in raw_df.columns:
+        return None
+    statuses = set(
+        raw_df["status"].fillna("").astype(str).str.strip()
+    ) - {""}
+    if statuses and statuses.issubset(ARRIVAL_STATUSES):
+        return "arrival"
+    if statuses == {"已到柜"}:
+        return "posting"
+    if statuses.issubset({"已入库", "已到货"}) and statuses:
+        return "completed"
+    return "inconsistent"
+
+
+def _render_search_action(supabase, target, container_key):
+    action = get_container_search_action(target)
+    if action == "completed":
+        st.success("这个货柜已经完成入库")
+        return
+    if action == "inconsistent":
+        st.warning("这个货柜的明细状态不一致，请先核对货柜数据。")
+        return
+    if not has_permission("can_edit_container"):
+        st.info("当前账号可以查看货柜，但不能确认到柜或入库")
+        return
+    if action == "arrival":
+        render_status_update(
+            supabase, target, container_key,
+            key_prefix="container_search_status",
+        )
+    elif action == "posting":
+        st.subheader("确认入库")
+        render_container_posting_action(
+            supabase, target, container_key,
+            key_prefix="container_search_posting",
+        )
 
 
 def _render_search_history(supabase, container_key):
