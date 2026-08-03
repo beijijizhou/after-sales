@@ -2,12 +2,28 @@ import unittest
 from datetime import date
 
 from ui.inventory.container.week import (
+    merge_current_week_with_overdue,
     selected_week_bounds,
     week_bounds,
 )
+import pandas as pd
 
 
 class ContainerWeekTests(unittest.TestCase):
+    def test_current_week_includes_overdue_unconfirmed_containers(self):
+        current = pd.DataFrame([{
+            "id": "current", "container_key": "C2",
+            "expected_arrival_date": "2026-08-04",
+        }])
+        overdue = pd.DataFrame([{
+            "id": "overdue", "container_key": "C1",
+            "expected_arrival_date": "2026-07-28",
+        }])
+
+        result = merge_current_week_with_overdue(current, overdue)
+
+        self.assertEqual(set(result["container_key"]), {"C1", "C2"})
+
     def test_current_week_starts_today(self):
         today = date(2026, 7, 30)
         current_start, current_end = week_bounds(today)

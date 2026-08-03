@@ -68,6 +68,9 @@ def classify_usps_response(package, cache_hours=1):
         "has_postal_record": found,
         "has_pre_scan": found,
         "response_payload": package,
+        "error_code": str(
+            package.get("errorCode") or package.get("error_code") or ""
+        ),
         "cache_expires_at": (
             datetime.now(timezone.utc) + timedelta(hours=cache_hours)
         ).isoformat(),

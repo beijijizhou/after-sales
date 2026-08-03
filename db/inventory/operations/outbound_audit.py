@@ -3,6 +3,11 @@ from datetime import timedelta
 
 import pandas as pd
 
+from db.inventory.operations.adjustments import (
+    apply_adjustment_rows,
+    reverse_inventory_batch,
+)
+
 
 DAILY_OUTBOUND_REASONS = [
     "仓库每日出货",
@@ -81,6 +86,97 @@ def load_outbound_inventory(supabase, department, category):
         or []
     )
     return pd.DataFrame(rows)
+
+
+def load_daily_outbound_batch(supabase, batch_id):
+    rows = (
+        supabase.table("inventory_movements")
+        .select(
+            "batch_id,movement_date,department,category,brand,material,"
+            "color,size,quantity_change,reason"
+        )
+        .eq("batch_id", str(batch_id))
+        .execute()
+        .data
+        or []
+    )
+    return pd.DataFrame(rows)
+
+
+def build_daily_outbound_edit_rows(batch_df):
+    if batch_df is None or batch_df.empty:
+        return pd.DataFrame()
+    result = batch_df.rename(columns={
+        "movement_date": "日期", "brand": "品牌",
+        "material": "材质", "color": "颜色", "size": "尺码",
+    }).copy()
+    result["日期"] = pd.to_datetime(
+        result["日期"], errors="coerce"
+    ).dt.date
+    result["操作"] = "扣减"
+    result["数量"] = pd.to_numeric(
+        result["quantity_change"], errors="coerce"
+    ).fillna(0).abs().astype(int)
+    result["成本"] = pd.NA
+    result["备注"] = "仓库每日出货"
+    return result[[
+        "日期", "操作", "品牌", "材质", "颜色", "尺码",
+        "数量", "成本", "备注",
+    ]]
+
+
+def build_replacement_inventory(current_inventory, original_batch):
+    inventory = current_inventory.copy()
+    if inventory.empty:
+        return inventory
+    for column in ["brand", "material", "color", "size"]:
+        inventory[column] = (
+            inventory[column].fillna("").astype(str).str.strip()
+        )
+    inventory["size"] = inventory["size"].str.upper()
+    inventory["quantity"] = pd.to_numeric(
+        inventory["quantity"], errors="coerce"
+    ).fillna(0).astype(int)
+    original = build_daily_outbound_edit_rows(original_batch)
+    for row in original.to_dict("records"):
+        matches = (
+            (inventory["brand"] == str(row["品牌"]).strip())
+            & (inventory["material"] == str(row["材质"]).strip())
+            & (inventory["color"] == str(row["颜色"]).strip())
+            & (inventory["size"] == str(row["尺码"]).strip().upper())
+        )
+        inventory.loc[matches, "quantity"] += int(row["数量"])
+    return inventory
+
+
+def replace_daily_outbound_batch(
+    supabase, original_batch_id, department, category,
+    original_batch_df, replacement_df, created_by,
+):
+    original_rows = build_daily_outbound_edit_rows(original_batch_df)
+    reverse_inventory_batch(
+        supabase, original_batch_id, department, category, created_by
+    )
+    try:
+        replacement_batch_id = apply_adjustment_rows(
+            supabase, department, category, replacement_df,
+            created_by, source_type="daily_outbound",
+        )
+    except Exception as replacement_error:
+        try:
+            apply_adjustment_rows(
+                supabase, department, category, original_rows,
+                created_by, source_type="daily_outbound",
+            )
+        except Exception as restore_error:
+            raise RuntimeError(
+                "修正版保存失败，且原数据自动恢复失败："
+                f"{restore_error}"
+            ) from replacement_error
+        raise RuntimeError(
+            "修正版保存失败，原出库数据已自动恢复。"
+        ) from replacement_error
+    return replacement_batch_id
 
 
 def find_outbound_inventory_issues(expected_df, inventory_df):

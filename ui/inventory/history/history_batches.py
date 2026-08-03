@@ -198,6 +198,15 @@ def render_batch_selector(
         format_func=lambda value: labels.get(value, value),
         key=key,
     )
+    latest_batch = options[0]
+    if selected_batch != latest_batch:
+        st.warning(
+            "当前查看的是历史记录。最新记录："
+            f"{labels.get(latest_batch, latest_batch)}"
+        )
+        if st.button("查看最新记录", key=f"{key}_view_latest"):
+            st.session_state[key] = latest_batch
+            st.rerun()
     caption = (
         "输入时间｜导入日期｜部门/品类｜总计｜操作人"
         if sku_import else "输入时间｜类型｜出入库日期｜部门/品类｜总计｜操作人"

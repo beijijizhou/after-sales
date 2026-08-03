@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -43,7 +43,10 @@ from ui.inventory.container.today import (
     render_today_arrival_posting,
     render_today_arrivals,
 )
-from ui.inventory.container.week import render_week_selector
+from ui.inventory.container.week import (
+    merge_current_week_with_overdue,
+    render_week_selector,
+)
 from utils.auth import has_permission
 
 
@@ -58,14 +61,24 @@ def render_in_transit_table(
     st.caption(
         "选择货柜后可手动确认到柜日期，日期可以是明天或后天；"
         "也可以一键完成到柜和入库，系统仍会保留完整状态记录。"
+        "本周会持续包含尚未确认到柜的逾期货柜。"
     )
     try:
+        today = datetime.now(NY_TIMEZONE).date()
         raw_df = load_inventory_containers(
             supabase, start_date, end_date, department, category,
             statuses=["未到货", "延迟", "在途"],
             brands=brands, materials=materials, colors=colors, sizes=sizes,
         )
-        today = datetime.now(NY_TIMEZONE).date()
+        if start_date == today and end_date is not None:
+            overdue_df = load_inventory_containers(
+                supabase, None, today - timedelta(days=1),
+                department, category,
+                statuses=["未到货", "延迟", "在途"],
+                brands=brands, materials=materials, colors=colors,
+                sizes=sizes,
+            )
+            raw_df = merge_current_week_with_overdue(raw_df, overdue_df)
     except Exception as error:
         st.error(f"在途货柜加载失败：{error}")
         st.info("请先在 Supabase SQL Editor 运行 sql/inventory/containers/inventory_container_history.sql")

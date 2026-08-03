@@ -7,7 +7,8 @@ from utils.erp.hansen_styles import (
 COLOR_ALIASES = {
     "black": "黑", "黑色": "黑", "white": "白", "白色": "白",
     "red": "红色", "orange": "橙色", "tangerine": "橙色",
-    "橘色": "橙色", "yellow": "黄色", "green": "绿色",
+    "橘色": "橙色", "yellow": "黄色", "golden": "黄色",
+    "green": "绿色",
     "army green": "绿色", "mint green": "绿色",
     "blue": "蓝色", "sapphire blue": "蓝色",
     "blue-green": "TiffanyBlue", "blue green": "TiffanyBlue",

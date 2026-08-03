@@ -31,6 +31,8 @@ def fetch_s2b_pending_shipments(
             ORDERS_URL, headers=headers,
             json=_order_payload(page, status), timeout=30,
         )
+        if response.status_code in {401, 403}:
+            raise S2BAuthenticationError("S2B登录已失效")
         response.raise_for_status()
         body = response.json()
         message = str(body.get("message") or body.get("msg") or "")

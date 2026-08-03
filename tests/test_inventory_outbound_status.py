@@ -11,6 +11,7 @@ from db.inventory.operations.outbound_audit import (
     verify_outbound_batch,
 )
 from ui.inventory.history.history_tables import (
+    _format_signed_quantity,
     build_movement_detail_table,
 )
 from ui.inventory.history.history_filters import (
@@ -38,6 +39,11 @@ class BatchQueryStub:
 
 
 class OutboundStatusTests(unittest.TestCase):
+    def test_signed_quantity_format_does_not_mark_zero(self):
+        self.assertEqual(_format_signed_quantity(500), "+500")
+        self.assertEqual(_format_signed_quantity(-500), "-500")
+        self.assertEqual(_format_signed_quantity(0), "0")
+
     def test_daily_outbound_tab_is_only_available_for_dtf(self):
         self.assertIn("仓库每日出货", inventory_tab_keys("DTF"))
         self.assertNotIn("仓库每日出货", inventory_tab_keys("UV"))
@@ -216,7 +222,7 @@ class OutboundStatusTests(unittest.TestCase):
         self.assertEqual(len(mismatches), 2)
         self.assertEqual(set(mismatches["尺码"]), {"S", "M"})
 
-    def test_outbound_history_uses_positive_display_quantities(self):
+    def test_outbound_history_uses_signed_display_quantities(self):
         movements = pd.DataFrame([{
             "movement_date": "2026-07-28",
             "created_at": "2026-07-28T20:00:00+00:00",
@@ -236,10 +242,10 @@ class OutboundStatusTests(unittest.TestCase):
             movements, ["S", "M", "L"]
         )
 
-        self.assertEqual(result.iloc[0]["操作"], "扣减")
-        self.assertEqual(int(result.iloc[0]["S"]), 900)
+        self.assertEqual(result.iloc[0]["流水记录类型"], "🔴 出库")
+        self.assertEqual(int(result.iloc[0]["S"]), -900)
         self.assertEqual(int(result.iloc[0]["M"]), 0)
-        self.assertEqual(int(result.iloc[0]["合计"]), 900)
+        self.assertEqual(int(result.iloc[0]["合计"]), -900)
 
     def test_precheck_reports_missing_and_insufficient_skus(self):
         expected = pd.DataFrame([

@@ -3,6 +3,10 @@ from datetime import timedelta
 import streamlit as st
 
 from automation.production_reference import load_production_reference
+from automation.sync.dtf_colored_inventory import (
+    build_colored_forecast_usage,
+    load_colored_consumption_history,
+)
 from db.inventory.container.repository import load_inventory_containers
 from db.inventory.core.queries import load_recent_inventory_outbound
 from db.inventory.planning.incoming import (
@@ -44,11 +48,28 @@ def render_incoming_inventory_forecast(
             if system_usage.empty:
                 st.info(t("最近 14 天暂无已同步的 UV 每日消耗数据"))
                 return
+        elif department == "DTF" and category == "彩色短袖":
+            colored_model = load_colored_consumption_history(
+                supabase, today, LOOKBACK_DAYS
+            )
+            system_usage = build_colored_forecast_usage(colored_model)
+            if system_usage.empty:
+                st.info("最近 14 天暂无彩色短袖生产消耗数据")
+                return
+            effective_days = int(colored_model["有效天数"].max())
+            st.caption(
+                f"彩色短袖按最近 14 天中的 {effective_days} 个有效生产日计算日耗；"
+                "缺失平台仅提示，不停止货柜预测。"
+            )
         else:
             system_usage = normalize_forecast_usage(
                 forecast_usage_df, department, category
             )
-        if system_usage.empty and department != "UV":
+        if (
+            system_usage.empty
+            and department != "UV"
+            and category != "彩色短袖"
+        ):
             reference = load_production_reference(department, category)
             if not _render_reference_status(reference, today):
                 return

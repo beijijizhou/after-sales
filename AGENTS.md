@@ -1,12 +1,16 @@
 # After-Sales Project Guide
 
-Read only the documents needed for the current task:
+At the beginning of every new conversation, before inspecting code, designing
+changes, or performing project work, read every project-owned Markdown file
+tracked by Git. Discover the current list with `git ls-files '*.md'` so newly
+added documents are included automatically. This requirement covers project
+documentation such as `AGENTS.md`, `docs/`, module `README.md` files, asset
+instructions, automation instructions, and SQL instructions.
 
-- Engineering and UI work: `docs/PROJECT_RULES.md`
-- Inventory, production, access, and business semantics: `docs/BUSINESS_RULES.md`
-- Finding the active page and module: `docs/CURRENT_STATE.md`
-- Choosing verification depth and controlling execution cost:
-  `docs/WORKFLOW.md`
+Do not include Markdown files from dependencies, caches, generated outputs,
+virtual environments, or other untracked third-party directories. After the
+initial read, use the relevant documents throughout the conversation without
+re-reading all of them before every individual request.
 
 Default execution mode is **standard**:
 

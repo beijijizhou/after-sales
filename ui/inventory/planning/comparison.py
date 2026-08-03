@@ -37,6 +37,9 @@ from ui.inventory.i18n import t
 from ui.inventory.planning.accuracy import (
     render_model_accuracy_summary,
 )
+from ui.inventory.planning.colored_consumption import (
+    render_colored_consumption,
+)
 from utils.auth.session import (
     get_current_operator_name,
     has_permission,
@@ -153,6 +156,9 @@ def render_consumption_models(
         render_uv_consumption_model(
             supabase, category, current_date, visible_sizes, inventory_df
         )
+        return
+    if category == "彩色短袖":
+        render_colored_consumption(supabase, current_date, inventory_df)
         return
     if category != "黑白短袖":
         st.info(t("当前品类暂无消耗模型"))

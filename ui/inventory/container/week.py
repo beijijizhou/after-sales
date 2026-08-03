@@ -8,6 +8,16 @@ WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"
 ALL_TIME = "全部时间"
 
 
+def merge_current_week_with_overdue(current_df, overdue_df):
+    frames = [frame for frame in (overdue_df, current_df) if not frame.empty]
+    if not frames:
+        return pd.DataFrame()
+    result = pd.concat(frames, ignore_index=True)
+    if "id" in result.columns:
+        result = result.drop_duplicates("id", keep="last")
+    return result.reset_index(drop=True)
+
+
 def week_bounds(anchor_date):
     start = anchor_date - timedelta(days=anchor_date.weekday())
     return start, start + timedelta(days=6)

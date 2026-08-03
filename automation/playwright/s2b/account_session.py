@@ -11,11 +11,13 @@ CHROME_PATH = Path(
 )
 AUTH_DIR = Path(__file__).resolve().parents[1] / ".auth"
 ACCOUNT_PORTS = {"DTF": 9223, "UV": 9224, "3D": 9225}
+SHARED_DEBUG_PORT = 9222
+S2B_HOST = "overseasfactory.s2bdiy.com"
 
 
 def connect_s2b_account_chrome(playwright, start_url, account_name):
     account = normalize_s2b_account(account_name)
-    port = ACCOUNT_PORTS[account]
+    port = _connection_port(account)
     profile = AUTH_DIR / f"s2b-{account.casefold()}-chrome"
     if not _chrome_is_connectable(port):
         _launch_chrome(start_url, profile, port)
@@ -23,6 +25,15 @@ def connect_s2b_account_chrome(playwright, start_url, account_name):
     return playwright.chromium.connect_over_cdp(
         f"http://127.0.0.1:{port}", timeout=30_000
     )
+
+
+def _connection_port(account):
+    # DTF historically shared the main Playwright Chrome on 9222. Reuse that
+    # authenticated page when it is already open so existing users are not
+    # forced into a second login session. UV and 3D stay isolated by account.
+    if account == "DTF" and _chrome_has_s2b_page(SHARED_DEBUG_PORT):
+        return SHARED_DEBUG_PORT
+    return ACCOUNT_PORTS[account]
 
 
 def normalize_s2b_account(account_name):
@@ -54,12 +65,24 @@ def _launch_chrome(start_url, profile, port):
 
 
 def _chrome_is_connectable(port):
+    return bool(_chrome_targets(port))
+
+
+def _chrome_has_s2b_page(port):
+    return any(
+        target.get("type") == "page"
+        and S2B_HOST in str(target.get("url", ""))
+        for target in _chrome_targets(port)
+    )
+
+
+def _chrome_targets(port):
     try:
         with urlopen(f"http://127.0.0.1:{port}/json/list", timeout=1) as response:
             targets = json.load(response)
-        return any(target.get("type") == "page" for target in targets)
+        return [target for target in targets if target.get("type") == "page"]
     except (json.JSONDecodeError, URLError, TimeoutError):
-        return False
+        return []
 
 
 def _wait_for_chrome(port):

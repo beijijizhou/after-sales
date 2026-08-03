@@ -6,6 +6,9 @@ LEGACY_SECRETS = (
     Path(__file__).resolve().parents[3]
     / "usps" / ".streamlit" / "secrets.toml"
 )
+LOCAL_SECRETS = (
+    Path(__file__).resolve().parents[2] / ".streamlit" / "secrets.toml"
+)
 
 
 def load_sds_account(secrets, profile):
@@ -22,10 +25,12 @@ def load_sds_account(secrets, profile):
 
 
 def load_s2b_account(secrets, account):
+    sources = (secrets, _secrets_file(LOCAL_SECRETS), _legacy_secrets())
     for section_name in ("logistics_s2b_accounts", "s2b_accounts"):
-        values = _section(secrets, section_name, account)
-        if values and values.get("token"):
-            return values
+        for source in sources:
+            values = _section(source, section_name, account)
+            if values and values.get("token"):
+                return values
     raise ValueError(
         f"未配置S2B {account}账号；请在Secrets中设置"
         f" logistics_s2b_accounts.{account}.token"
@@ -60,7 +65,11 @@ def _value(secrets, key):
 
 
 def _legacy_secrets():
-    if not LEGACY_SECRETS.is_file():
+    return _secrets_file(LEGACY_SECRETS)
+
+
+def _secrets_file(path):
+    if not path.is_file():
         return {}
-    with LEGACY_SECRETS.open("rb") as file:
+    with path.open("rb") as file:
         return tomllib.load(file)

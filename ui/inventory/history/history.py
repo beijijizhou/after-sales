@@ -1,7 +1,18 @@
+import pandas as pd
 import streamlit as st
 
-from db.inventory import load_inventory_movements
+from db.inventory import load_inventory_movements, normalize_adjustment_rows
 from db.inventory.operations.adjustments import reverse_inventory_batch
+from db.inventory.operations.outbound_audit import (
+    DAILY_OUTBOUND_REASONS,
+    audit_outbound_batch,
+    build_daily_outbound_edit_rows,
+    build_replacement_inventory,
+    find_outbound_inventory_issues,
+    load_daily_outbound_batch,
+    load_outbound_inventory,
+    replace_daily_outbound_batch,
+)
 from db.inventory.sku import load_sku_imports
 from ui.inventory.history.history_batches import (
     add_movement_batch_key,
@@ -12,6 +23,9 @@ from ui.inventory.history.history_batches import (
 from ui.inventory.history.history_tables import (
     render_movement_table,
     render_sku_import_table,
+)
+from ui.inventory.operations.adjustment_preview import (
+    render_adjustment_preview_editor,
 )
 from ui.inventory.history.history_filters import (
     filter_batches_by_movement_type,
@@ -65,6 +79,16 @@ def render_movement_undo(supabase, selected_df, reversed_ids):
     if batch_id in reversed_ids:
         st.success(t("这笔库存变动已撤销"))
         return
+    if _is_editable_daily_outbound(selected_df):
+        action = st.segmented_control(
+            "处理方式",
+            ["修改并替换", "仅撤销"],
+            default="修改并替换",
+            key=f"inventory_batch_action_{batch_id}",
+        )
+        if action == "修改并替换":
+            _render_daily_outbound_replacement(supabase, batch_id)
+            return
     confirmed = st.checkbox(
         t("我确认撤销这笔库存变动"),
         key=f"confirm_inventory_undo_{batch_id}",
@@ -87,6 +111,118 @@ def render_movement_undo(supabase, selected_df, reversed_ids):
             "库存变动已撤销，库存明细已恢复"
         )
         st.rerun()
+
+
+def _is_editable_daily_outbound(selected_df):
+    if selected_df.empty:
+        return False
+    reasons = selected_df["reason"].fillna("").astype(str)
+    quantities = pd.to_numeric(
+        selected_df["quantity_change"], errors="coerce"
+    ).fillna(0)
+    return reasons.isin(DAILY_OUTBOUND_REASONS).all() and quantities.lt(0).all()
+
+
+def _render_daily_outbound_replacement(supabase, batch_id):
+    st.markdown("#### 修改每日出库记录")
+    st.caption(
+        "保存时会自动撤销原批次并生成修正版批次；"
+        "原记录和撤销记录都会保留。编辑器始终读取该批次的全部 SKU，"
+        "不受上方筛选条件影响。"
+    )
+    try:
+        complete_batch_df = load_daily_outbound_batch(supabase, batch_id)
+    except Exception as error:
+        st.error(f"读取完整出库批次失败：{error}")
+        return
+    if complete_batch_df.empty:
+        st.error("没有找到这笔出库批次，可能已被其他用户处理。")
+        return
+    if not _is_editable_daily_outbound(complete_batch_df):
+        st.error("完整批次不是可修改的每日出库记录，请刷新后重试。")
+        return
+
+    original = build_daily_outbound_edit_rows(complete_batch_df)
+    edited_wide = render_adjustment_preview_editor(
+        original,
+        key=f"daily_outbound_replacement_{batch_id}",
+        lock_operation=True,
+        lock_identity=False,
+        allow_rows=True,
+        disabled_columns=["备注"],
+    )
+    corrected = normalize_adjustment_rows(edited_wide)
+    if corrected.empty:
+        st.warning("修正版不能为空；如果要删除整笔记录，请选择“仅撤销”。")
+        return
+    original_dates = pd.to_datetime(
+        original["日期"], errors="coerce"
+    ).dt.date.dropna().unique()
+    if len(original_dates) != 1:
+        st.error("这笔批次包含多个出库日期，暂时不能在每日出库编辑器中修改。")
+        return
+    if not corrected["日期"].eq(original_dates[0]).all():
+        st.error(f"出库日期必须保持为 {original_dates[0]}。")
+        return
+    corrected["备注"] = "仓库每日出货"
+    original_total = int(original["数量"].sum())
+    corrected_total = int(corrected["数量"].sum())
+    columns = st.columns(3)
+    columns[0].metric("原出库", f"{original_total:,} 件")
+    columns[1].metric("修正后", f"{corrected_total:,} 件")
+    columns[2].metric(
+        "变化", f"{corrected_total - original_total:+,} 件"
+    )
+    row = complete_batch_df.iloc[0]
+    try:
+        current_inventory = load_outbound_inventory(
+            supabase, row["department"], row["category"]
+        )
+        replacement_inventory = build_replacement_inventory(
+            current_inventory, complete_batch_df
+        )
+        issues = find_outbound_inventory_issues(
+            corrected, replacement_inventory
+        )
+    except Exception as error:
+        st.error(f"修正版库存检查失败：{error}")
+        return
+    if not issues.empty:
+        st.error("修正版包含不存在的 SKU 或撤销原批次后仍然库存不足。")
+        st.dataframe(issues, hide_index=True, width="stretch")
+        return
+    confirmed = st.checkbox(
+        "我已核对修正版，并确认撤销原批次后生成新批次",
+        key=f"confirm_daily_outbound_replacement_{batch_id}",
+    )
+    if not st.button(
+        "保存修正版",
+        type="primary",
+        width="stretch",
+        disabled=not confirmed,
+        key=f"save_daily_outbound_replacement_{batch_id}",
+    ):
+        return
+    username = get_current_operator_name()
+    try:
+        replacement_batch_id = replace_daily_outbound_batch(
+            supabase, batch_id, row["department"], row["category"],
+            complete_batch_df, corrected, username,
+        )
+        audit, mismatches = audit_outbound_batch(
+            supabase, replacement_batch_id, corrected
+        )
+    except Exception as error:
+        st.error(f"修改每日出库失败：{error}")
+        return
+    if not audit["passed"]:
+        st.error("修正版已写入，但自动核验未通过，请立即查看差异。")
+        st.dataframe(mismatches, hide_index=True, width="stretch")
+        return
+    st.session_state["inventory_saved_message"] = (
+        f"每日出库已修改：{original_total:,} → {corrected_total:,} 件"
+    )
+    st.rerun()
 
 
 def load_inventory_history_data(supabase, department, limit=500):

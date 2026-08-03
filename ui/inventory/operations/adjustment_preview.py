@@ -10,6 +10,9 @@ def build_adjustment_preview(adjustment_df):
         return pd.DataFrame()
 
     preview_df = adjustment_df.copy()
+    preview_df["日期"] = pd.to_datetime(
+        preview_df["日期"], errors="coerce"
+    ).dt.date
     for column in ["品牌", "材质", "颜色", "备注"]:
         preview_df[column] = preview_df[column].fillna("").astype(str)
     preview_df["数量"] = pd.to_numeric(
@@ -42,6 +45,7 @@ def render_adjustment_preview_editor(
     lock_operation=False,
     lock_identity=False,
     allow_rows=True,
+    disabled_columns=None,
 ):
     preview_df = build_adjustment_preview(adjustment_df).drop(columns=["合计"])
     column_config = {
@@ -61,6 +65,8 @@ def render_adjustment_preview_editor(
     disabled = ["操作"] if lock_operation else []
     if lock_identity:
         disabled.extend(["日期", "品牌", "材质", "颜色"])
+    disabled.extend(disabled_columns or [])
+    disabled = list(dict.fromkeys(disabled))
     edited_df = st.data_editor(
         preview_df,
         hide_index=True,

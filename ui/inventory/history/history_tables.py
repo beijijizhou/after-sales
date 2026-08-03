@@ -26,12 +26,10 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
     movement_df["quantity_change"] = pd.to_numeric(
         movement_df["quantity_change"], errors="coerce"
     ).fillna(0).astype(int)
-    movement_df["display_quantity"] = movement_df[
-        "quantity_change"
-    ].abs()
+    movement_df["display_quantity"] = movement_df["quantity_change"]
     movement_df["operation"] = movement_df[
         "quantity_change"
-    ].map(lambda value: "增加" if value > 0 else "扣减")
+    ].map(lambda value: "🟢 入库" if value > 0 else "🔴 出库")
     movement_df["reason"] = movement_df.get("reason", "").fillna("").astype(str)
     if "created_by" not in movement_df.columns:
         movement_df["created_by"] = "a"
@@ -61,7 +59,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
         .reset_index()
         .rename(columns={
             "movement_date": "日期",
-            "operation": "操作",
+            "operation": "流水记录类型",
             "department": "部门",
             "category": "品类",
             "brand": "品牌",
@@ -78,8 +76,11 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
             display_df[size] = 0
         display_df[size] = pd.to_numeric(display_df[size], errors="coerce").fillna(0).astype(int)
     display_df["合计"] = display_df[sizes].sum(axis=1)
+    display_df = display_df.sort_values(
+        ["日期", "流水记录类型"], ascending=[False, True]
+    )
     return display_df[[
-        "日期", "操作", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
+        "日期", "流水记录类型", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
         "操作人",
         *sizes, "合计", "备注",
     ]]
@@ -92,13 +93,21 @@ def render_movement_table(movement_df, visible_sizes=None):
         st.info(t("暂无库存变动明细"))
         return
 
+    quantity_columns = [
+        column for column in display_df.columns
+        if column in SIZE_COLUMNS or column.upper() in UV_MODEL_ORDER
+        or column == "合计"
+    ]
+    styled_df = display_df.style.format({
+        column: _format_signed_quantity for column in quantity_columns
+    })
     st.dataframe(
-        display_df,
+        styled_df,
         hide_index=True,
         width="stretch",
         column_config={
             "日期": st.column_config.DateColumn(t("日期")),
-            "操作": st.column_config.TextColumn(t("操作")),
+            "流水记录类型": st.column_config.TextColumn(t("流水记录类型")),
             "部门": st.column_config.TextColumn(t("部门")),
             "品类": st.column_config.TextColumn(t("品类")),
             "品牌": st.column_config.TextColumn(t("品牌")),
@@ -107,14 +116,13 @@ def render_movement_table(movement_df, visible_sizes=None):
             "库存来源": st.column_config.TextColumn(t("库存来源")),
             "操作人": st.column_config.TextColumn(t("操作人")),
             "备注": st.column_config.TextColumn(t("备注")),
-            **{
-                size: st.column_config.NumberColumn(size, format="%d")
-                for size in display_df.columns
-                if size in SIZE_COLUMNS or size.upper() in UV_MODEL_ORDER
-            },
-            "合计": st.column_config.NumberColumn(t("合计"), format="%d"),
         },
     )
+
+
+def _format_signed_quantity(value):
+    number = int(value or 0)
+    return f"+{number:,}" if number > 0 else f"{number:,}"
 
 
 def build_sku_import_detail_table(sku_import_df, visible_sizes=None):

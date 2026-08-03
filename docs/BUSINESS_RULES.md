@@ -71,6 +71,36 @@
 - Workflow switching analysis classifies each period as one platform group;
   a Haloo period cannot simultaneously report small-platform production.
 
+## Garment Consumption Sources
+
+- Black/white T-shirt inventory consumption is based primarily on actual
+  warehouse daily outbound, not a direct SKU-for-SKU production deduction.
+  Black/white volume is high, the SKU catalog is large, and warehouse staff may
+  substitute an available size or SKU when the requested size is out of stock.
+  Production data records the requested SKU and cannot reliably reveal that
+  physical substitution, while warehouse outbound records what was actually
+  issued. Production data may be used as a comparison or supporting model, but
+  it must not silently replace warehouse outbound as the inventory truth.
+- Colored T-shirt inventory consumption is based on production data and is
+  deducted as a dated daily production batch. Its volume and SKU range are
+  smaller, and different colored SKUs are not interchangeable. Warehouse daily
+  outbound is therefore not required as the primary consumption source.
+- UV inventory consumption is based on its Google Sheets production data and
+  is deducted as a dated daily batch. Different UV SKUs are not interchangeable,
+  so warehouse daily outbound is not required as the primary consumption
+  source.
+- A production-driven daily deduction never creates negative inventory. It
+  deducts available stock down to zero and records the remaining demand as a
+  counting/reconciliation difference. The full production quantity still
+  participates in the consumption model, even when part of it could not be
+  deducted because recorded stock was already zero.
+- Container forecasting must use the consumption source appropriate to the
+  category: warehouse-led consumption for black/white T-shirts, production-led
+  consumption for colored T-shirts, and Google-Sheets-led consumption for UV.
+  Missing production platforms may be shown as a data-quality warning for a
+  production-led category, but available effective production days should still
+  produce a forecast instead of stopping the entire calculation.
+
 ## Logistics Tracking
 
 - Logistics acquisition reuses the production-data department and platform
@@ -135,8 +165,12 @@
 - Store append-only provider-query and compliance-decision audit records.
   Repeated ERP synchronization, label downloads, and USPS responses must be
   idempotent and must not duplicate orders, documents, or review events.
-- During the current workflow-validation phase, ERP shipment review and USPS
-  tracking queries are live-only and are not persisted by the logistics page.
+- During the current workflow-validation phase, ERP shipment review remains
+  live-only. Every tracking number actually submitted to USPS is persisted in
+  `logistics_tracking_checks`, including the complete provider response,
+  status flags, errors, querying user, query time, and cache expiration. The
+  default lookup order is database first and USPS only for missing or expired
+  records; authorized users may force a live USPS refresh.
 - Cache downloaded label documents and OCR results in server memory by label
   URL for 24 hours during workflow validation. Repeated page refreshes and
   users on the same running server should reuse that cache; deployment or

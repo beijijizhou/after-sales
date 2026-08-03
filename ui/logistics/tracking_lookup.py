@@ -1,6 +1,6 @@
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import streamlit as st
@@ -15,8 +15,10 @@ from automation.logistics import (
 from automation.logistics.label_ocr import extract_label_fields
 from db.logistics import (
     load_latest_label_reviews,
+    load_latest_tracking_checks,
     load_shipments_by_tracking,
     save_label_review,
+    save_tracking_checks,
 )
 from db.logistics.usps_usage import record_usps_usage
 from utils.auth import get_current_operator_name
@@ -54,8 +56,14 @@ def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
         },
     )
     st.caption(
-        "当前为USPS实时接口模式；物流响应暂不写入数据库，"
-        "仅保存每日和每月用量统计。"
+        "USPS Tracking响应会保存到数据库；默认优先使用一小时内的"
+        "数据库记录，缺失或过期时再请求USPS。本区域不会启动OCR。"
+    )
+    query_mode = st.radio(
+        "查询方式",
+        ("数据库优先，缺失或过期再查USPS", "强制刷新USPS实时接口"),
+        horizontal=True,
+        key="logistics_tracking_query_mode",
     )
     context = pd.DataFrame(
         suggested_rows if use_suggested else parse_order_tracking_table(edited)
@@ -68,17 +76,28 @@ def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
         key="logistics_tracking_lookup_submit",
     ):
         render_usps_usage(supabase, database_error)
-        st.info("粘贴物流单号后点击查询；结果仅用于当前页面，不写入数据库。")
+        st.info("粘贴物流单号后点击查询；实际提交给USPS的响应会保存到数据库。")
         return
 
-    fresh_rows = _query_usps(numbers, supabase, database_error)
+    cached, pending = _tracking_query_plan(
+        supabase,
+        numbers,
+        query_mode == "强制刷新USPS实时接口",
+        database_error,
+    )
+    fresh_rows = _query_usps(pending, supabase, database_error)
     render_usps_usage(supabase, database_error)
-    if fresh_rows is None:
+    if fresh_rows is None and cached.empty:
         return
 
-    display = pd.DataFrame(fresh_rows)
+    cached = cached.copy()
+    if not cached.empty:
+        cached["数据来源"] = "数据库缓存"
+    fresh = pd.DataFrame(fresh_rows or [])
+    if not fresh.empty:
+        fresh["数据来源"] = "USPS 实时接口"
+    display = pd.concat([cached, fresh], ignore_index=True)
     if not display.empty:
-        display["数据来源"] = "USPS 实时接口"
         display["USPS查询说明"] = display["has_postal_record"].map({
             True: "USPS已返回物流状态与Tracking Events",
             False: "USPS未发现物流记录",
@@ -92,9 +111,10 @@ def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
         label_details = label_details.drop(columns=["面单PDF"])
     display = _merge_label_details(display, label_details)
 
-    summary = st.columns(2)
+    summary = st.columns(3)
     summary[0].metric("输入面单号", len(numbers))
-    summary[1].metric("USPS 实时查询", len(numbers))
+    summary[1].metric("数据库返回", len(cached))
+    summary[2].metric("USPS 接口请求", len(pending))
     display = _apply_usps_origin_fallback(display)
     _render_results(display)
     _render_tracking_events(display)
@@ -116,18 +136,70 @@ def _query_usps(numbers, supabase=None, database_error=None):
             classify_usps_response(item)
             for response in responses for item in response
         ]
+        returned = {row["tracking_number"] for row in rows}
+        rows.extend(
+            _failed_tracking_row(number, "USPS_NO_RESPONSE")
+            for number in numbers if number not in returned
+        )
+        _save_tracking_results(supabase, rows, database_error)
+        failed_count = sum(bool(row.get("error_code")) for row in rows)
         _record_usage(
-            supabase, len(numbers), len(batches), len(rows),
-            max(0, len(numbers) - len(rows)), database_error,
+            supabase, len(numbers), len(batches),
+            len(rows) - failed_count, failed_count, database_error,
         )
         return rows
     except Exception as error:
+        failure_rows = [
+            _failed_tracking_row(number, type(error).__name__)
+            for number in numbers
+        ]
+        _save_tracking_results(supabase, failure_rows, database_error)
         _record_usage(
             supabase, len(numbers), len(batches) if "batches" in locals() else 0,
             0, len(numbers), database_error,
         )
         st.error(f"USPS 接口查询失败：{error}")
         return None
+
+
+def _tracking_query_plan(supabase, numbers, force_usps, database_error=None):
+    if supabase is None:
+        return pd.DataFrame(), list(numbers)
+    try:
+        latest = load_latest_tracking_checks(supabase, numbers)
+    except Exception as error:
+        st.warning("数据库历史查询暂时不可用，本次将直接请求USPS。")
+        if database_error:
+            st.caption(database_error(error))
+        return pd.DataFrame(), list(numbers)
+    return split_tracking_cache(numbers, latest, force_usps)
+
+
+def _failed_tracking_row(tracking_number, error_code):
+    return {
+        "tracking_number": str(tracking_number),
+        "provider_status": "",
+        "has_postal_record": False,
+        "has_pre_scan": False,
+        "response_payload": {},
+        "error_code": str(error_code or "USPS_QUERY_FAILED"),
+        "cache_expires_at": (
+            datetime.now(timezone.utc) + timedelta(minutes=5)
+        ).isoformat(),
+    }
+
+
+def _save_tracking_results(supabase, rows, database_error=None):
+    if supabase is None or not rows:
+        return
+    try:
+        save_tracking_checks(
+            supabase, rows, get_current_operator_name()
+        )
+    except Exception as error:
+        st.warning("USPS查询已完成，但Tracking响应未能写入数据库。")
+        if database_error:
+            st.caption(database_error(error))
 
 
 def _record_usage(
@@ -154,9 +226,7 @@ def _record_usage(
 def _extract_live_label_details(context):
     if context.empty or "物流单号" not in context:
         return pd.DataFrame()
-    candidates = []
     rows = []
-    seen = set()
     for row in context.to_dict("records"):
         tracking_number = str(row.get("物流单号") or "").strip()
         label_url = row.get("面单PDF") or row.get("备用面单PDF")
@@ -173,28 +243,6 @@ def _extract_live_label_details(context):
                 "无法获取原因": "" if row.get("面单OCR地址") else prior_status,
                 "面单PDF": label_url,
             })
-            seen.add(tracking_number)
-            continue
-        if tracking_number and label_url and tracking_number not in seen:
-            candidates.append((tracking_number, str(label_url)))
-            seen.add(tracking_number)
-    if not candidates:
-        return pd.DataFrame(rows)
-
-    st.caption(f"正在OCR分析 {len(candidates):,} 张可下载面单……")
-    progress = st.progress(0)
-    for index, (tracking_number, label_url) in enumerate(candidates, start=1):
-        try:
-            fields = extract_label_fields(label_url)
-            rows.append(_live_label_row(
-                tracking_number, label_url, fields, "已从平台面单OCR识别"
-            ))
-        except Exception as error:
-            rows.append(_live_label_row(
-                tracking_number, label_url, {}, f"OCR失败：{error}"
-            ))
-        progress.progress(index / len(candidates))
-    progress.empty()
     return pd.DataFrame(rows)
 
 

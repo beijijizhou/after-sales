@@ -1,5 +1,7 @@
 import unittest
 from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -9,11 +11,17 @@ import pandas as pd
 
 from automation.logistics.s2b import (
     PENDING_STATUS,
+    S2BAuthenticationError,
     _normalize_order,
     _order_payload,
+    fetch_s2b_pending_shipments,
 )
+from automation.logistics.config import load_s2b_account
 from automation.production import PLATFORMS_BY_DEPARTMENT, production_data_key
-from automation.playwright.s2b.account_session import normalize_s2b_account
+from automation.playwright.s2b.account_session import (
+    _connection_port,
+    normalize_s2b_account,
+)
 from automation.logistics.carriers import (
     classify_carrier,
     classify_usps_subtype,
@@ -58,6 +66,7 @@ from ui.logistics.page import (
     _store_review_ocr_results,
 )
 from ui.logistics.tracking_lookup import (
+    _extract_live_label_details,
     _merge_label_details,
     _missing_label_row,
     _apply_usps_origin_fallback,
@@ -71,12 +80,81 @@ from ui.logistics.tracking_lookup import (
     normalize_suggested_rows,
     split_tracking_cache,
     _query_usps,
+    _tracking_query_plan,
 )
 from ui.logistics.usps_usage import summarize_usps_usage
 from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_usps_lookup_does_not_start_ocr_for_unreviewed_label(self):
+        context = pd.DataFrame([{
+            "物流单号": "92001",
+            "面单PDF": "https://labels.test/92001.pdf",
+            "OCR状态": "",
+        }])
+        self.assertTrue(_extract_live_label_details(context).empty)
+
+    def test_usps_lookup_reuses_existing_ocr_without_reprocessing(self):
+        context = pd.DataFrame([{
+            "物流单号": "92001",
+            "面单PDF": "https://labels.test/92001.pdf",
+            "面单OCR地址": "25 Ranic Road, Hauppauge, NY 11788",
+            "重量（oz）": 4.0,
+            "重量（lb）": 0.25,
+            "OCR状态": "已识别",
+        }])
+        result = _extract_live_label_details(context)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["地址获取状态"], "已识别")
+
+    def test_s2b_account_reads_fresh_local_secrets_before_browser(self):
+        with TemporaryDirectory() as directory:
+            secrets_path = Path(directory) / "secrets.toml"
+            secrets_path.write_text(
+                '[logistics_s2b_accounts.DTF]\ntoken = "saved-token"\n'
+            )
+            with patch(
+                "automation.logistics.config.LOCAL_SECRETS", secrets_path
+            ), patch(
+                "automation.logistics.config.LEGACY_SECRETS",
+                Path(directory) / "missing.toml",
+            ):
+                self.assertEqual(
+                    load_s2b_account({}, "DTF")["token"], "saved-token"
+                )
+
+    @patch("automation.logistics.s2b.requests.Session")
+    def test_s2b_http_auth_failure_requests_browser_refresh(self, session):
+        response = session.return_value.post.return_value
+        response.status_code = 401
+        with self.assertRaises(S2BAuthenticationError):
+            fetch_s2b_pending_shipments("DTF", {"token": "expired"})
+        response.raise_for_status.assert_not_called()
+
+    @patch(
+        "automation.playwright.s2b.account_session._chrome_has_s2b_page",
+        return_value=True,
+    )
+    def test_dtf_reuses_existing_shared_s2b_chrome(self, has_s2b_page):
+        self.assertEqual(_connection_port("DTF"), 9222)
+        has_s2b_page.assert_called_once_with(9222)
+
+    @patch(
+        "automation.playwright.s2b.account_session._chrome_has_s2b_page",
+        return_value=False,
+    )
+    def test_dtf_uses_dedicated_chrome_without_shared_page(self, _has_page):
+        self.assertEqual(_connection_port("DTF"), 9223)
+
+    def test_uv_and_3d_never_reuse_shared_s2b_chrome(self):
+        with patch(
+            "automation.playwright.s2b.account_session._chrome_has_s2b_page"
+        ) as has_s2b_page:
+            self.assertEqual(_connection_port("UV"), 9224)
+            self.assertEqual(_connection_port("3D"), 9225)
+            has_s2b_page.assert_not_called()
+
     def test_sds_shared_logistics_interface_preserves_uv_platform_scope(self):
         client = Mock()
         client.get.return_value.json.return_value = {
@@ -150,12 +228,14 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(summary["request_count"], 4)
         self.assertEqual(daily.iloc[0]["查询面单数"], 125)
 
+    @patch("ui.logistics.tracking_lookup.save_tracking_checks")
     @patch("ui.logistics.tracking_lookup.record_usps_usage")
     @patch("ui.logistics.tracking_lookup.get_current_operator_name", return_value="Andy")
     @patch("ui.logistics.tracking_lookup.load_usps_credentials")
     @patch("ui.logistics.tracking_lookup.USPSClient")
     def test_live_usps_query_records_tracking_and_batch_usage(
-        self, client_class, credentials, _operator, record_usage
+        self, client_class, credentials, _operator, record_usage,
+        save_checks,
     ):
         credentials.return_value = {"client_id": "id", "client_secret": "secret"}
         client_class.return_value.track.return_value = [
@@ -170,6 +250,67 @@ class LogisticsTrackingTests(unittest.TestCase):
         record_usage.assert_called_once_with(
             supabase, 2, 1, 2, 0, "Andy"
         )
+        saved_rows = save_checks.call_args.args[1]
+        self.assertEqual(len(saved_rows), 2)
+        self.assertEqual(
+            saved_rows[0]["response_payload"]["trackingNumber"], "92001"
+        )
+        self.assertEqual(save_checks.call_args.args[2], "Andy")
+
+    @patch("ui.logistics.tracking_lookup.load_latest_tracking_checks")
+    def test_tracking_query_plan_uses_database_before_usps(self, load_latest):
+        future = datetime.now(timezone.utc) + timedelta(minutes=30)
+        load_latest.return_value = pd.DataFrame([{
+            "tracking_number": "92001",
+            "cache_expires_at": future.isoformat(),
+        }])
+
+        cached, pending = _tracking_query_plan(
+            Mock(), ["92001", "92002"], False
+        )
+
+        self.assertEqual(cached["tracking_number"].tolist(), ["92001"])
+        self.assertEqual(pending, ["92002"])
+
+    @patch("ui.logistics.tracking_lookup.load_latest_tracking_checks")
+    def test_tracking_query_plan_force_mode_refreshes_every_number(
+        self, load_latest
+    ):
+        future = datetime.now(timezone.utc) + timedelta(minutes=30)
+        load_latest.return_value = pd.DataFrame([{
+            "tracking_number": "92001",
+            "cache_expires_at": future.isoformat(),
+        }])
+
+        cached, pending = _tracking_query_plan(Mock(), ["92001"], True)
+
+        self.assertTrue(cached.empty)
+        self.assertEqual(pending, ["92001"])
+
+    @patch("ui.logistics.tracking_lookup.save_tracking_checks")
+    @patch("ui.logistics.tracking_lookup.record_usps_usage")
+    @patch(
+        "ui.logistics.tracking_lookup.get_current_operator_name",
+        return_value="Andy",
+    )
+    @patch("ui.logistics.tracking_lookup.load_usps_credentials")
+    @patch("ui.logistics.tracking_lookup.USPSClient")
+    def test_usps_missing_response_is_saved_as_failed_check(
+        self, client_class, credentials, _operator, record_usage,
+        save_checks,
+    ):
+        credentials.return_value = {"client_id": "id", "client_secret": "secret"}
+        client_class.return_value.track.return_value = [
+            {"trackingNumber": "92001", "status": "Created"},
+        ]
+
+        rows = _query_usps(["92001", "92002"], supabase=Mock())
+
+        missing = next(row for row in rows if row["tracking_number"] == "92002")
+        self.assertEqual(missing["error_code"], "USPS_NO_RESPONSE")
+        self.assertEqual(len(save_checks.call_args.args[1]), 2)
+        record_usage.assert_called_once()
+        self.assertEqual(record_usage.call_args.args[3:5], (1, 1))
 
     @patch("ui.logistics.page.st.session_state", new_callable=dict)
     def test_ocr_completion_refreshes_review_and_usps_context(self, state):

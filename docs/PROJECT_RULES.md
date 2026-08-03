@@ -59,6 +59,15 @@
 - Database writes must be auditable, idempotent where practical, and followed
   by one focused result check.
 - Use New York time for operational dates and timestamps.
+- When a user asks to correct recurring operational data, implement a reusable
+  product workflow for authorized users instead of treating the request as a
+  one-time direct database edit. Direct database repair is reserved for
+  exceptional recovery when the normal product workflow cannot represent the
+  correction.
+- Editing an auditable inventory movement must be presented together with its
+  existing reversal workflow. The user chooses either reversal only or
+  modification and replacement; modification is persisted as reversal of the
+  original batch followed by a corrected batch, preserving both records.
 
 ## UI
 
