@@ -116,7 +116,7 @@ def render_inventory_tabs(
     with tabs["库存流水"]:
         _render_history(
             supabase, department, "all", history_data, visible_sizes,
-            movement_types,
+            movement_types, quantity_search_data=undo_history_data,
         )
 
     with tabs["SKU 操作历史"]:
@@ -180,11 +180,13 @@ def inventory_tab_keys(department, can_view_cost=False, category=""):
 
 def _render_history(
     supabase, department, mode, history_data, visible_sizes, movement_types,
+    quantity_search_data=None,
 ):
     render_inventory_history(
         supabase, department, mode, history_data=history_data,
         visible_sizes=visible_sizes,
         movement_types=movement_types,
+        quantity_search_data=quantity_search_data,
     )
 
 

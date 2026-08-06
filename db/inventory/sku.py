@@ -2,6 +2,8 @@ from datetime import date
 
 import pandas as pd
 
+from db.inventory.core.pagination import fetch_range_pages
+
 from db.inventory import (
     DEFAULT_CATEGORY,
     DEFAULT_DEPARTMENT,
@@ -11,22 +13,27 @@ from db.inventory import (
 
 
 def load_sku_imports(supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY, limit=200):
-    query = (
-        supabase
-        .table("inventory_sku_imports")
-        .select("department,category,brand,material,color,size,initial_quantity,unit_cost,import_date,created_at")
-        .eq("department", department)
-    )
-    if category:
-        query = query.eq("category", category)
-    response = (
-        query
-        .order("import_date", desc=True)
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    return pd.DataFrame(response.data)
+    def fetch_page(start, end):
+        query = (
+            supabase.table("inventory_sku_imports")
+            .select(
+                "department,category,brand,material,color,size,"
+                "initial_quantity,unit_cost,import_date,created_at"
+            )
+            .eq("department", department)
+        )
+        if category:
+            query = query.eq("category", category)
+        return (
+            query.order("import_date", desc=True)
+            .order("created_at", desc=True)
+            .range(start, end)
+            .execute()
+            .data
+        )
+
+    rows = fetch_range_pages(fetch_page, limit)
+    return pd.DataFrame(rows)
 
 
 def create_inventory_item(supabase, department, category, brand, material, color, size, quantity=0, unit_cost=0, import_date=None):

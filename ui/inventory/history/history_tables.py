@@ -91,7 +91,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
     ]]
 
 
-def render_movement_table(movement_df, visible_sizes=None):
+def render_movement_table(movement_df, visible_sizes=None, key=None):
     st.subheader(t("库存变动明细"))
     display_df = build_movement_detail_table(movement_df, visible_sizes)
     if display_df.empty:
@@ -110,6 +110,7 @@ def render_movement_table(movement_df, visible_sizes=None):
         styled_df,
         hide_index=True,
         width="stretch",
+        key=key,
         column_config={
             "日期": st.column_config.DateColumn(t("日期")),
             "流水记录类型": st.column_config.TextColumn(t("流水记录类型")),

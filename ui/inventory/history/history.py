@@ -24,6 +24,9 @@ from ui.inventory.history.history_tables import (
     render_movement_table,
     render_sku_import_table,
 )
+from ui.inventory.history.quantity_search import (
+    render_outbound_quantity_search,
+)
 from ui.inventory.operations.adjustment_preview import (
     render_adjustment_preview_editor,
 )
@@ -54,7 +57,11 @@ def render_selected_movement(
 ):
     dated_movement_df = add_movement_batch_key(dated_movement_df)
     selected_df = dated_movement_df[dated_movement_df["batch_key"] == selected_batch]
-    render_movement_table(selected_df, visible_sizes)
+    render_movement_table(
+        selected_df,
+        visible_sizes,
+        key=f"inventory_movement_detail_{selected_batch}",
+    )
     reversed_ids = set()
     if "reversal_of_batch_id" in dated_movement_df.columns:
         reversed_ids = set(
@@ -260,7 +267,7 @@ def filter_inventory_history_data(
 
 def render_inventory_history(
     supabase, department, mode, history_data=None, visible_sizes=None,
-    movement_types=None,
+    movement_types=None, quantity_search_data=None,
 ):
     movement_df, sku_import_df, batch_df = history_data or load_inventory_history_data(
         supabase, department
@@ -284,6 +291,15 @@ def render_inventory_history(
         selected_df = filter_batches_by_outbound_kind(
             selected_df, outbound_kind
         )
+        complete_movement_df = (
+            quantity_search_data[0]
+            if quantity_search_data is not None
+            else movement_df
+        )
+        if render_outbound_quantity_search(
+            movement_df, complete_movement_df, visible_sizes
+        ):
+            return
     if mode == "undo":
         st.caption(
             "这里显示当前部门的完整可撤销批次，不受库存日期、品类、"

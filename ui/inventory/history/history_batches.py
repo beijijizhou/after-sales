@@ -223,7 +223,7 @@ def render_batch_selector(
             row["batch_key"]: (
                 f"{row['记录时间']}｜{t(row['类型'])}｜{row['表格日期']}｜"
                 f"{row['部门']} {row['品类']}｜"
-                f"{t(row.get('消耗来源') or '常规操作')}｜"
+                f"{t(row.get('消耗来源') or '其他出入库')}｜"
                 f"{row['数量']}｜{row['操作人']}"
             )
             for row in batch_df.to_dict("records")

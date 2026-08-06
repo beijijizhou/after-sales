@@ -1,6 +1,7 @@
 import pandas as pd
 
 from db.inventory.core.constants import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT
+from db.inventory.core.pagination import fetch_range_pages
 
 
 def load_inventory_dimensions(supabase):
@@ -85,26 +86,37 @@ def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=D
         "quantity_after,movement_date,reason,created_at,created_by,"
         "batch_id,reversal_of_batch_id,source_type"
     )
-    query = supabase.table("inventory_movements").select(columns).eq("department", department)
-    if category:
-        query = query.eq("category", category)
+    def fetch_page(selected_columns, start, end):
+        query = (
+            supabase.table("inventory_movements")
+            .select(selected_columns)
+            .eq("department", department)
+        )
+        if category:
+            query = query.eq("category", category)
+        return (
+            query.order("movement_date", desc=True)
+            .order("created_at", desc=True)
+            .range(start, end)
+            .execute()
+            .data
+        )
+
     try:
-        response = query.order("movement_date", desc=True).order(
-            "created_at", desc=True
-        ).limit(limit).execute()
+        rows = fetch_range_pages(
+            lambda start, end: fetch_page(columns, start, end), limit
+        )
     except Exception:
         fallback_columns = columns.replace(
             ",created_by,batch_id,reversal_of_batch_id,source_type", ""
         )
-        query = supabase.table("inventory_movements").select(fallback_columns).eq(
-            "department", department
+        rows = fetch_range_pages(
+            lambda start, end: fetch_page(
+                fallback_columns, start, end
+            ),
+            limit,
         )
-        if category:
-            query = query.eq("category", category)
-        response = query.order("movement_date", desc=True).order(
-            "created_at", desc=True
-        ).limit(limit).execute()
-    return pd.DataFrame(response.data)
+    return pd.DataFrame(rows)
 
 
 def load_latest_inventory_movement_date(
