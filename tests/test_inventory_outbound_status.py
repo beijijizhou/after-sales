@@ -18,6 +18,7 @@ from ui.inventory.history.history_batches import build_movement_batch_rows
 from ui.inventory.history.history_filters import (
     filter_batches_by_outbound_kind,
     filter_history_batches,
+    filter_reversal_scope,
 )
 from ui.inventory.page_tabs import inventory_tab_keys
 
@@ -172,6 +173,52 @@ class OutboundStatusTests(unittest.TestCase):
 
         self.assertEqual(daily["数量"].tolist(), [120, 240])
         self.assertEqual(temporary["数量"].tolist(), [30])
+
+    def test_reversal_scope_separates_all_outbound_workflows(self):
+        batches = pd.DataFrame([
+            {"类型": "出库", "备注": "仓库每日出货", "数量": 100},
+            {
+                "类型": "出库",
+                "备注": "彩色短袖生产自动扣减 2026-08-05",
+                "数量": 200,
+            },
+            {
+                "类型": "出库",
+                "备注": "Google Sheets UV每日消耗｜2026-08-05",
+                "数量": 300,
+            },
+            {
+                "类型": "出库",
+                "备注": "临时库存调整｜补录",
+                "数量": 400,
+            },
+            {"类型": "入库", "备注": "货柜入库：11柜", "数量": 500},
+        ])
+
+        self.assertEqual(
+            filter_reversal_scope(
+                batches, "仓库每日出库"
+            )["数量"].tolist(),
+            [100],
+        )
+        self.assertEqual(
+            filter_reversal_scope(
+                batches, "系统库存扣减"
+            )["数量"].tolist(),
+            [200, 300],
+        )
+        self.assertEqual(
+            filter_reversal_scope(
+                batches, "临时库存调整"
+            )["数量"].tolist(),
+            [400],
+        )
+        self.assertEqual(
+            filter_reversal_scope(
+                batches, "其他出入库"
+            )["数量"].tolist(),
+            [500],
+        )
 
     def test_recognizes_daily_outbound_reasons_on_current_dates(self):
         current_date = date(2026, 7, 29)

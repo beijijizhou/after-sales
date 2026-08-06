@@ -4,6 +4,7 @@ import pandas as pd
 
 from automation.sync.dtf_colored_inventory import (
     apply_colored_daily_deduction,
+    build_colored_platform_audit,
     build_colored_daily_preview,
     load_colored_day_deducted_total,
 )
@@ -32,6 +33,9 @@ class AutomaticDailyPreview:
     quantity: int
     rows: pd.DataFrame
     message: str = ""
+    source_rows: pd.DataFrame | None = None
+    source_quantity: int = 0
+    unresolved_quantity: int = 0
 
 
 AUTOMATIC_DAILY_FLOWS = (
@@ -80,6 +84,65 @@ def apply_automatic_daily_previews(
     return results, errors
 
 
+def load_automatic_daily_batch_previews(
+    supabase, missing_dates, sheets_client, spreadsheet_id,
+):
+    result = {}
+    for movement_date in sorted(missing_dates):
+        previews = load_automatic_daily_previews(
+            supabase, movement_date, sheets_client, spreadsheet_id
+        )
+        requested = str(missing_dates[movement_date])
+        result[movement_date] = {
+            flow.code: previews[flow.code]
+            for flow in AUTOMATIC_DAILY_FLOWS
+            if flow.label in requested
+        }
+    return result
+
+
+def build_automatic_daily_batch_summary(previews_by_date):
+    rows = []
+    for movement_date in sorted(previews_by_date):
+        previews = previews_by_date[movement_date]
+        for flow in AUTOMATIC_DAILY_FLOWS:
+            preview = previews.get(flow.code)
+            if preview is None:
+                continue
+            rows.append({
+                "日期": movement_date,
+                "项目": flow.label,
+                "状态": preview.state,
+                "预计扣减": int(preview.quantity),
+                "来源总量": int(preview.source_quantity or preview.quantity),
+                "待核对差额": int(preview.unresolved_quantity),
+                "说明": preview.message,
+            })
+    return pd.DataFrame(rows)
+
+
+def apply_automatic_daily_batch_previews(
+    supabase, previews_by_date, created_by,
+):
+    results, errors = {}, {}
+    for movement_date in sorted(previews_by_date):
+        day_results, day_errors = apply_automatic_daily_previews(
+            supabase,
+            movement_date,
+            previews_by_date[movement_date],
+            created_by,
+        )
+        results.update({
+            (movement_date, code): quantity
+            for code, quantity in day_results.items()
+        })
+        errors.update({
+            (movement_date, code): message
+            for code, message in day_errors.items()
+        })
+    return results, errors
+
+
 def _load_flow_preview(
     flow, supabase, movement_date, sheets_client, spreadsheet_id,
 ):
@@ -91,14 +154,38 @@ def _load_flow_preview(
                 "当天已经扣减",
             )
         rows = build_colored_daily_preview(supabase, movement_date)
+        source_rows, source_metadata = build_colored_platform_audit(
+            movement_date
+        )
         if rows.empty:
             return AutomaticDailyPreview(
-                flow, "no_data", 0, rows, "当天暂无生产数据"
+                flow, "no_data", 0, rows, "当天暂无生产数据",
+                source_rows=source_rows,
             )
+        syncable = rows[rows["状态"] == "可扣减"]
         quantity = int(pd.to_numeric(
-            rows["预计扣减"], errors="coerce"
+            syncable["预计扣减"], errors="coerce"
         ).fillna(0).sum())
-        return AutomaticDailyPreview(flow, "ready", quantity, rows)
+        source_quantity = int(pd.to_numeric(
+            source_rows.get("原始生产件数", pd.Series(dtype="float64")),
+            errors="coerce",
+        ).fillna(0).sum())
+        unresolved = max(source_quantity - quantity, 0)
+        missing = tuple(source_metadata.get("missing_platforms") or ())
+        problems = []
+        if unresolved:
+            problems.append(f"有 {unresolved:,} 件尚未匹配到可扣库存")
+        if missing:
+            problems.append("缺少平台：" + "、".join(missing))
+        if problems:
+            return AutomaticDailyPreview(
+                flow, "blocked", quantity, rows, "；".join(problems),
+                source_rows, source_quantity, unresolved,
+            )
+        return AutomaticDailyPreview(
+            flow, "ready", quantity, rows, "", source_rows,
+            source_quantity, 0,
+        )
 
     deducted = load_uv_daily_consumption_total(supabase, movement_date)
     if deducted:

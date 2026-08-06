@@ -1,6 +1,7 @@
 import streamlit as st
 
 from automation.logistics import parse_s2b_logistics_workbook
+from automation.logistics.config import load_s2b_account
 from automation.api.diy19 import DIY19_BASE_URLS, load_diy19_credentials
 from automation.api.fangguo import load_fangguo_credentials
 from automation.api.hansen import load_hansen_credentials
@@ -65,11 +66,13 @@ def fetch_and_store_production_data(
                     start_date, end_date, start_hour, end_hour, report,
                     platforms=missing,
                     existing_results=existing,
+                    department=department,
                 )
             else:
                 source = f"本地缓存 {cached.saved_at} / {cached.source}"
                 store_production_data(
-                    cache_key, cached.data, source, cached.saved_at
+                    cache_key, cached.data, source, cached.saved_at,
+                    cached.metadata,
                 )
                 status.update(
                     label=f"已从本地缓存读取：{cached.saved_at}",
@@ -80,7 +83,8 @@ def fetch_and_store_production_data(
                 return
         elif platform == ALL_CLOTHING_PLATFORMS:
             source, errors = _fetch_all(
-                start_date, end_date, start_hour, end_hour, report
+                start_date, end_date, start_hour, end_hour, report,
+                department=department,
             )
         else:
             result = load_production_data(
@@ -88,7 +92,7 @@ def fetch_and_store_production_data(
                 start_date,
                 end_date,
                 report_progress=report,
-                credentials=_credentials_for(platform),
+                credentials=_credentials_for(platform, department),
                 start_hour=start_hour,
                 end_hour=end_hour,
                 account_name=department if platform == "S2B" else None,
@@ -157,13 +161,13 @@ def _sync_s2b_logistics(source_file, report, account="DTF"):
 
 def _fetch_all(
     start_date, end_date, start_hour, end_hour, report,
-    platforms=None, existing_results=None,
+    platforms=None, existing_results=None, department="DTF",
 ):
     credentials, credential_errors = {}, {}
     requested = tuple(platforms or DTF_PRODUCTION_PLATFORMS)
     for platform in requested:
         try:
-            credentials[platform] = _credentials_for(platform)
+            credentials[platform] = _credentials_for(platform, department)
         except Exception as error:
             credential_errors[platform] = str(error)
     batch = load_all_clothing_production(
@@ -196,6 +200,14 @@ def _fetch_all(
         f"{len(batch.platform_results)} 个平台 / "
         f"{len(batch.data):,} 个衣服生产项"
     )
+    aggregate_metadata = {
+        "included_platforms": sorted(batch.platform_results),
+        "missing_platforms": sorted(batch.errors),
+        "platform_errors": {
+            name: str(message) for name, message in batch.errors.items()
+        },
+        "is_complete": not batch.errors,
+    }
     saved_at = save_cache_safely(
         ALL_CLOTHING_PLATFORMS,
         start_date,
@@ -205,19 +217,19 @@ def _fetch_all(
         batch.data,
         source,
         report,
-        extra_metadata={
-            "included_platforms": sorted(batch.platform_results),
-            "missing_platforms": sorted(batch.errors),
-            "is_complete": not batch.errors,
-        },
+        extra_metadata=aggregate_metadata,
     )
     store_production_data(
-        ALL_CLOTHING_PLATFORMS, batch.data, source, saved_at
+        ALL_CLOTHING_PLATFORMS, batch.data, source, saved_at,
+        aggregate_metadata,
     )
     return source, batch.errors
 
 
-def _credentials_for(platform):
+def _credentials_for(platform, department="DTF"):
+    if platform == "S2B":
+        account = department if department in {"DTF", "UV", "3D"} else "DTF"
+        return load_s2b_account(st.secrets, account)
     if platform in SDS_PLATFORM_PROFILES:
         return load_sds_credentials(
             st.secrets, SDS_PLATFORM_PROFILES[platform]

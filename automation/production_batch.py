@@ -15,7 +15,7 @@ from automation.production import (
 ALL_CLOTHING_PLATFORMS = "全部衣服平台"
 CLOTHING_CATEGORIES = {"黑白短袖", "彩色短袖", "卫衣"}
 API_PLATFORMS = {
-    "汉森", "方果", *DIY19_BASE_URLS, *SDS_PLATFORM_PROFILES,
+    "S2B", "汉森", "方果", *DIY19_BASE_URLS, *SDS_PLATFORM_PROFILES,
 }
 
 

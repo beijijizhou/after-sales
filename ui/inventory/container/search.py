@@ -9,6 +9,7 @@ from db.inventory.container.repository import load_container_search_records
 from db.inventory.container.tables import build_container_display
 from ui.inventory.container.events import render_status_update
 from ui.inventory.container.posting import render_container_posting_action
+from ui.inventory.container.reversal import render_container_undo_action
 from ui.inventory.container.tables import render_container_detail
 from utils.auth import has_permission
 
@@ -45,6 +46,9 @@ def build_container_search_choices(raw_df):
 
 
 def render_container_search(supabase):
+    saved = st.session_state.pop("container_undo_saved", None)
+    if saved:
+        st.success(saved)
     try:
         raw_df = load_container_search_records(supabase)
     except Exception as error:
@@ -99,6 +103,9 @@ def _render_search_action(supabase, target, container_key):
     action = get_container_search_action(target)
     if action == "completed":
         st.success("这个货柜已经完成入库")
+        render_container_undo_action(
+            supabase, target, container_key, "container_search"
+        )
         return
     if action == "inconsistent":
         st.warning("这个货柜的明细状态不一致，请先核对货柜数据。")
@@ -116,6 +123,9 @@ def _render_search_action(supabase, target, container_key):
         render_container_posting_action(
             supabase, target, container_key,
             key_prefix="container_search_posting",
+        )
+        render_container_undo_action(
+            supabase, target, container_key, "container_search"
         )
 
 

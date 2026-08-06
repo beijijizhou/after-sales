@@ -23,6 +23,36 @@ OUTBOUND_SPECS = {
     "CVC/Haloo/Bag": ("Haloo", "CVC", "Bag"),
 }
 
+
+def apply_outbound_batch_date(source_df, movement_date):
+    result = source_df.copy()
+    result["日期"] = movement_date
+    return result
+
+
+def build_temporary_shortage_adjustments(issue_df, movement_date):
+    columns = [
+        "日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "备注",
+    ]
+    if issue_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    result = issue_df[
+        (issue_df["问题"] == "库存不足")
+        & (pd.to_numeric(issue_df["缺口"], errors="coerce").fillna(0) > 0)
+    ].copy()
+    if result.empty:
+        return pd.DataFrame(columns=columns)
+
+    result["日期"] = movement_date
+    result["操作"] = "增加"
+    result["数量"] = pd.to_numeric(
+        result["缺口"], errors="coerce"
+    ).fillna(0).astype(int)
+    result["备注"] = "临时库存调整｜每日出库缺口补足"
+    return result[columns].reset_index(drop=True)
+
+
 def build_outbound_package_template(outbound_specs=None):
     today = datetime.now(ZoneInfo("America/New_York")).date()
     rows = []

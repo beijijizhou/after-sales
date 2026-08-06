@@ -46,10 +46,12 @@ def render_adjustment_preview_editor(
     lock_identity=False,
     allow_rows=True,
     disabled_columns=None,
+    fixed_date=None,
 ):
     preview_df = build_adjustment_preview(adjustment_df).drop(columns=["合计"])
+    if fixed_date is not None:
+        preview_df = preview_df.drop(columns=["日期"])
     column_config = {
-        "日期": st.column_config.DateColumn(t("日期"), required=True),
         "操作": st.column_config.SelectboxColumn(
             "操作", options=["增加", "扣减"], required=True
         ),
@@ -58,13 +60,19 @@ def render_adjustment_preview_editor(
         "颜色": st.column_config.TextColumn(t("颜色"), required=True),
         "备注": st.column_config.TextColumn(t("备注")),
     }
+    if fixed_date is None:
+        column_config["日期"] = st.column_config.DateColumn(
+            t("日期"), required=True
+        )
     for size in SIZE_COLUMNS:
         column_config[size] = st.column_config.NumberColumn(
             size, min_value=0, step=1, format="%d"
         )
     disabled = ["操作"] if lock_operation else []
     if lock_identity:
-        disabled.extend(["日期", "品牌", "材质", "颜色"])
+        disabled.extend(["品牌", "材质", "颜色"])
+        if fixed_date is None:
+            disabled.append("日期")
     disabled.extend(disabled_columns or [])
     disabled = list(dict.fromkeys(disabled))
     edited_df = st.data_editor(
@@ -80,5 +88,7 @@ def render_adjustment_preview_editor(
         pd.to_numeric(edited_df[size], errors="coerce").fillna(0).sum()
         for size in SIZE_COLUMNS
     )
+    if fixed_date is not None:
+        edited_df.insert(0, "日期", fixed_date)
     st.caption(f"{t('当前编辑总件数')}: {int(total):,}")
     return edited_df

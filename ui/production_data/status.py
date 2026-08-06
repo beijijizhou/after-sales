@@ -1,7 +1,40 @@
 import streamlit as st
 
 
-def render_data_status(start_date, end_date, source):
+def build_platform_read_status(source, expected_platforms):
+    metadata = dict(source.get("metadata") or {})
+    data = source.get("data")
+    included = set(metadata.get("included_platforms") or [])
+    if not included and data is not None and "运营商" in data.columns:
+        included = set(
+            data["运营商"].dropna().astype(str).str.strip()
+        )
+    declared_missing = set(metadata.get("missing_platforms") or [])
+    expected = list(expected_platforms)
+    missing = declared_missing | (set(expected) - included)
+    errors = {
+        str(name): str(message)
+        for name, message in (metadata.get("platform_errors") or {}).items()
+    }
+    rows = []
+    for platform in expected:
+        if platform in missing:
+            reason = errors.get(platform) or (
+                "历史缓存未记录失败原因，请点击获取生产数据重新读取缺失平台"
+            )
+            rows.append({
+                "平台": platform, "读取状态": "未读取", "说明": reason,
+            })
+        else:
+            rows.append({
+                "平台": platform, "读取状态": "已读取", "说明": "—",
+            })
+    return rows
+
+
+def render_data_status(
+    start_date, end_date, source, expected_platforms=None,
+):
     saved_at = str(source.get("saved_at") or "").strip()
     source_name = str(source.get("file") or "").strip()
     is_cached_read = source_name.startswith("本地缓存")
@@ -28,3 +61,32 @@ def render_data_status(start_date, end_date, source):
             )
         else:
             st.warning("这份数据尚未记录缓存时间，建议重新获取一次。")
+
+    if expected_platforms:
+        platform_rows = build_platform_read_status(
+            source, expected_platforms
+        )
+        missing = [
+            row for row in platform_rows if row["读取状态"] == "未读取"
+        ]
+        st.markdown("#### 平台读取情况")
+        if missing:
+            st.warning(
+                "未读取平台：" + "、".join(
+                    row["平台"] for row in missing
+                )
+            )
+        else:
+            st.success("所有配置平台均已读取。")
+        st.dataframe(
+            platform_rows,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "平台": st.column_config.TextColumn("平台", width="small"),
+                "读取状态": st.column_config.TextColumn(
+                    "读取状态", width="small"
+                ),
+                "说明": st.column_config.TextColumn("失败原因", width="large"),
+            },
+        )

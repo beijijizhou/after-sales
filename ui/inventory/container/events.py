@@ -12,6 +12,7 @@ from db.inventory.container.workflow import (
     post_container_inventory,
 )
 from utils.auth import get_current_operator_name
+from ui.inventory.container.reversal import render_container_undo_action
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -138,4 +139,9 @@ def render_container_history(supabase, raw_df):
             ),
             "备注": st.column_config.TextColumn("备注", width="large"),
         },
+    )
+    container_key = choices[selected]
+    target = raw_df[raw_df["container_key"] == container_key]
+    render_container_undo_action(
+        supabase, target, container_key, "container_history"
     )

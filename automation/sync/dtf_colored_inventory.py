@@ -2,6 +2,7 @@ import json
 import pandas as pd
 
 from automation.production_cache import CACHE_DIR
+from automation.production import PLATFORMS_BY_DEPARTMENT
 from db.inventory.core.queries import load_inventory_items
 from db.inventory.core.constants import SIZE_COLUMNS
 from db.inventory.operations.adjustments import apply_adjustment_rows
@@ -32,7 +33,7 @@ def load_colored_day_deducted_total(supabase, movement_date):
     return sum(abs(int(row.get("quantity_change") or 0)) for row in rows)
 
 
-def load_daily_colored_production(current_date):
+def load_daily_colored_production_source(current_date):
     candidates = []
     for path in CACHE_DIR.glob("*.json"):
         try:
@@ -47,19 +48,71 @@ def load_daily_colored_production(current_date):
         ):
             candidates.append((str(metadata.get("saved_at") or ""), path))
     if not candidates:
-        return pd.DataFrame()
-    raw = pd.read_parquet(max(candidates)[1].with_suffix(".parquet"))
+        return pd.DataFrame(), {}
+    metadata_path = max(candidates)[1]
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    raw = pd.read_parquet(metadata_path.with_suffix(".parquet"))
     if "生产项状态" in raw:
         raw = raw[~raw["生产项状态"].astype(str).str.contains("取消", na=False)]
     daily = raw[(raw["部门"] == "DTF") & (raw["品类"] == CATEGORY)].copy()
     if daily.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(), metadata
     daily["数量"] = pd.to_numeric(daily["数量"], errors="coerce").fillna(0)
     daily["颜色"] = daily["颜色"].map(normalize_color)
-    return (
-        daily.groupby(["颜色", "尺码"], as_index=False)["数量"].sum()
-        .rename(columns={"颜色": "颜色", "尺码": "尺码", "数量": "生产数量"})
+    if "运营商" not in daily:
+        daily["运营商"] = "未标记平台"
+    daily["运营商"] = (
+        daily["运营商"].fillna("").astype(str).str.strip()
+        .replace("", "未标记平台")
     )
+    detail = (
+        daily.groupby(["运营商", "颜色", "尺码"], as_index=False)
+        .agg(生产数量=("数量", "sum"), 生产记录数=("数量", "size"))
+    )
+    return detail, metadata
+
+
+def load_daily_colored_production(current_date):
+    detail, _metadata = load_daily_colored_production_source(current_date)
+    if detail.empty:
+        return pd.DataFrame()
+    return detail.groupby(
+        ["颜色", "尺码"], as_index=False
+    )["生产数量"].sum()
+
+
+def build_colored_platform_audit(current_date):
+    detail, metadata = load_daily_colored_production_source(current_date)
+    quantities = {}
+    counts = {}
+    if not detail.empty:
+        quantities = detail.groupby("运营商")["生产数量"].sum().to_dict()
+        counts = detail.groupby("运营商")["生产记录数"].sum().to_dict()
+    included = {
+        str(value).strip()
+        for value in metadata.get("included_platforms") or []
+    }
+    missing = {
+        str(value).strip()
+        for value in metadata.get("missing_platforms") or []
+    }
+    configured = list(PLATFORMS_BY_DEPARTMENT.get("DTF", ()))
+    extras = sorted((set(quantities) | included | missing) - set(configured))
+    rows = []
+    for platform in [*configured, *extras]:
+        if platform in missing:
+            status = "读取失败/缺失"
+        elif platform in included or platform in quantities:
+            status = "已读取"
+        else:
+            status = "未确认"
+        rows.append({
+            "平台": platform,
+            "读取状态": status,
+            "原始生产件数": int(quantities.get(platform, 0)),
+            "生产记录数": int(counts.get(platform, 0)),
+        })
+    return pd.DataFrame(rows), metadata
 
 
 def build_colored_daily_preview(supabase, current_date):

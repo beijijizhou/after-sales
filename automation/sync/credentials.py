@@ -6,10 +6,13 @@ from automation.api.fangguo import load_fangguo_credentials
 from automation.api.hansen import load_hansen_credentials
 from automation.api.sds import load_sds_credentials
 from automation.production import SDS_PLATFORM_PROFILES
+from automation.logistics.config import load_s2b_account
 
 
 def load_platform_credentials(platform):
     empty_secrets = {}
+    if platform == "S2B":
+        return load_s2b_account(empty_secrets, "DTF")
     if platform in SDS_PLATFORM_PROFILES:
         return load_sds_credentials(
             empty_secrets, SDS_PLATFORM_PROFILES[platform]

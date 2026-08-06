@@ -38,6 +38,7 @@ def render_inventory_tabs(
     inventory_date, selected_date, current_date, visible_sizes, can_edit,
     can_view_cost, history_data, movement_types, filter_title,
     sku_filters=None,
+    undo_history_data=None,
 ):
     tab_keys = inventory_tab_keys(
         department, can_view_cost=can_view_cost, category=category
@@ -125,7 +126,8 @@ def render_inventory_tabs(
 
     with tabs["撤销"]:
         _render_history(
-            supabase, department, "undo", history_data, visible_sizes,
+            supabase, department, "undo",
+            undo_history_data or history_data, visible_sizes,
             movement_types,
         )
 

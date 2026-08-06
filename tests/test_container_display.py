@@ -8,6 +8,7 @@ from db.inventory.container.tables import (
     build_container_template,
     build_filtered_container_summary,
     build_container_inventory_summary,
+    sort_arrival_history_rows,
 )
 from ui.inventory.container.tables import calculate_container_totals
 
@@ -33,6 +34,49 @@ def container_row(department, material, item, quantity):
 
 
 class ContainerDisplayTests(unittest.TestCase):
+    def test_arrival_history_can_sort_by_latest_time(self):
+        rows = pd.DataFrame([
+            {
+                "container_no": "DTF-OLD", "department": "DTF",
+                "actual_arrival_date": "2026-08-01",
+                "actual_arrival_at": "2026-08-01T09:00:00-04:00",
+            },
+            {
+                "container_no": "UV-NEW", "department": "UV",
+                "actual_arrival_date": "2026-08-05",
+                "actual_arrival_at": "2026-08-05T10:00:00-04:00",
+            },
+        ])
+
+        result = sort_arrival_history_rows(rows, mode="time")
+
+        self.assertEqual(
+            result["container_no"].tolist(), ["UV-NEW", "DTF-OLD"]
+        )
+
+    def test_arrival_history_can_sort_by_department_then_latest_time(self):
+        rows = pd.DataFrame([
+            {
+                "container_no": "UV", "department": "UV",
+                "actual_arrival_date": "2026-08-05",
+            },
+            {
+                "container_no": "DTF-OLD", "department": "DTF",
+                "actual_arrival_date": "2026-08-01",
+            },
+            {
+                "container_no": "DTF-NEW", "department": "DTF",
+                "actual_arrival_date": "2026-08-04",
+            },
+        ])
+
+        result = sort_arrival_history_rows(rows, mode="department")
+
+        self.assertEqual(
+            result["container_no"].tolist(),
+            ["DTF-NEW", "DTF-OLD", "UV"],
+        )
+
     def test_new_container_defaults_to_55_transit_days(self):
         template = build_container_template(today=date(2026, 7, 30))
 

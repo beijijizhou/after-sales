@@ -7,6 +7,10 @@ from automation.api.hansen import fetch_hansen_production_records
 from automation.api.humbird import fetch_humbird_production_records
 from automation.api.diy19 import DIY19_BASE_URLS, fetch_diy19_production_summary
 from automation.api.sds import fetch_sds_production_records
+from automation.api.s2b import (
+    fetch_s2b_production_records,
+    parse_s2b_production_records,
+)
 from automation.playwright.errors import ProductionLoginRequired
 from automation.playwright.haloo import DIAGNOSTIC_PATH, ERP_PLATFORM_NAMES
 from automation.playwright.haloo.workflow import download_production_workbook
@@ -184,6 +188,23 @@ def load_production_data(
         return ProductionDataResult(
             data=data,
             source=f"{platform} API / {len(records):,} 个模板组合",
+        )
+
+    if platform == "S2B" and credentials:
+        records = fetch_s2b_production_records(
+            start_date,
+            end_date,
+            credentials,
+            report_progress,
+            start_hour=start_hour,
+            end_hour=end_hour,
+        )
+        data = parse_s2b_production_records(records)
+        if account_name:
+            data["部门"] = str(account_name).upper()
+        return ProductionDataResult(
+            data=data,
+            source=f"S2B {account_name or 'DTF'} 生产 API / {len(records):,} 条",
         )
 
     file_path = _download_workbook(

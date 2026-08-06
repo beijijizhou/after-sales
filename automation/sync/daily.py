@@ -112,6 +112,9 @@ def sync_production_day(target_date, force=False):
         extra_metadata={
             "included_platforms": sorted(batch.platform_results),
             "missing_platforms": sorted(batch.errors),
+            "platform_errors": {
+                name: str(message) for name, message in batch.errors.items()
+            },
             "is_complete": not batch.errors,
         },
     )

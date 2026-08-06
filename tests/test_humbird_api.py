@@ -3,6 +3,10 @@ import unittest
 from zoneinfo import ZoneInfo
 
 from automation.api.humbird import build_production_item_payload
+from automation.api.humbird.client import (
+    _deduplicate_rows,
+    _normalize_api_result,
+)
 from utils.erp.humbird_parser import parse_humbird_records
 
 
@@ -26,6 +30,28 @@ class HumbirdApiTests(unittest.TestCase):
         })
         self.assertEqual(payload["status"], [])
         self.assertEqual(payload["page_size"], 5000)
+
+    def test_normalizes_wrapped_api_response(self):
+        result = _normalize_api_result({
+            "code": 0,
+            "data": {"result": {"list": [{"code": "A"}], "total": 1}},
+        })
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["list"][0]["code"], "A")
+
+    def test_deduplicates_shifted_pages_by_production_item_code(self):
+        rows = _deduplicate_rows([
+            {"code": "A", "qty": 1},
+            {"code": "B", "qty": 1},
+            {"code": "A", "qty": 1},
+            {"qty": 1},
+            {"qty": 1},
+        ])
+
+        self.assertEqual([row.get("code") for row in rows], [
+            "A", "B", None, None,
+        ])
 
     def test_parser_maps_humbird_record_to_inventory_columns(self):
         data = parse_humbird_records(

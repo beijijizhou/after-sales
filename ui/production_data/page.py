@@ -27,7 +27,10 @@ from ui.production_data.inventory_review import (
 from ui.production_data.model_review import (
     render_black_white_model_review,
 )
-from ui.production_data.status import render_data_status
+from ui.production_data.status import (
+    build_platform_read_status,
+    render_data_status,
+)
 
 
 def render_production_data_page():
@@ -86,8 +89,27 @@ def render_production_data_page():
         normalize_production_catalog(source["data"])
     )
     source_file = source["file"]
-    st.success(f"已读取：{platform} / {source_file}")
-    render_data_status(*selected_range, source)
+    expected_platforms = (
+        department_platforms if platform == ALL_CLOTHING_PLATFORMS else None
+    )
+    platform_status = (
+        build_platform_read_status(source, expected_platforms)
+        if expected_platforms else []
+    )
+    missing_platforms = [
+        row["平台"] for row in platform_status
+        if row["读取状态"] == "未读取"
+    ]
+    if missing_platforms:
+        st.warning(
+            f"已读取部分数据：{platform} / {source_file}｜"
+            f"未读取：{'、'.join(missing_platforms)}"
+        )
+    else:
+        st.success(f"已读取：{platform} / {source_file}")
+    render_data_status(
+        *selected_range, source, expected_platforms=expected_platforms
+    )
 
     department_df = source_df[source_df["部门"] == department]
     filter_col, scope_col = st.columns(2)

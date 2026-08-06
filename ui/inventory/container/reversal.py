@@ -1,0 +1,72 @@
+import streamlit as st
+
+from db.inventory.container.workflow import (
+    get_container_undo_kind,
+    undo_latest_container_confirmation,
+)
+from utils.auth import get_current_operator_name, has_permission
+
+
+def render_container_undo_action(
+    supabase, target_df, container_key, key_prefix,
+):
+    if target_df.empty or "status" not in target_df.columns:
+        return
+    statuses = set(
+        target_df["status"].fillna("").astype(str).str.strip()
+    ) - {""}
+    if len(statuses) != 1:
+        return
+    kind = get_container_undo_kind(next(iter(statuses)))
+    if not kind:
+        return
+    if not has_permission("can_edit_container"):
+        return
+
+    container_no = target_df.get("container_no")
+    label = container_key
+    if container_no is not None:
+        values = container_no.dropna().astype(str).str.strip()
+        if not values.empty and values.iloc[0]:
+            label = values.iloc[0]
+    title = "撤销入库确认" if kind == "posting" else "撤销到柜确认"
+    effect = (
+        "系统会生成反向库存流水，货柜恢复为“已到柜”；"
+        "原入库和撤销记录都会保留。若当时使用了“到柜并直接入库”，"
+        "完成后还可以继续撤销到柜确认。"
+        if kind == "posting"
+        else "货柜恢复到确认前状态，并清除实际到柜日期；"
+        "原确认和撤销记录都会保留。"
+    )
+    with st.expander(title, expanded=False):
+        st.warning(f"{label}｜{effect}")
+        note = st.text_input(
+            "撤销原因（可选）",
+            key=f"{key_prefix}_undo_note_{container_key}",
+        )
+        confirmed = st.checkbox(
+            f"我确认要{title}：{label}",
+            key=f"{key_prefix}_undo_confirm_{container_key}",
+        )
+        if not st.button(
+            title,
+            width="stretch",
+            type="primary",
+            disabled=not confirmed,
+            key=f"{key_prefix}_undo_button_{container_key}",
+        ):
+            return
+        try:
+            result = undo_latest_container_confirmation(
+                supabase,
+                container_key,
+                get_current_operator_name(),
+                note,
+            )
+        except Exception as error:
+            st.error(f"{title}失败：{error}")
+            return
+        st.session_state["container_undo_saved"] = (
+            f"{label} 已完成{title}，当前状态：{result['status']}"
+        )
+        st.rerun()

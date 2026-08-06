@@ -11,7 +11,9 @@ from db.inventory.container.tables import (
 )
 
 
-def render_container_records(raw_df, include_cost=False):
+def render_container_records(
+    raw_df, include_cost=False, group_by_department=None,
+):
     if raw_df.empty:
         return
     departments = (
@@ -19,7 +21,12 @@ def render_container_records(raw_df, include_cost=False):
         if "department" in raw_df.columns
         else None
     )
-    if departments is None or departments.nunique() <= 1:
+    should_group = (
+        departments is not None and departments.nunique() > 1
+        if group_by_department is None
+        else bool(group_by_department and departments is not None)
+    )
+    if not should_group:
         render_container_dataframe(
             build_container_display(raw_df, include_cost)
         )

@@ -9,9 +9,49 @@ from db.inventory.operations.outbound_audit import (
     build_replacement_inventory,
     replace_daily_outbound_batch,
 )
+from db.inventory.operations.outbound import (
+    apply_outbound_batch_date,
+    build_temporary_shortage_adjustments,
+)
 
 
 class DailyOutboundEditingTests(unittest.TestCase):
+    def test_one_batch_date_is_applied_to_every_package_row(self):
+        source = pd.DataFrame([
+            {"包装规格": "A", "日期": date(2026, 8, 5)},
+            {"包装规格": "B", "日期": date(2026, 8, 5)},
+        ])
+
+        result = apply_outbound_batch_date(
+            source.drop(columns=["日期"]), date(2026, 8, 4)
+        )
+
+        self.assertEqual(
+            result["日期"].tolist(),
+            [date(2026, 8, 4), date(2026, 8, 4)],
+        )
+
+    def test_temporary_shortage_adjustment_only_fills_existing_skus(self):
+        issues = pd.DataFrame([
+            {
+                "品牌": "Caribbean", "材质": "160g", "颜色": "白",
+                "尺码": "L", "缺口": 662, "问题": "库存不足",
+            },
+            {
+                "品牌": "New", "材质": "160g", "颜色": "黑",
+                "尺码": "XL", "缺口": 120, "问题": "SKU 不存在",
+            },
+        ])
+
+        result = build_temporary_shortage_adjustments(
+            issues, date(2026, 8, 5)
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["数量"], 662)
+        self.assertEqual(result.iloc[0]["操作"], "增加")
+        self.assertEqual(result.iloc[0]["日期"], date(2026, 8, 5))
+        self.assertIn("每日出库缺口补足", result.iloc[0]["备注"])
     def setUp(self):
         self.batch = pd.DataFrame([{
             "movement_date": date(2026, 8, 1),

@@ -29,6 +29,10 @@ def render_reversals(
     supabase, batches_df, movements_df, items_df, can_edit, show_cost
 ):
     st.subheader("撤销耗材记录")
+    st.caption(
+        "统一撤销规则：整批生成反向流水，原记录、撤销记录、操作人和"
+        "时间全部保留；不直接删除或覆盖历史。"
+    )
     reversed_ids = set(
         batches_df["reversal_of_batch_id"].dropna().astype(str)
     )

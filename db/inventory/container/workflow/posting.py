@@ -134,14 +134,15 @@ def _load_container_rows(supabase, container_key):
 def _ensure_not_posted(supabase, container_key):
     events = (
         supabase.table("inventory_container_events")
-        .select("id")
+        .select("event_type")
         .eq("container_key", container_key)
-        .eq("event_type", "入库")
+        .in_("event_type", ["入库", "撤销入库"])
+        .order("created_at", desc=True)
         .limit(1)
         .execute()
         .data
     )
-    if events:
+    if events and events[0].get("event_type") == "入库":
         raise ValueError("这个货柜已经入库，不能重复操作")
 
 

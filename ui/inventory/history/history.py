@@ -31,6 +31,7 @@ from ui.inventory.history.history_filters import (
     filter_batches_by_movement_type,
     filter_batches_by_outbound_kind,
     filter_history_batches,
+    filter_reversal_scope,
 )
 from utils.auth import get_current_operator_name, has_permission
 from ui.inventory.i18n import t
@@ -269,6 +270,7 @@ def render_inventory_history(
         return
 
     selected_df = filter_history_batches(batch_df, mode)
+    history_key = f"inventory_{mode}_history_batch"
     if mode == "all":
         outbound_kind = st.selectbox(
             t("流水记录类型"),
@@ -282,7 +284,31 @@ def render_inventory_history(
         selected_df = filter_batches_by_outbound_kind(
             selected_df, outbound_kind
         )
-    if mode != "sku":
+    if mode == "undo":
+        st.caption(
+            "这里显示当前部门的完整可撤销批次，不受库存日期、品类、"
+            "品牌、材质、颜色或尺码筛选影响。"
+        )
+        reversal_scope = st.segmented_control(
+            "撤销记录类型",
+            [
+                "全部可撤销记录", "仓库每日出库", "系统库存扣减",
+                "临时库存调整", "其他出入库",
+            ],
+            default="全部可撤销记录",
+            key="inventory_reversal_scope",
+        ) or "全部可撤销记录"
+        selected_df = filter_reversal_scope(
+            selected_df, reversal_scope
+        )
+        st.caption(
+            f"{reversal_scope}：当前显示 {len(selected_df):,} 笔可撤销记录"
+        )
+        history_key = (
+            "inventory_undo_history_batch_"
+            + reversal_scope
+        )
+    elif mode != "sku":
         selected_df = filter_batches_by_movement_type(
             selected_df, movement_types
         )
@@ -295,7 +321,7 @@ def render_inventory_history(
         selected_df,
         movement_df,
         sku_import_df,
-        f"inventory_{mode}_history_batch",
+        history_key,
         allow_undo=mode == "undo",
         visible_sizes=visible_sizes,
         sku_import=mode == "sku",

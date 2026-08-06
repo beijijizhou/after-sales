@@ -1,10 +1,14 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 from hashlib import sha1
+from zoneinfo import ZoneInfo
 
 from db.inventory import SIZE_COLUMNS, apply_adjustment_rows, normalize_adjustment_rows
 from db.inventory.operations.outbound import (
     OUTBOUND_SPECS,
+    apply_outbound_batch_date,
+    build_temporary_shortage_adjustments,
     build_outbound_package_template,
     convert_packages_to_adjustments,
     load_container_outbound_specs,
@@ -41,6 +45,11 @@ def render_daily_outbound(supabase, department, category):
     text = TEXT[language]
     st.subheader(text["title"])
     st.warning(text["notice"])
+    temporary_saved_message = st.session_state.pop(
+        "daily_outbound_temporary_saved_message", None
+    )
+    if temporary_saved_message:
+        st.success(temporary_saved_message)
 
     version = st.session_state.get("daily_outbound_version", 0)
     container_specs = load_container_outbound_specs(
@@ -48,9 +57,18 @@ def render_daily_outbound(supabase, department, category):
     )
     outbound_specs = {**container_specs, **OUTBOUND_SPECS}
     specs_signature = outbound_specs_signature(outbound_specs)
+    movement_date = st.date_input(
+        text["batch_date"],
+        value=st.session_state.get(
+            "inventory_today",
+            datetime.now(ZoneInfo("America/New_York")).date(),
+        ),
+        key="daily_outbound_batch_date",
+    )
+    date_column = COLUMNS[language]["日期"]
     template_df = to_display_table(
         build_outbound_package_template(outbound_specs), language
-    )
+    ).drop(columns=[date_column])
     st.download_button(
         text["download"],
         data=template_df.to_csv(index=False).encode("utf-8-sig"),
@@ -70,12 +88,15 @@ def render_daily_outbound(supabase, department, category):
                 if uploaded_file.name.lower().endswith(".csv")
                 else pd.read_excel(uploaded_file)
             )
+            internal_df = apply_outbound_batch_date(
+                to_internal_table(template_df, language), movement_date
+            )
             template_df = to_display_table(
                 normalize_outbound_packages(
-                    to_internal_table(template_df, language), outbound_specs
+                    internal_df, outbound_specs
                 ),
                 language,
-            )
+            ).drop(columns=[date_column])
         except Exception as error:
             st.error(f"{text['read_error']}: {error}")
             return
@@ -103,7 +124,10 @@ def render_daily_outbound(supabase, department, category):
         ),
     )
     package_df = normalize_outbound_packages(
-        to_internal_table(package_df, language), outbound_specs
+        apply_outbound_batch_date(
+            to_internal_table(package_df, language), movement_date
+        ),
+        outbound_specs,
     )
     adjustment_df = convert_packages_to_adjustments(
         package_df,
@@ -127,6 +151,7 @@ def render_daily_outbound(supabase, department, category):
         lock_operation=True,
         lock_identity=True,
         allow_rows=False,
+        fixed_date=movement_date,
     )
     adjustment_df = normalize_adjustment_rows(preview_df)
     if adjustment_df.empty:
@@ -162,6 +187,56 @@ def render_daily_outbound(supabase, department, category):
             },
         )
         st.info(text["inventory_issue_help"])
+        temporary_rows = build_temporary_shortage_adjustments(
+            inventory_issues, movement_date
+        )
+        missing_sku_count = int(
+            (inventory_issues["问题"] == "SKU 不存在").sum()
+        )
+        if missing_sku_count:
+            st.warning(
+                text["missing_sku_help"].format(count=missing_sku_count)
+            )
+        if not temporary_rows.empty:
+            with st.expander(text["temporary_title"], expanded=True):
+                st.caption(text["temporary_help"])
+                st.dataframe(
+                    temporary_rows[
+                        ["品牌", "材质", "颜色", "尺码", "数量"]
+                    ],
+                    hide_index=True,
+                    width="stretch",
+                    column_config={
+                        "数量": st.column_config.NumberColumn(
+                            text["temporary_quantity"], format="%d"
+                        ),
+                    },
+                )
+                if st.button(
+                    text["temporary_confirm"],
+                    width="stretch",
+                    type="primary",
+                    key="daily_outbound_fill_shortage",
+                ):
+                    try:
+                        apply_adjustment_rows(
+                            supabase,
+                            department,
+                            category,
+                            temporary_rows,
+                            get_current_operator_name(),
+                            source_type="transfer",
+                        )
+                    except Exception as error:
+                        st.error(f"{text['temporary_failed']}: {error}")
+                        return
+                    st.session_state[
+                        "daily_outbound_temporary_saved_message"
+                    ] = text["temporary_saved"].format(
+                        count=len(temporary_rows),
+                        quantity=int(temporary_rows["数量"].sum()),
+                    )
+                    st.rerun()
         return
     st.warning(text["unsaved"])
     if not st.button(
@@ -215,7 +290,6 @@ def build_package_column_config(language, outbound_specs=None):
     columns = COLUMNS[language]
     colors = list(COLORS[language].values())
     config = {
-        columns["日期"]: st.column_config.DateColumn(columns["日期"], required=True),
         columns["包装规格"]: st.column_config.SelectboxColumn(
             columns["包装规格"],
             options=[

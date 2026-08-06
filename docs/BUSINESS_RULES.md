@@ -117,11 +117,78 @@ system-readable sources are previewed and confirmed through one consolidated
 operation. New automatic sources are registered in the shared automatic-flow
 registry instead of adding another independent dashboard button.
 
+For colored T-shirts, the system preview must list every configured production
+platform with its read status and raw quantity. It also reconciles the raw
+production total, the quantity mapped to deductible inventory, and the
+unresolved difference. A missing platform or a nonzero difference blocks the
+daily deduction so an incomplete day cannot be recorded as complete.
+
+S2B production is read from the authenticated factory bill API, not from an
+Excel export. The query uses the factory page's `production_at` field and a
+New York business-day boundary from 00:00:00 through 23:59:59, reads every
+page, verifies the returned row count, and then passes the rows through the
+shared production catalog normalization. Browser export is only a manual
+fallback for recovering an expired login; it is not the normal data path.
+
+An aggregate production result must never present partial data as a generic
+success. Show every configured platform as read or unread and preserve the
+per-platform failure message in cache metadata. When an older partial cache
+predates failure-message storage, explicitly say that its reason was not
+recorded and direct the user to retry the missing platforms; do not invent a
+cause or require all successful platforms to be fetched again.
+
 The DTF production-inventory page must keep `仓库每日出库` visible when the
 top-level category filter is `全部品类`. It also shows a separate
 `系统库存扣减` entry for colored T-shirts. A required daily operation must not
 disappear merely because a summary filter is broad, and system deductions
 must never be presented as warehouse outbound.
+
+A warehouse daily-outbound batch has exactly one business date. Users choose
+`本批出库日期` once above the package/SKU table; row editors and downloaded
+templates must not repeat the same date on every SKU row. The selected batch
+date is applied to every saved movement in that batch.
+
+Warehouse daily outbound must not write negative inventory. When an existing
+SKU has insufficient stock, the outbound page may create a separate temporary
+inventory-adjustment batch for the exact shortage and then keep the outbound
+draft available for confirmation. This temporary batch must remain visible in
+the ledger and reversible so the physical count can be corrected later. A
+missing SKU is master-data work and must not be created implicitly by this
+shortage flow.
+
+Container arrival history separates filtering from presentation. The date
+range limits which arrivals are included; users can then view one combined
+table ordered by newest arrival time or group records by department, with each
+department still ordered newest first.
+
+Container arrival and inventory-posting confirmations are reversible user
+workflows, not direct database fixes. Reversing a posting creates an inventory
+batch reversal and returns the container to arrived; reversing arrival returns
+it to the prior in-transit state and clears the actual-arrival fields. Original
+events remain visible and a separate reversal event is appended. The UI must
+require an explicit confirmation before either reversal.
+
+All outbound domains follow the same reversal contract. Black/white T-shirt
+warehouse outbound, colored T-shirt system deductions, UV system deductions,
+temporary inventory movements, and DTF consumable issues keep their original
+batch and append a reversing batch with operator and timestamp. Production
+inventory and consumables may use separate ledgers, but neither may delete or
+overwrite an effective outbound. The production-inventory reversal view uses
+its own workflow/source filter and must not inherit stock-view date, category,
+brand, material, color, or size filters.
+
+The daily inventory-completion dashboard starts at 2026-08-01; dates before
+that business baseline must not appear as missing work. Automatic flows load
+all currently missing dates in one action, show a date-and-source preview with
+quantities and blocking messages, and require one explicit confirmation before
+applying every ready preview. Manual warehouse and consumable flows continue to
+require actual reported quantities and must not invent a deduction merely to
+fill a missing date.
+
+The current New York business day is an in-progress day, not overdue work. Show
+its completed and unfinished flows separately with a clear “today is not over”
+message. Only dates through yesterday count as missing, appear in the automatic
+backfill selector, or contribute to manager-facing overdue totals.
 
 Corrections preserve the original batch. A manual-source correction reverses
 the original and records a corrected replacement; a system-source correction

@@ -11,7 +11,9 @@ from automation.production_cache import (
 )
 
 
-def store_production_data(platform, data, source, saved_at=None):
+def store_production_data(
+    platform, data, source, saved_at=None, metadata=None,
+):
     platform_data = dict(
         st.session_state.get("production_data_by_platform", {})
     )
@@ -19,6 +21,7 @@ def store_production_data(platform, data, source, saved_at=None):
         "data": data,
         "file": source,
         "saved_at": saved_at,
+        "metadata": dict(metadata or {}),
     }
     st.session_state["production_data_by_platform"] = platform_data
 
@@ -34,11 +37,14 @@ def sync_session_from_local_cache(
     current = st.session_state.get(
         "production_data_by_platform", {}
     ).get(platform, {})
-    if current.get("saved_at") == cached.saved_at:
+    if (
+        current.get("saved_at") == cached.saved_at
+        and current.get("metadata") == cached.metadata
+    ):
         return
     source = f"本地缓存 {cached.saved_at} / {cached.source}"
     store_production_data(
-        platform, cached.data, source, cached.saved_at
+        platform, cached.data, source, cached.saved_at, cached.metadata
     )
 
 

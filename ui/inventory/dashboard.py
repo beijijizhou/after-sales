@@ -1,15 +1,17 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import streamlit as st
 
 from automation.sync.daily_inventory_consumption import (
     AUTOMATIC_DAILY_FLOWS,
-    apply_automatic_daily_previews,
-    load_automatic_daily_previews,
+    apply_automatic_daily_batch_previews,
+    build_automatic_daily_batch_summary,
+    load_automatic_daily_batch_previews,
 )
 from db.inventory.dashboard import (
     build_automatic_missing_dates,
+    build_today_completion_status,
     load_daily_completion_status,
     load_inventory_overview,
 )
@@ -25,6 +27,16 @@ NY_TIMEZONE = ZoneInfo("America/New_York")
 
 def render_inventory_dashboard(supabase):
     st.title("库存总结")
+    saved_message = st.session_state.pop(
+        "inventory_dashboard_saved_message", None
+    )
+    error_message = st.session_state.pop(
+        "inventory_dashboard_error_message", None
+    )
+    if saved_message:
+        st.success(saved_message)
+    if error_message:
+        st.error(error_message)
     st.caption(
         "集中查看生产库存、耗材库存、货柜安排和每日消耗完成情况。"
     )
@@ -70,32 +82,39 @@ def _render_overview(supabase, today):
 
 
 def _render_daily_completion(supabase, today):
-    heading, control = st.columns([4, 1])
-    heading.subheader("每日库存扣减完成情况")
-    lookback_days = control.selectbox(
-        "检查范围", [7, 14, 30], index=0,
-        format_func=lambda value: f"最近 {value} 天",
-        key="inventory_dashboard_lookback",
-    )
+    st.subheader("每日库存扣减完成情况")
     try:
         summary, completed, start_date = load_daily_completion_status(
-            supabase, today, lookback_days
+            supabase, today
         )
     except Exception as error:
         st.error(f"每日出库状态加载失败：{error}")
         return {}
     missing = int(summary["待处理天数"].sum())
-    if missing:
-        st.warning(f"四类出库合计还有 {missing} 个日期需要处理。")
+    history_end = today - timedelta(days=1)
+    check_days = max((history_end - start_date).days + 1, 0)
+    if check_days:
+        st.caption(
+            f"补录统计：{start_date:%Y-%m-%d} 至 "
+            f"{history_end:%Y-%m-%d}｜共 {check_days} 个已结束日期"
+        )
     else:
-        st.success(f"最近 {lookback_days} 天的四类出库全部完成。")
+        st.caption("补录统计：暂无已经结束的日期")
+    if missing:
+        st.warning(
+            f"四类出库合计还有 {missing} 个日期/项目需要处理。"
+        )
+    else:
+        st.success(
+            f"截至 {history_end:%Y-%m-%d} 的四类出库全部完成。"
+        )
     st.dataframe(
         summary,
         hide_index=True,
         width="stretch",
         column_config={
             "已完成天数": st.column_config.ProgressColumn(
-                "已完成天数", min_value=0, max_value=lookback_days,
+                "已完成天数", min_value=0, max_value=max(check_days, 1),
                 format="%d 天",
             ),
             "检查天数": None,
@@ -105,6 +124,14 @@ def _render_daily_completion(supabase, today):
     st.caption(
         "人工项目显示需要补录的实际出库；系统项目显示需要读取来源并扣减的日期。"
     )
+    today_status = build_today_completion_status(completed, today)
+    completed_today = "、".join(today_status["completed"]) or "无"
+    pending_today = "、".join(today_status["pending"]) or "无"
+    st.info(
+        f"今日 {today:%m/%d} 正在进行：已完成 {completed_today}；"
+        f"尚未完成 {pending_today}。今天尚未结束，未完成项目属于正常进度，"
+        "不计入补录。"
+    )
     links = st.columns(2)
     links[0].page_link(
         "pages/4_库存.py", label="补录黑白短袖出库 →"
@@ -113,12 +140,12 @@ def _render_daily_completion(supabase, today):
         "pages/9_耗材库存.py", label="补录 DTF 耗材出库 →"
     )
     return build_automatic_missing_dates(
-        completed, start_date, today
+        completed, start_date, history_end
     )
 
 
 def _render_automatic_daily_operation(supabase, missing_dates):
-    st.subheader("系统数据一键消耗库存")
+    st.subheader("系统出库一键补录")
     st.caption(
         "当前统一处理彩色短袖生产数据和 UV Google Sheets；"
         "以后新增自动来源会继续加入这里。"
@@ -126,24 +153,27 @@ def _render_automatic_daily_operation(supabase, missing_dates):
     if not missing_dates:
         st.success("彩色短袖和 UV 在当前检查范围内均已完成扣减。")
         return
-    options = list(missing_dates)
-    operation_date = st.selectbox(
-        "待补扣日期",
-        options,
-        format_func=lambda value: (
-            f"{value:%Y-%m-%d}｜{missing_dates[value]}"
-        ),
-        key="inventory_dashboard_auto_missing_date",
-        help="这里只显示彩色短袖或 UV 尚未扣减的日期。",
+    options = sorted(missing_dates)
+    st.caption(
+        "待补扣日期：" + "；".join(
+            f"{value:%Y-%m-%d}（{missing_dates[value]}）"
+            for value in options
+        )
     )
     spreadsheet = render_uv_spreadsheet_selector(
         key="inventory_dashboard_uv_spreadsheet"
     )
     state_key = "inventory_dashboard_auto_previews"
     identity_key = "inventory_dashboard_auto_preview_identity"
-    identity = (operation_date.isoformat(), spreadsheet["id"])
+    identity = (
+        tuple(
+            (value.isoformat(), missing_dates[value])
+            for value in options
+        ),
+        spreadsheet["id"],
+    )
     if st.button(
-        "读取彩色短袖与 UV 数据",
+        "一键读取全部待补日期",
         type="secondary",
         width="stretch",
         key="inventory_dashboard_auto_load",
@@ -152,9 +182,9 @@ def _render_automatic_daily_operation(supabase, missing_dates):
             sheets_client = google_sheets_client()
         except Exception:
             sheets_client = None
-        previews = load_automatic_daily_previews(
+        previews = load_automatic_daily_batch_previews(
             supabase,
-            operation_date,
+            missing_dates,
             sheets_client,
             spreadsheet["id"],
         )
@@ -167,69 +197,114 @@ def _render_automatic_daily_operation(supabase, missing_dates):
         or st.session_state.get(identity_key) != identity
     ):
         return
-    ready = []
-    columns = st.columns(len(AUTOMATIC_DAILY_FLOWS))
-    for column, flow in zip(columns, AUTOMATIC_DAILY_FLOWS):
-        preview = previews[flow.code]
-        with column.container(border=True):
-            st.markdown(f"#### {flow.label}")
-            if preview.state == "completed":
-                st.success(f"已扣减 {preview.quantity:,} 件")
-            elif preview.state == "ready":
-                ready.append(flow)
-                st.metric("本次预计扣减", f"{preview.quantity:,} 件")
-                st.caption("已读取，等待统一确认")
-            elif preview.state == "blocked":
-                st.error("存在阻止扣减的问题")
-                st.caption(preview.message)
-            elif preview.state == "error":
-                st.error("来源读取失败")
-                st.caption(preview.message)
-            else:
-                st.info(preview.message)
-            if not preview.rows.empty:
-                with st.expander("查看 SKU 明细"):
-                    st.dataframe(
-                        preview.rows, hide_index=True, width="stretch"
-                    )
+    state_labels = {
+        "ready": "待确认", "completed": "已完成",
+        "blocked": "存在问题", "error": "读取失败",
+        "no_data": "无数据",
+    }
+    summary = build_automatic_daily_batch_summary(previews)
+    display_summary = summary.copy()
+    display_summary["状态"] = display_summary["状态"].map(
+        state_labels
+    ).fillna(display_summary["状态"])
+    st.subheader("批量补扣预览")
+    st.dataframe(
+        display_summary,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "日期": st.column_config.DateColumn("日期"),
+            "预计扣减": st.column_config.NumberColumn(
+                "预计扣减", format="%d 件"
+            ),
+            "来源总量": st.column_config.NumberColumn(
+                "来源总量", format="%d 件"
+            ),
+            "待核对差额": st.column_config.NumberColumn(
+                "待核对差额", format="%d 件"
+            ),
+            "说明": st.column_config.TextColumn("说明", width="large"),
+        },
+    )
+    ready = [
+        (movement_date, flow, previews[movement_date].get(flow.code))
+        for movement_date in sorted(previews)
+        for flow in AUTOMATIC_DAILY_FLOWS
+        if previews[movement_date].get(flow.code) is not None
+        and previews[movement_date][flow.code].state == "ready"
+    ]
+    details = [
+        (movement_date, flow, previews[movement_date].get(flow.code))
+        for movement_date in sorted(previews)
+        for flow in AUTOMATIC_DAILY_FLOWS
+        if previews[movement_date].get(flow.code) is not None
+        and (
+            not previews[movement_date][flow.code].rows.empty
+            or previews[movement_date][flow.code].source_rows is not None
+        )
+    ]
+    for movement_date, flow, preview in details:
+        with st.expander(
+            f"{movement_date:%Y-%m-%d}｜{flow.label}｜"
+            f"预计扣减 {preview.quantity:,} 件"
+        ):
+            if preview.source_rows is not None:
+                st.markdown("**平台来源核对**")
+                st.caption(
+                    f"原始生产 {preview.source_quantity:,} 件｜"
+                    f"可扣库存 {preview.quantity:,} 件｜"
+                    f"待核对 {preview.unresolved_quantity:,} 件"
+                )
+                st.dataframe(
+                    preview.source_rows, hide_index=True, width="stretch",
+                    column_config={
+                        "原始生产件数": st.column_config.NumberColumn(
+                            format="%d 件"
+                        ),
+                        "生产记录数": st.column_config.NumberColumn(
+                            format="%d 条"
+                        ),
+                    },
+                )
+                st.markdown("**SKU 库存匹配**")
+            st.dataframe(preview.rows, hide_index=True, width="stretch")
     if not ready:
         st.info("当前没有需要扣减的系统数据。")
         return
     if not has_permission("can_edit_inventory"):
         st.info("当前账号只有查看权限，不能扣减库存。")
         return
-    total = sum(previews[flow.code].quantity for flow in ready)
+    total = sum(preview.quantity for _, _, preview in ready)
     confirmed = st.checkbox(
-        f"我已核对以上数据，确认共扣减 {total:,} 件",
+        f"我已核对 {len(ready)} 个日期/项目，确认共扣减 {total:,} 件",
         key="inventory_dashboard_auto_confirm",
     )
     if not st.button(
-        "确认并扣减全部系统库存",
+        "一键补扣全部已预览库存",
         type="primary",
         width="stretch",
         disabled=not confirmed,
         key="inventory_dashboard_auto_apply",
     ):
         return
-    results, errors = apply_automatic_daily_previews(
+    results, errors = apply_automatic_daily_batch_previews(
         supabase,
-        operation_date,
         previews,
         get_current_operator_name(),
     )
     labels = {flow.code: flow.label for flow in AUTOMATIC_DAILY_FLOWS}
     if results:
         details = "；".join(
-            f"{labels[code]} {quantity:,} 件"
-            for code, quantity in results.items()
+            f"{movement_date:%m/%d} {labels[code]} {quantity:,} 件"
+            for (movement_date, code), quantity in results.items()
         )
         st.session_state["inventory_dashboard_saved_message"] = (
             f"系统库存扣减完成：{details}"
         )
     if errors:
         st.session_state["inventory_dashboard_error_message"] = "；".join(
-            f"{labels[code]}：{message}"
-            for code, message in errors.items()
+            f"{movement_date:%m/%d} {labels[code]}：{message}"
+            for (movement_date, code), message in errors.items()
         )
     st.session_state.pop(state_key, None)
     st.session_state.pop(identity_key, None)

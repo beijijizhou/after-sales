@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -20,6 +20,7 @@ DAILY_FLOW_LABELS = {
     "colored": "彩色短袖",
     "uv": "UV 生产库存",
 }
+DAILY_COMPLETION_START_DATE = date(2026, 8, 1)
 
 
 def load_daily_completion_summary(supabase, today, lookback_days=7):
@@ -29,8 +30,14 @@ def load_daily_completion_summary(supabase, today, lookback_days=7):
     return summary
 
 
-def load_daily_completion_status(supabase, today, lookback_days=7):
-    start_date = today - timedelta(days=lookback_days - 1)
+def load_daily_completion_status(
+    supabase, today, lookback_days=None,
+    start_date=DAILY_COMPLETION_START_DATE,
+):
+    if lookback_days is not None:
+        rolling_start = today - timedelta(days=lookback_days - 1)
+        start_date = max(start_date, rolling_start)
+    start_date = min(start_date, today)
     movements = _load_daily_inventory_movements(
         supabase, start_date, today
     )
@@ -47,8 +54,9 @@ def load_daily_completion_status(supabase, today, lookback_days=7):
     completed = build_daily_completion_dates(
         movements, consumable_batches
     )
+    history_end = today - timedelta(days=1)
     return (
-        build_daily_completion_table(completed, start_date, today),
+        build_daily_completion_table(completed, start_date, history_end),
         completed,
         start_date,
     )
@@ -138,6 +146,23 @@ def build_automatic_missing_dates(completed, start_date, end_date):
         if missing:
             result[movement_date] = "、".join(missing)
     return result
+
+
+def build_today_completion_status(completed, today):
+    completed_labels = []
+    pending_labels = []
+    for code, label in DAILY_FLOW_LABELS.items():
+        target = (
+            completed_labels
+            if today in set(completed.get(code, set()))
+            else pending_labels
+        )
+        target.append(label)
+    return {
+        "date": today,
+        "completed": completed_labels,
+        "pending": pending_labels,
+    }
 
 
 def load_inventory_overview(supabase, today):

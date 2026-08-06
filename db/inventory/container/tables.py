@@ -15,6 +15,45 @@ CONTAINER_STATUSES = ["在途", "取消"]
 DEFAULT_TRANSIT_DAYS = 55
 
 
+def sort_arrival_history_rows(raw_df, mode="time"):
+    if raw_df is None or raw_df.empty:
+        return raw_df.copy() if raw_df is not None else pd.DataFrame()
+
+    result = raw_df.copy()
+    arrival_at = pd.to_datetime(
+        result.get(
+            "actual_arrival_at", pd.Series(pd.NaT, index=result.index)
+        ),
+        errors="coerce",
+        utc=True,
+    )
+    arrival_date = pd.to_datetime(
+        result.get(
+            "actual_arrival_date", pd.Series(pd.NaT, index=result.index)
+        ),
+        errors="coerce",
+        utc=True,
+    )
+    result["_arrival_sort"] = arrival_at.fillna(arrival_date)
+    result["_department_sort"] = result.get(
+        "department", pd.Series("", index=result.index)
+    ).fillna("").astype(str).str.casefold()
+    result["_container_sort"] = result.get(
+        "container_no", pd.Series("", index=result.index)
+    ).fillna("").astype(str).str.casefold()
+    if mode == "department":
+        by = ["_department_sort", "_arrival_sort", "_container_sort"]
+        ascending = [True, False, True]
+    else:
+        by = ["_arrival_sort", "_department_sort", "_container_sort"]
+        ascending = [False, True, True]
+    return result.sort_values(
+        by, ascending=ascending, kind="stable", na_position="last"
+    ).drop(columns=[
+        "_arrival_sort", "_department_sort", "_container_sort",
+    ]).reset_index(drop=True)
+
+
 def build_container_template(today=None):
     shipped_date = today or date.today()
     return pd.DataFrame([{

@@ -10,7 +10,9 @@ from db.inventory.container.history import (
 from db.inventory.container.workflow import (
     confirm_container_arrival,
     confirm_container_arrival_date,
+    get_container_undo_kind,
     post_container_inventory,
+    undo_latest_container_confirmation,
 )
 from db.inventory.container.progress import build_container_progress_summary
 from db.inventory.container.packaging import (
@@ -40,6 +42,8 @@ __all__ = [
     "load_inventory_containers",
     "load_container_dimensions",
     "load_container_events",
+    "get_container_undo_kind",
     "normalize_container_rows",
     "post_container_inventory",
+    "undo_latest_container_confirmation",
 ]

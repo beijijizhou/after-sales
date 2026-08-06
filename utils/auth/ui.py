@@ -1,5 +1,3 @@
-from importlib import reload
-
 import streamlit as st
 
 import utils.auth.constants as auth_constants
@@ -82,7 +80,7 @@ def render_user_badge():
 
 
 def render_navigation():
-    constants = reload(auth_constants)
+    constants = auth_constants
     st.markdown(
         """
         <style>
@@ -125,7 +123,7 @@ def require_login():
 
 
 def require_page_access(page_key):
-    constants = reload(auth_constants)
+    constants = auth_constants
     render_navigation()
     required_permission = constants.PAGE_ACCESS.get(page_key)
     if (

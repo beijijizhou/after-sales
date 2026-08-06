@@ -1,4 +1,9 @@
-from utils.daily_consumption import is_daily_consumption_reason
+from utils.daily_consumption import (
+    ENTRY_MANUAL,
+    ENTRY_SYSTEM,
+    daily_consumption_source,
+    is_daily_consumption_reason,
+)
 
 
 def filter_history_batches(batch_df, mode):
@@ -52,3 +57,23 @@ def filter_batches_by_movement_type(batch_df, movement_types):
             )
         )
     ]
+
+
+def filter_reversal_scope(batch_df, scope):
+    if batch_df.empty or scope == "全部可撤销记录":
+        return batch_df
+    reasons = batch_df["备注"].fillna("").astype(str)
+    directions = batch_df["类型"].fillna("").astype(str)
+    sources = reasons.map(daily_consumption_source)
+    masks = {
+        "仓库每日出库": directions.eq("出库") & sources.eq(ENTRY_MANUAL),
+        "系统库存扣减": directions.eq("出库") & sources.eq(ENTRY_SYSTEM),
+        "临时库存调整": reasons.str.contains(
+            "临时库存调整", regex=False
+        ),
+        "其他出入库": sources.eq("") & ~reasons.str.contains(
+            "临时库存调整", regex=False
+        ),
+    }
+    mask = masks.get(scope)
+    return batch_df if mask is None else batch_df[mask]
