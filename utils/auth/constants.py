@@ -117,6 +117,7 @@ PAGE_ACCESS = {
     "production_data": "can_view_production_data",
     "logistics": "can_view_logistics",
     "inventory": "can_view_inventory",
+    "inventory_dashboard": "can_view_inventory",
     "consumables": "can_view_consumables",
     "container": "can_view_container",
     "finance": "can_view_finance_dashboard",
@@ -138,6 +139,7 @@ NAV_SECTIONS = [
         ("logistics", "物流单号追踪", "pages/11_物流追踪.py"),
     ]),
     ("库存", [
+        ("inventory_dashboard", "库存总结", "pages/4_库存总结.py"),
         ("inventory", "生产库存", "pages/4_库存.py"),
         ("consumables", "耗材库存", "pages/9_耗材库存.py"),
         ("container", "货柜安排", "pages/5_货柜安排.py"),

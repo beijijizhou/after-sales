@@ -106,6 +106,7 @@ def load_daily_summary(
 def sync_usage_to_inventory(
     supabase, sku, daily_usage, created_by="system",
     reason_product_code="", reason_prefix="Google Sheets UV每日消耗",
+    batch_id=None,
 ):
     imported = {}
     skipped = {}
@@ -142,7 +143,7 @@ def sync_usage_to_inventory(
             row,
             created_by=created_by,
             source_type="bulk",
-            batch_id=str(uuid5(
+            batch_id=str(batch_id or uuid5(
                 NAMESPACE_URL,
                 f"{sku.department}-{sku.category}-{reason}",
             )),

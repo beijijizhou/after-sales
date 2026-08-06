@@ -110,6 +110,26 @@ class UVDailyOperationTests(unittest.TestCase):
 
         self.assertEqual((imported, skipped), (2300, 0))
         self.assertEqual(sync_usage.call_count, 1)
+        self.assertTrue(sync_usage.call_args.kwargs["batch_id"])
+
+    @patch(
+        "automation.sync.uv_daily_operation.sync_usage_to_inventory",
+        return_value=({date(2026, 7, 30): 100}, {}),
+    )
+    def test_apply_uses_one_batch_for_every_sku(self, sync_usage):
+        preview = pd.DataFrame([
+            {"表格产品": "Tie_2030", "当日消耗": 100, "状态": "可扣减"},
+            {"表格产品": "Tie_1040", "当日消耗": 100, "状态": "可扣减"},
+        ])
+
+        apply_daily_sync(
+            object(), preview, date(2026, 7, 30), "tester"
+        )
+
+        batch_ids = {
+            call.kwargs["batch_id"] for call in sync_usage.call_args_list
+        }
+        self.assertEqual(len(batch_ids), 1)
 
 
 if __name__ == "__main__":

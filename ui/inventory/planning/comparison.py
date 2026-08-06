@@ -1,13 +1,7 @@
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 
 from automation.production_period import load_period_production_model
-from automation.sync.google_sheets import (
-    GoogleSheetsClient,
-    resolve_service_account_info,
-)
 from automation.sync.uv_daily_operation import (
     SYNCABLE_STATUSES,
     apply_daily_sync,
@@ -24,8 +18,6 @@ from db.inventory.planning.consumption_comparison import (
 from db.inventory.planning.demand_anomaly import load_daily_outbound_history
 from db.inventory.planning.uv_consumption import (
     UV_CONSUMPTION_LOOKBACK_DAYS,
-    UV_DAILY_ORDERS_SPREADSHEET_ID,
-    UV_GOOGLE_DRIVE_FOLDER_ID,
     UV_GOOGLE_DRIVE_FOLDER_URL,
     build_uv_container_coverage,
     load_uv_consumption_history,
@@ -39,6 +31,10 @@ from ui.inventory.planning.accuracy import (
 )
 from ui.inventory.planning.colored_consumption import (
     render_colored_consumption,
+)
+from ui.inventory.planning.uv_source import (
+    google_sheets_client,
+    render_uv_spreadsheet_selector,
 )
 from utils.auth.session import (
     get_current_operator_name,
@@ -207,12 +203,9 @@ def render_uv_consumption_model(
     st.subheader("UV 每日消耗与货柜")
     st.caption(
         f"每日消耗按 Google Sheets 最近 {UV_CONSUMPTION_LOOKBACK_DAYS} 天"
-        "的有效数据日计算，并按品类、材质、颜色、型号连接当前库存和最近货柜。"
+        "的有效数据日计算，并按品类、材质、颜色、型号连接当前库存和货柜。"
+        "每日库存扣减请到“系统库存扣减”。"
     )
-    spreadsheet = _render_uv_spreadsheet_selector()
-    st.link_button("打开当前 Google 表格", spreadsheet["webViewLink"])
-    st.link_button("打开 UV 数据文件夹", UV_GOOGLE_DRIVE_FOLDER_URL)
-    _render_uv_daily_deduction(supabase, current_date, spreadsheet["id"])
     if model_df.empty:
         st.info("最近 14 天暂无已同步的 UV 每日消耗数据")
         return
@@ -243,12 +236,16 @@ def render_uv_consumption_model(
     )
 
 
-def _render_uv_daily_deduction(supabase, current_date, spreadsheet_id):
-    st.markdown("#### 当日 SKU 消耗扣减")
+def render_uv_daily_deduction(supabase, current_date):
+    st.subheader("UV 系统库存扣减")
     st.caption(
         "先读取今天的 Google Sheets 数据并核对表格；"
         "确认后才会扣减库存，重复操作不会重复扣减。"
     )
+    spreadsheet = render_uv_spreadsheet_selector()
+    st.link_button("打开当前 Google 表格", spreadsheet["webViewLink"])
+    st.link_button("打开 UV 数据文件夹", UV_GOOGLE_DRIVE_FOLDER_URL)
+    spreadsheet_id = spreadsheet["id"]
     result = st.session_state.pop("uv_daily_deduction_result", None)
     if result:
         st.success(result)
@@ -261,7 +258,7 @@ def _render_uv_daily_deduction(supabase, current_date, spreadsheet_id):
     ):
         try:
             summary = load_daily_summary(
-                _google_sheets_client(),
+                google_sheets_client(),
                 spreadsheet_id,
                 current_date,
             )
@@ -357,60 +354,6 @@ def _render_uv_daily_deduction(supabase, current_date, spreadsheet_id):
             st.rerun()
         except Exception as error:
             st.error(f"扣减失败：{error}")
-
-
-def _google_sheets_client():
-    credential_file = (
-        Path(__file__).resolve().parents[3]
-        / ".streamlit"
-        / "google-service-account.json"
-    )
-    info, source = resolve_service_account_info(
-        secrets=st.secrets,
-        credential_path=credential_file,
-    )
-    st.session_state["google_sheets_credential_source"] = source
-    return GoogleSheetsClient(info)
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def _load_uv_folder_spreadsheets():
-    return _google_sheets_client().list_spreadsheets_in_folder(
-        UV_GOOGLE_DRIVE_FOLDER_ID
-    )
-
-
-def _render_uv_spreadsheet_selector():
-    fallback = {
-        "id": UV_DAILY_ORDERS_SPREADSHEET_ID,
-        "name": "2026 UV每日订单统计",
-        "webViewLink": (
-            "https://docs.google.com/spreadsheets/d/"
-            f"{UV_DAILY_ORDERS_SPREADSHEET_ID}/edit"
-        ),
-    }
-    try:
-        files = _load_uv_folder_spreadsheets()
-    except Exception as error:
-        st.warning(f"暂时无法读取UV数据文件夹，继续使用默认表格：{error}")
-        return fallback
-    if not files:
-        st.warning("UV数据文件夹中没有Google表格，继续使用默认表格。")
-        return fallback
-    by_id = {item["id"]: item for item in files}
-    if fallback["id"] not in by_id:
-        files.append(fallback)
-        by_id[fallback["id"]] = fallback
-    options = [item["id"] for item in files]
-    selected = st.selectbox(
-        "Google 数据表",
-        options,
-        index=options.index(UV_DAILY_ORDERS_SPREADSHEET_ID),
-        format_func=lambda file_id: by_id[file_id].get("name", file_id),
-        key="uv_google_spreadsheet_id",
-        help="新表格放进UV部生产文件夹后，会自动出现在这里。",
-    )
-    return by_id[selected]
 
 
 def _render_totals(df):

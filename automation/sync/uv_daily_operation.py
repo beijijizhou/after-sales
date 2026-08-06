@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from uuid import NAMESPACE_URL, uuid5
 
 import pandas as pd
 
@@ -100,6 +101,10 @@ def apply_daily_sync(supabase, preview, movement_date, created_by):
     if not blocking.empty:
         raise ValueError("存在历史扣减数量与表格不一致的 SKU")
     imported = skipped = 0
+    batch_id = str(uuid5(
+        NAMESPACE_URL,
+        f"UV-Google-Sheets-daily-consumption-{movement_date.isoformat()}",
+    ))
     for row in preview.to_dict("records"):
         if row["状态"] == "待分配 SKU（本次不扣）":
             continue
@@ -110,6 +115,7 @@ def apply_daily_sync(supabase, preview, movement_date, created_by):
             {movement_date: int(row["当日消耗"])},
             created_by,
             row["表格产品"],
+            batch_id=batch_id,
         )
         imported += sum(saved.values())
         skipped += sum(existing.values())

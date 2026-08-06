@@ -1,8 +1,10 @@
+from utils.daily_consumption import is_daily_consumption_reason
+
+
 def filter_history_batches(batch_df, mode):
     normal_df = batch_df[batch_df["记录类别"] == "库存表格记录"]
-    daily_mask = normal_df["备注"].fillna("").str.contains(
-        "仓库每日出货|每日正常出货|每日出货|黑白短袖出库",
-        regex=True,
+    daily_mask = normal_df["备注"].fillna("").map(
+        is_daily_consumption_reason
     )
     if mode == "daily":
         return normal_df[daily_mask]
@@ -21,7 +23,7 @@ def filter_batches_by_outbound_kind(batch_df, outbound_kind):
     is_container_inbound = (
         batch_df["类型"].fillna("").astype(str) == "入库"
     ) & reasons.str.contains("货柜入库：", regex=False)
-    is_daily = reasons.str.contains("仓库每日出货", regex=False)
+    is_daily = reasons.map(is_daily_consumption_reason)
     is_legacy = (
         reasons.str.contains(
             "每日正常出货|每日出货|黑白短袖出库", regex=True
@@ -32,6 +34,8 @@ def filter_batches_by_outbound_kind(batch_df, outbound_kind):
         "货柜入库": is_container_inbound,
         "历史出库": is_outbound & is_legacy,
         "每日出库": is_outbound & is_daily,
+        "每日库存扣减": is_outbound & is_daily,
+        "每日消耗出库": is_outbound & is_daily,
         "临时出库": is_outbound & ~is_daily & ~is_legacy,
     }
     mask = masks.get(outbound_kind)

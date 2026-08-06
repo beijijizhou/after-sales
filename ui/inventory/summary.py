@@ -25,6 +25,7 @@ from ui.inventory.operations.outbound_feedback import (
 )
 from ui.inventory.operations.outbound_i18n import TEXT as OUTBOUND_TEXT
 from ui.inventory.operations.outbound_status import (
+    render_colored_daily_consumption_alert,
     render_daily_outbound_alert,
     render_uv_daily_consumption_alert,
 )
@@ -35,6 +36,10 @@ from ui.inventory.shared import (
     render_inventory_global_filters,
 )
 from utils.auth import has_permission
+from utils.daily_consumption import (
+    ENTRY_MANUAL,
+    inventory_daily_consumption_flow,
+)
 
 
 def render_inventory_summary(supabase):
@@ -64,10 +69,14 @@ def render_inventory_summary(supabase):
         category, brands, materials, colors, selected_sizes
     )
     can_edit = has_permission("can_edit_inventory")
-    if department == "DTF" and can_edit:
-        render_daily_outbound_alert(supabase, department)
-    elif department == "UV" and can_edit:
-        render_uv_daily_consumption_alert(supabase)
+    flow = inventory_daily_consumption_flow(department, category)
+    if can_edit and flow:
+        if flow.entry_source == ENTRY_MANUAL:
+            render_daily_outbound_alert(supabase, department)
+        elif flow.code == "colored_tshirts":
+            render_colored_daily_consumption_alert(supabase)
+        elif flow.code == "uv_production":
+            render_uv_daily_consumption_alert(supabase)
     st.session_state["inventory_today"] = datetime.now(ZoneInfo("America/New_York")).date()
 
     try:

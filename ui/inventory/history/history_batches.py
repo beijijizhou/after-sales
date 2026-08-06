@@ -3,6 +3,10 @@ import streamlit as st
 
 from ui.inventory.history.history_tables import format_date_columns
 from ui.inventory.i18n import t
+from utils.daily_consumption import (
+    UV_REASON_PREFIX,
+    daily_consumption_source,
+)
 
 
 NY_TIMEZONE = "America/New_York"
@@ -12,6 +16,15 @@ def _to_new_york_timestamp(values):
     return pd.to_datetime(values, errors="coerce", utc=True).dt.tz_convert(
         NY_TIMEZONE
     )
+
+
+def _summarize_categories(values):
+    categories = {
+        str(value).strip() for value in values if str(value).strip()
+    }
+    if len(categories) == 1:
+        return next(iter(categories))
+    return "多品类"
 
 
 def add_movement_batch_key(movement_df):
@@ -49,6 +62,16 @@ def add_movement_batch_key(movement_df):
         movement_df["batch_key"] = movement_df["batch_key"].where(
             batch_ids == "", "movement|" + batch_ids
         )
+    uv_daily = (
+        movement_df["department"].fillna("").astype(str).eq("UV")
+        & movement_df["reason"].str.startswith(UV_REASON_PREFIX)
+        & movement_df["quantity_change"].lt(0)
+    )
+    movement_df.loc[uv_daily, "batch_key"] = (
+        "daily|UV|"
+        + movement_df.loc[uv_daily, "movement_date"].astype(str)
+        + "|google-sheets"
+    )
     return movement_df
 
 
@@ -89,7 +112,7 @@ def build_movement_batch_rows(movement_df):
             recorded_key=("recorded_key", "first"),
             movement_date=("movement_date", "first"),
             department=("department", "first"),
-            category=("category", "first"),
+            category=("category", _summarize_categories),
             direction=("direction", "first"),
             reason=("reason", lambda values: "；".join(dict.fromkeys(
                 value for value in values if value
@@ -98,7 +121,16 @@ def build_movement_batch_rows(movement_df):
             batch_id=("batch_id", "first") if "batch_id" in movement_df.columns else ("batch_key", "first"),
             is_reversal=("reversal_of_batch_id", lambda values: values.notna().any()),
             quantity=("quantity_change", lambda values: int(values.abs().sum())),
+            sku_count=("reason", "size"),
         )
+    )
+    uv_daily = grouped_df["reason"].str.startswith(UV_REASON_PREFIX)
+    grouped_df.loc[uv_daily, "reason"] = grouped_df.loc[uv_daily].apply(
+        lambda row: (
+            f"{UV_REASON_PREFIX}｜{row['movement_date']}｜"
+            f"{int(row['sku_count'])} 个 SKU"
+        ),
+        axis=1,
     )
     return [
         {
@@ -119,6 +151,7 @@ def build_movement_batch_rows(movement_df):
             "品类": row["category"],
             "数量": row["quantity"],
             "操作人": row["created_by"],
+            "消耗来源": daily_consumption_source(row["reason"]),
             "备注": row["reason"],
         }
         for row in grouped_df.to_dict("records")
@@ -148,6 +181,7 @@ def build_sku_batch_rows(sku_import_df):
             "品类": row["category"],
             "数量": int(row["quantity"]),
             "操作人": "Andy",
+            "消耗来源": "",
             "备注": "",
         }
         for row in grouped_df.to_dict("records")
@@ -188,7 +222,9 @@ def render_batch_selector(
         labels = {
             row["batch_key"]: (
                 f"{row['记录时间']}｜{t(row['类型'])}｜{row['表格日期']}｜"
-                f"{row['部门']} {row['品类']}｜{row['数量']}｜{row['操作人']}"
+                f"{row['部门']} {row['品类']}｜"
+                f"{t(row.get('消耗来源') or '常规操作')}｜"
+                f"{row['数量']}｜{row['操作人']}"
             )
             for row in batch_df.to_dict("records")
         }
@@ -209,7 +245,9 @@ def render_batch_selector(
             st.rerun()
     caption = (
         "输入时间｜导入日期｜部门/品类｜总计｜操作人"
-        if sku_import else "输入时间｜类型｜出入库日期｜部门/品类｜总计｜操作人"
+        if sku_import else (
+            "输入时间｜类型｜出入库日期｜部门/品类｜来源｜总计｜操作人"
+        )
     )
     st.caption(t(caption))
     return selected_batch

@@ -8,14 +8,14 @@ from utils.auth import get_current_operator_name
 
 TYPE_LABELS = {
     "inbound": "入库",
-    "issue": "领用",
+    "issue": "每日耗材出库（人工）",
     "adjustment": "库存修正",
     "reversal": "撤销",
 }
 
 
 def render_history(batches_df, movements_df, items_df, show_cost):
-    st.subheader("耗材出入库历史")
+    st.subheader("耗材库存流水")
     normal = batches_df[batches_df["movement_type"] != "reversal"].copy()
     if normal.empty:
         st.info("暂无耗材出入库记录。")

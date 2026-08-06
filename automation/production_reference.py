@@ -25,6 +25,9 @@ class ProductionReference:
     saved_at: str
     sources: int
     missing_platforms: tuple[str, ...]
+    included_platforms: tuple[str, ...] = ()
+    coverage_ratio: float = 1.0
+    estimate_method: str = "完整平台数据"
 
     @property
     def is_complete(self):
@@ -86,6 +89,13 @@ def load_production_reference(department, category=None):
         for value in item.get("missing_platforms") or []
     }
     missing = (required - included_platforms) | declared_missing
+    platform_weights = _historical_complete_platform_weights(
+        candidates, required,
+        max(item["end_date"] for item in selected),
+    )
+    data, coverage_ratio, estimate_method = reweight_partial_production(
+        data, included_platforms, required, platform_weights
+    )
     return ProductionReference(
         data=data,
         start_date=min(item["start_date"] for item in selected),
@@ -93,7 +103,44 @@ def load_production_reference(department, category=None):
         saved_at=max(str(item.get("saved_at") or "") for item in selected),
         sources=len(selected),
         missing_platforms=tuple(sorted(missing)),
+        included_platforms=tuple(sorted(included_platforms)),
+        coverage_ratio=coverage_ratio,
+        estimate_method=estimate_method,
     )
+
+
+def reweight_partial_production(
+    data, included_platforms, required_platforms, platform_weights=None,
+):
+    result = data.copy()
+    required = set(required_platforms)
+    included = set(included_platforms) & required
+    if not required or required.issubset(included):
+        return result, 1.0, "完整平台数据"
+    weights = {
+        str(platform): max(float(weight), 0)
+        for platform, weight in (platform_weights or {}).items()
+        if str(platform) in required
+    }
+    weight_total = sum(weights.values())
+    if weight_total > 0:
+        weights = {
+            platform: weight / weight_total
+            for platform, weight in weights.items()
+        }
+        coverage = sum(weights.get(platform, 0) for platform in included)
+        method = "按最近完整生产数据的平台占比估算"
+    else:
+        coverage = len(included) / len(required) if required else 1.0
+        method = "按可用平台数量等权估算"
+    if coverage <= 0 or coverage >= 1 or result.empty:
+        return result, max(min(coverage, 1.0), 0.0), method
+    result["system_daily_usage"] = (
+        pd.to_numeric(result["system_daily_usage"], errors="coerce")
+        .fillna(0)
+        / coverage
+    )
+    return result, coverage, method
 
 
 def _load_metadata():
@@ -129,6 +176,42 @@ def _parse_saved_at(value):
         return datetime.fromisoformat(str(value))
     except ValueError:
         return datetime.min
+
+
+def _historical_complete_platform_weights(items, required, cutoff_date):
+    candidates = [
+        item for item in items
+        if item.get("platform") == AGGREGATE_PLATFORM
+        and item.get("is_complete")
+        and required.issubset(set(item.get("included_platforms") or []))
+        and item["end_date"] <= cutoff_date
+        and item["data_path"].exists()
+    ]
+    if not candidates:
+        return {}
+    selected = max(
+        candidates,
+        key=lambda item: (
+            item["end_date"], _parse_saved_at(item.get("saved_at")),
+            item["start_date"],
+        ),
+    )
+    try:
+        raw = pd.read_parquet(selected["data_path"])
+    except Exception:
+        return {}
+    if not {"运营商", "数量"}.issubset(raw.columns):
+        return {}
+    quantities = pd.to_numeric(raw["数量"], errors="coerce").fillna(0)
+    totals = (
+        pd.DataFrame({"platform": raw["运营商"], "quantity": quantities})
+        .groupby("platform", dropna=False)["quantity"].sum()
+    )
+    return {
+        str(platform).strip(): float(quantity)
+        for platform, quantity in totals.items()
+        if str(platform).strip() in required and float(quantity) > 0
+    }
 
 
 def _required_platforms(department):

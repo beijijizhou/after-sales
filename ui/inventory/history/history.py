@@ -69,13 +69,20 @@ def render_movement_undo(supabase, selected_df, reversed_ids):
     if "batch_id" not in selected_df.columns or selected_df["batch_id"].isna().all():
         st.caption(t("运行最新版库存 SQL 后，才可以撤销这笔旧记录。"))
         return
+    batch_ids = selected_df["batch_id"].dropna().astype(str).unique()
+    if len(batch_ids) > 1:
+        st.caption(
+            "这是一笔由旧版系统拆分保存的自动消耗记录，"
+            "已合并展示；不能使用单批次撤销。"
+        )
+        return
     if "reversal_of_batch_id" in selected_df.columns and selected_df[
         "reversal_of_batch_id"
     ].notna().any():
         st.caption(t("这是撤销记录，不能再次撤销。"))
         return
 
-    batch_id = str(selected_df.iloc[0]["batch_id"])
+    batch_id = batch_ids[0]
     if batch_id in reversed_ids:
         st.success(t("这笔库存变动已撤销"))
         return
@@ -266,7 +273,7 @@ def render_inventory_history(
         outbound_kind = st.selectbox(
             t("流水记录类型"),
             [
-                "全部流水", "货柜入库", "历史出库", "每日出库",
+                "全部流水", "货柜入库", "每日库存扣减",
                 "临时出库",
             ],
             format_func=t,

@@ -15,9 +15,8 @@ from utils.auth.session import get_current_operator_name, has_permission
 def render_colored_consumption(supabase, current_date, inventory_df):
     st.subheader("彩色短袖每日消耗")
     st.caption(
-        "按全部衣服平台的生产数据扣减；按纽约日期生成批次，重复确认不会重复扣减。"
+        "按最近 14 天的有效生产日计算；库存扣减请到“系统库存扣减”。"
     )
-    _render_daily_deduction(supabase, current_date)
     history = load_colored_consumption_history(supabase, current_date, 14)
     if history.empty:
         st.info("最近 14 天暂无已同步的彩色短袖生产消耗")
@@ -45,7 +44,12 @@ def render_colored_consumption(supabase, current_date, inventory_df):
     )
 
 
-def _render_daily_deduction(supabase, current_date):
+def render_colored_daily_deduction(supabase, current_date):
+    st.subheader("彩色短袖系统库存扣减")
+    st.caption(
+        "从全部衣服平台读取当天生产数据；按纽约日期生成批次，"
+        "重复确认不会重复扣减。"
+    )
     state_key = "colored_daily_deduction_preview"
     date_key = "colored_daily_deduction_date"
     deducted = load_colored_day_deducted_total(supabase, current_date)
@@ -108,4 +112,3 @@ def _stock_summary(inventory_df):
         frame.groupby(["color", "size"], as_index=False)["quantity"].sum()
         .rename(columns={"color": "颜色", "size": "尺码", "quantity": "当前库存"})
     )
-

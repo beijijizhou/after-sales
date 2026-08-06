@@ -69,11 +69,15 @@ def render_daily_issue_table(supabase, department_code, items_df, can_edit):
         value=datetime.now(NY_TIMEZONE).date(),
         key="daily_consumable_issue_date",
     )
+    confirmed = st.checkbox(
+        "我已核对领用日期、耗材 SKU 和箱数",
+        key="confirm_daily_consumable_issue",
+    )
     if st.button(
         "确认今日扣减",
         type="primary",
         width="stretch",
-        disabled=not rows,
+        disabled=not rows or not confirmed,
     ):
         _save_batch(
             supabase, department_code, "issue", movement_date, rows,

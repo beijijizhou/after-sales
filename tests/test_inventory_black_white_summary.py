@@ -3,6 +3,7 @@ from datetime import date
 
 import pandas as pd
 
+from automation.production_reference import reweight_partial_production
 from db.inventory import SIZE_COLUMNS, build_color_inventory_table
 from db.inventory.planning.consumption_alerts import (
     build_inventory_consumption_alerts,
@@ -19,6 +20,35 @@ from ui.inventory.planning.forecast_table import FORECAST_COLUMNS
 
 
 class InventoryBlackWhiteSummaryTests(unittest.TestCase):
+    def test_missing_platform_share_uses_historical_weights(self):
+        production = pd.DataFrame([{
+            "system_daily_usage": 280,
+        }])
+
+        result, coverage, method = reweight_partial_production(
+            production,
+            {"SDS1", "SDS2"},
+            {"Haloo", "S2B", "SDS1", "SDS2"},
+            {"Haloo": 44, "S2B": 28, "SDS1": 8, "SDS2": 20},
+        )
+
+        self.assertAlmostEqual(coverage, 0.28)
+        self.assertAlmostEqual(
+            float(result.iloc[0]["system_daily_usage"]), 1000
+        )
+        self.assertIn("最近完整生产数据", method)
+
+    def test_missing_platform_share_falls_back_to_equal_weights(self):
+        production = pd.DataFrame([{"system_daily_usage": 300}])
+
+        result, coverage, method = reweight_partial_production(
+            production, {"A", "B"}, {"A", "B", "C"}
+        )
+
+        self.assertAlmostEqual(coverage, 2 / 3)
+        self.assertEqual(int(result.iloc[0]["system_daily_usage"]), 450)
+        self.assertIn("等权", method)
+
     def test_selected_materials_and_brands_are_combined_by_color(self):
         rows = []
         for brand, material, color, small, medium in [

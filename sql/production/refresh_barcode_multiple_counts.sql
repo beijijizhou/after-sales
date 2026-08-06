@@ -51,6 +51,7 @@ begin
 
     create temp table scgd_parsed_rows on commit drop as
     select distinct
+        id,
         substring(barcode from '^SCGD-([A-Z0-9]+)-[0-9]+-[A-Z]$') as order_id,
         substring(barcode from '^SCGD-[A-Z0-9]+-([0-9]+)-[A-Z]$')::int as item_no
     from barcode_scans
@@ -71,10 +72,10 @@ begin
     )
     update barcode_scans b
     set multiple_count = counts.multiple_count
-    from scgd_target_rows
-    join counts on counts.order_id = scgd_target_rows.order_id
-    where b.id = scgd_target_rows.id
-      and b.multiple_count is null;
+    from scgd_parsed_rows
+    join counts on counts.order_id = scgd_parsed_rows.order_id
+    where b.id = scgd_parsed_rows.id
+      and b.multiple_count is distinct from counts.multiple_count;
 end;
 $$;
 
@@ -121,6 +122,7 @@ begin
 
     create temp table s2b_parsed_rows on commit drop as
     select distinct
+        id,
         substring(barcode from '^([A-Z0-9]{6})-[0-9]+$') as order_id,
         substring(barcode from '^[A-Z0-9]{6}-([0-9]+)$')::int as item_no
     from barcode_scans
@@ -141,10 +143,10 @@ begin
     )
     update barcode_scans b
     set multiple_count = counts.multiple_count
-    from s2b_target_rows
-    join counts on counts.order_id = s2b_target_rows.order_id
-    where b.id = s2b_target_rows.id
-      and b.multiple_count is null;
+    from s2b_parsed_rows
+    join counts on counts.order_id = s2b_parsed_rows.order_id
+    where b.id = s2b_parsed_rows.id
+      and b.multiple_count is distinct from counts.multiple_count;
 end;
 $$;
 

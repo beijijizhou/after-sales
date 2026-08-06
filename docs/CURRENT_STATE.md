@@ -11,6 +11,7 @@ refactors, not after every small feature.
 - Hotstamp: `pages/2_烫印.py`
 - Platform detail: `pages/3_平台.py`
 - Production inventory: `pages/4_库存.py`
+- Inventory workbench: `pages/4_库存总结.py`
 - Containers: `pages/5_货柜安排.py`
 - After-sales search: `pages/6_售后查询.py`
 - Production data collection: `pages/7_生产数据.py`
@@ -32,6 +33,11 @@ refactors, not after every small feature.
 - Finance: `db/finance/` and `ui/finance/`
 - Production summaries: `utils/production/` and `ui/production/`
 - ERP normalization: `utils/erp/`
+- Shared daily-consumption flow definitions and source classification:
+  `utils/daily_consumption.py`
+- Inventory workbench and automatic-deduction registry:
+  `ui/inventory/dashboard.py` and
+  `automation/sync/daily_inventory_consumption.py`
 - Production collection: `automation/api/`, `automation/playwright/`, and
   `automation/sync/`
 - Phone-case image and dieline logic: `utils/image_tools/`,

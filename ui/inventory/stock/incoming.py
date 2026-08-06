@@ -170,11 +170,20 @@ def _render_reference_status(reference, today):
             )
         return False
     if not reference.is_complete:
-        st.error(
-            f"{t('生产数据不完整，已停止库存预测')}："
+        coverage = reference.coverage_ratio * 100
+        scale = (
+            1 / reference.coverage_ratio
+            if reference.coverage_ratio > 0 else 1
+        )
+        st.warning(
+            f"{t('生产数据不完整，已按可用平台重新分配占比')}："
             + "、".join(reference.missing_platforms)
         )
-        return False
+        st.caption(
+            f"可用平台历史占比约 {coverage:.1f}%｜"
+            f"估算系数 {scale:.2f}｜{reference.estimate_method}。"
+            "当前继续计算库存与到货预测，并标记为估算结果。"
+        )
     st.caption(
         f"{t('系统生产数据区间')}：{reference.start_date} 至 "
         f"{reference.end_date}｜{reference.sources} {t('个数据源')}｜"

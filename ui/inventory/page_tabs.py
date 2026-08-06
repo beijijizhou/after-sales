@@ -11,6 +11,10 @@ from ui.inventory.operations.pages import (
     render_temporary_movement_operation,
 )
 from ui.inventory.planning.comparison import render_consumption_models
+from ui.inventory.planning.comparison import render_uv_daily_deduction
+from ui.inventory.planning.colored_consumption import (
+    render_colored_daily_deduction,
+)
 from ui.inventory.planning.consumption import (
     render_consumption_planning_inputs,
     render_reorder_forecast,
@@ -35,7 +39,9 @@ def render_inventory_tabs(
     can_view_cost, history_data, movement_types, filter_title,
     sku_filters=None,
 ):
-    tab_keys = inventory_tab_keys(department, can_view_cost)
+    tab_keys = inventory_tab_keys(
+        department, can_view_cost=can_view_cost, category=category
+    )
     tab_names = [t(name) for name in tab_keys]
     tabs = dict(zip(tab_keys, st.tabs(tab_names)))
 
@@ -83,11 +89,23 @@ def render_inventory_tabs(
             current_date, visible_sizes, raw_df,
         )
 
-    if "仓库每日出货" in tabs:
-        with tabs["仓库每日出货"]:
-            render_daily_outbound_operation(
-                supabase, department, category, raw_df, can_edit,
-            )
+    if "仓库每日出库" in tabs:
+        with tabs["仓库每日出库"]:
+            if not can_edit:
+                st.info(t("当前账号只有库存查看权限，不能修改库存"))
+            else:
+                render_daily_outbound_operation(
+                    supabase, department, "黑白短袖", raw_df, can_edit,
+                )
+
+    if "系统库存扣减" in tabs:
+        with tabs["系统库存扣减"]:
+            if not can_edit:
+                st.info(t("当前账号只有库存查看权限，不能修改库存"))
+            elif department == "DTF":
+                render_colored_daily_deduction(supabase, current_date)
+            elif department == "UV":
+                render_uv_daily_deduction(supabase, current_date)
 
     with tabs["临时库存调整"]:
         render_temporary_movement_operation(
@@ -139,10 +157,17 @@ def render_inventory_tabs(
             )
 
 
-def inventory_tab_keys(department, can_view_cost=False):
+def inventory_tab_keys(department, can_view_cost=False, category=""):
     keys = ["库存明细", "点货预测", "消耗模型"]
-    if department == "DTF":
-        keys.append("仓库每日出货")
+    department = str(department or "").strip().upper()
+    category = str(category or "").strip()
+    if department == "DTF" and category in {"", "黑白短袖"}:
+        keys.append("仓库每日出库")
+    if (
+        department == "UV"
+        or (department == "DTF" and category in {"", "彩色短袖"})
+    ):
+        keys.append("系统库存扣减")
     keys.extend([
         "临时库存调整", "库存流水", "SKU 操作历史", "撤销", "SKU 管理",
     ])

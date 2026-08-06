@@ -14,6 +14,7 @@ from ui.inventory.history.history_tables import (
     _format_signed_quantity,
     build_movement_detail_table,
 )
+from ui.inventory.history.history_batches import build_movement_batch_rows
 from ui.inventory.history.history_filters import (
     filter_batches_by_outbound_kind,
     filter_history_batches,
@@ -44,9 +45,36 @@ class OutboundStatusTests(unittest.TestCase):
         self.assertEqual(_format_signed_quantity(-500), "-500")
         self.assertEqual(_format_signed_quantity(0), "0")
 
-    def test_daily_outbound_tab_is_only_available_for_dtf(self):
-        self.assertIn("仓库每日出货", inventory_tab_keys("DTF"))
-        self.assertNotIn("仓库每日出货", inventory_tab_keys("UV"))
+    def test_manual_and_system_inventory_operations_have_distinct_tabs(self):
+        self.assertIn(
+            "仓库每日出库",
+            inventory_tab_keys("DTF", category=""),
+        )
+        self.assertIn(
+            "系统库存扣减",
+            inventory_tab_keys("DTF", category=""),
+        )
+        self.assertIn(
+            "仓库每日出库",
+            inventory_tab_keys("DTF", category="黑白短袖"),
+        )
+        self.assertNotIn(
+            "系统库存扣减",
+            inventory_tab_keys("DTF", category="黑白短袖"),
+        )
+        self.assertIn(
+            "系统库存扣减",
+            inventory_tab_keys("DTF", category="彩色短袖"),
+        )
+        self.assertIn(
+            "系统库存扣减", inventory_tab_keys("UV", category="铁板画")
+        )
+        self.assertNotIn(
+            "仓库每日出库", inventory_tab_keys("DTF", category="卫衣")
+        )
+        self.assertNotIn(
+            "系统库存扣减", inventory_tab_keys("DTF", category="卫衣")
+        )
 
     def test_combined_ledger_contains_daily_and_temporary_batches(self):
         batches = pd.DataFrame([
@@ -93,15 +121,15 @@ class OutboundStatusTests(unittest.TestCase):
 
         self.assertEqual(
             filter_batches_by_outbound_kind(
-                batches, "历史出库"
+                batches, "每日库存扣减"
             )["数量"].tolist(),
-            [100],
+            [100, 200],
         )
         self.assertEqual(
             filter_batches_by_outbound_kind(
                 batches, "每日出库"
             )["数量"].tolist(),
-            [200],
+            [100, 200],
         )
         self.assertEqual(
             filter_batches_by_outbound_kind(
@@ -115,6 +143,35 @@ class OutboundStatusTests(unittest.TestCase):
             )["数量"].tolist(),
             [500],
         )
+
+    def test_system_deductions_share_daily_consumption_filter(self):
+        batches = pd.DataFrame([
+            {
+                "类型": "出库",
+                "备注": "彩色短袖生产自动扣减 2026-08-03",
+                "数量": 120,
+            },
+            {
+                "类型": "出库",
+                "备注": "Google Sheets UV每日消耗｜2026-08-03｜Tie_2030",
+                "数量": 240,
+            },
+            {
+                "类型": "出库",
+                "备注": "临时库存调整",
+                "数量": 30,
+            },
+        ])
+
+        daily = filter_batches_by_outbound_kind(
+            batches, "每日库存扣减"
+        )
+        temporary = filter_batches_by_outbound_kind(
+            batches, "临时出库"
+        )
+
+        self.assertEqual(daily["数量"].tolist(), [120, 240])
+        self.assertEqual(temporary["数量"].tolist(), [30])
 
     def test_recognizes_daily_outbound_reasons_on_current_dates(self):
         current_date = date(2026, 7, 29)
@@ -246,6 +303,53 @@ class OutboundStatusTests(unittest.TestCase):
         self.assertEqual(int(result.iloc[0]["S"]), -900)
         self.assertEqual(int(result.iloc[0]["M"]), 0)
         self.assertEqual(int(result.iloc[0]["合计"]), -900)
+        self.assertEqual(result.iloc[0]["消耗来源"], "人工登记")
+
+    def test_system_outbound_history_shows_automatic_source(self):
+        movements = pd.DataFrame([{
+            "movement_date": "2026-08-03",
+            "created_at": "2026-08-03T20:00:00+00:00",
+            "department": "UV", "category": "铁板画",
+            "brand": "", "material": "铁牌", "color": "白",
+            "size": "2030", "quantity_change": -2000,
+            "reason": "Google Sheets UV每日消耗｜2026-08-03｜Tie_2030",
+            "created_by": "system", "source_type": None,
+        }])
+
+        result = build_movement_detail_table(movements, ["2030"])
+
+        self.assertEqual(result.iloc[0]["消耗来源"], "系统读取")
+
+    def test_uv_daily_sheet_is_one_ledger_batch_across_skus(self):
+        movements = pd.DataFrame([
+            {
+                "movement_date": "2026-08-03",
+                "created_at": "2026-08-03T20:00:00+00:00",
+                "department": "UV", "category": "铁板画",
+                "brand": "", "material": "铁牌", "color": "白",
+                "size": "2030", "quantity_change": -2000,
+                "reason": "Google Sheets UV每日消耗｜2026-08-03｜Tie_2030",
+                "created_by": "system", "batch_id": "old-batch-1",
+                "reversal_of_batch_id": None,
+            },
+            {
+                "movement_date": "2026-08-03",
+                "created_at": "2026-08-03T20:01:00+00:00",
+                "department": "UV", "category": "木板画",
+                "brand": "", "material": "木板", "color": "白",
+                "size": "2030", "quantity_change": -300,
+                "reason": "Google Sheets UV每日消耗｜2026-08-03｜Muban_2030",
+                "created_by": "system", "batch_id": "old-batch-2",
+                "reversal_of_batch_id": None,
+            },
+        ])
+
+        result = build_movement_batch_rows(movements)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["数量"], 2300)
+        self.assertEqual(result[0]["品类"], "多品类")
+        self.assertIn("2 个 SKU", result[0]["备注"])
 
     def test_precheck_reports_missing_and_insufficient_skus(self):
         expected = pd.DataFrame([

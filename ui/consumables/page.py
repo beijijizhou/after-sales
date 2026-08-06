@@ -66,7 +66,7 @@ def render_consumables_page(supabase):
     latest_costs = build_latest_costs(movements)
 
     stock_tab, issue_tab, operation_tab, history_tab, sku_tab = st.tabs([
-        "当前库存", "每日扣减", "库存操作", "历史记录", "SKU 管理",
+        "当前库存", "每日耗材出库", "库存操作", "历史记录", "SKU 管理",
     ])
     with stock_tab:
         render_stock(filtered_items, latest_costs, show_cost)

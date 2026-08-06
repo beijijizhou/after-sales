@@ -3,11 +3,32 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+from automation.sync.dtf_colored_inventory import (
+    load_colored_day_deducted_total,
+)
 from db.inventory.operations.outbound_audit import (
     find_missing_outbound_dates,
     load_daily_outbound_dates,
     load_uv_daily_consumption_total,
 )
+
+
+def render_colored_daily_consumption_alert(supabase):
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    try:
+        deducted = load_colored_day_deducted_total(supabase, today)
+    except Exception:
+        return
+    if deducted:
+        st.success(
+            f"彩色短袖今日库存已扣减 {deducted:,} 件"
+            "（来源：生产系统）。"
+        )
+    else:
+        st.warning(
+            "彩色短袖今日生产消耗尚未扣减；"
+            "请到“消耗模型”读取并确认今日数据。"
+        )
 
 
 def render_uv_daily_consumption_alert(supabase):

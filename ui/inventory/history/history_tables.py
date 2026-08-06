@@ -5,6 +5,7 @@ from db.inventory import SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
 from utils.auth import has_permission
 from ui.inventory.i18n import t
+from utils.daily_consumption import daily_consumption_source
 
 
 def format_date_columns(df, date_columns):
@@ -31,6 +32,9 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
         "quantity_change"
     ].map(lambda value: "🟢 入库" if value > 0 else "🔴 出库")
     movement_df["reason"] = movement_df.get("reason", "").fillna("").astype(str)
+    movement_df["consumption_source"] = movement_df["reason"].map(
+        daily_consumption_source
+    ).map(lambda value: t(value) if value else "")
     if "created_by" not in movement_df.columns:
         movement_df["created_by"] = "a"
     movement_df["created_by"] = movement_df["created_by"].fillna("a")
@@ -45,7 +49,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
     )
     index_columns = [
         "movement_date", "operation", "department", "category", "brand", "material",
-        "color", "source_type", "created_by", "reason",
+        "color", "consumption_source", "source_type", "created_by", "reason",
     ]
     display_df = (
         movement_df
@@ -65,6 +69,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
             "brand": "品牌",
             "material": "材质",
             "color": "颜色",
+            "consumption_source": "消耗来源",
             "source_type": "库存来源",
             "created_by": "操作人",
             "reason": "备注",
@@ -80,7 +85,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
         ["日期", "流水记录类型"], ascending=[False, True]
     )
     return display_df[[
-        "日期", "流水记录类型", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
+        "日期", "流水记录类型", "消耗来源", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
         "操作人",
         *sizes, "合计", "备注",
     ]]
@@ -108,6 +113,7 @@ def render_movement_table(movement_df, visible_sizes=None):
         column_config={
             "日期": st.column_config.DateColumn(t("日期")),
             "流水记录类型": st.column_config.TextColumn(t("流水记录类型")),
+            "消耗来源": st.column_config.TextColumn(t("消耗来源")),
             "部门": st.column_config.TextColumn(t("部门")),
             "品类": st.column_config.TextColumn(t("品类")),
             "品牌": st.column_config.TextColumn(t("品牌")),

@@ -73,6 +73,69 @@
 
 ## Garment Consumption Sources
 
+### Unified Daily Consumption Operations
+
+DTF consumables, black/white T-shirts, colored T-shirts, and UV production
+inventory are four implementations of one daily-consumption operation. They
+must share the operational contract even though their consumption models and
+data-entry sources differ:
+
+| Flow | Deduction input | Consumption model source |
+| --- | --- | --- |
+| DTF consumables | Warehouse staff enters actual boxes issued | Actual consumable issue ledger |
+| Black/white T-shirts | Warehouse staff enters actual pieces or packaging issued | Actual warehouse daily outbound |
+| Colored T-shirts | System reads synchronized production data | Colored-shirt production data |
+| UV production inventory | System reads the configured Google Sheets source | Latest 14 days of valid Google Sheets data |
+
+All four flows use the same user-facing operational concepts: New York
+business date, daily preview, explicit confirmation, duplicate prevention,
+auditable batch, operator and source attribution, current-stock result,
+inventory ledger, SKU-level history, reversal/correction workflow, and
+manager-readable daily status. “Manual” versus “system-read” must be visible
+in the ledger and batch selector. System-read deductions must never be
+presented as temporary manual outbound, and a system-read category must not
+show a warehouse manual-outbound entry form.
+
+The flows share an operational contract, not one user-facing name. Black/white
+manual issues are `仓库每日出库`, consumables are `每日耗材出库`, and colored-shirt
+or UV automation is `系统库存扣减`. The combined ledger filter is
+`每日库存扣减`. Querying, history, status, permissions, audit, reversal, and
+correction behavior still follow the shared contract. A source-specific
+adapter may decide how rows are matched to SKUs and how the consumption model
+is calculated; it must not create a second history or audit model.
+
+One source and one business date must appear as one auditable ledger batch,
+even when the source contains multiple categories or SKUs. The detail table
+may contain many SKU rows, but the batch selector must not split one daily
+sheet into several records.
+
+The inventory module has one manager-facing `库存总结` workbench above the
+individual production inventory, consumable inventory, and container pages.
+It shows the completion count and missing business dates for every registered
+daily-consumption flow. Manual sources link users to enter actual outbound;
+system-readable sources are previewed and confirmed through one consolidated
+operation. New automatic sources are registered in the shared automatic-flow
+registry instead of adding another independent dashboard button.
+
+The DTF production-inventory page must keep `仓库每日出库` visible when the
+top-level category filter is `全部品类`. It also shows a separate
+`系统库存扣减` entry for colored T-shirts. A required daily operation must not
+disappear merely because a summary filter is broad, and system deductions
+must never be presented as warehouse outbound.
+
+Corrections preserve the original batch. A manual-source correction reverses
+the original and records a corrected replacement; a system-source correction
+reverses the original and re-synchronizes the corrected source data. Neither
+path directly overwrites movement history.
+
+Incomplete production-platform data must not stop inventory/container
+forecasting when at least one platform is available. The system estimates the
+missing share using platform weights from the latest complete production
+period and re-normalizes the available production to 100%. If no complete
+history exists, it falls back to equal platform weights. The UI must list the
+missing platforms, coverage percentage, scale factor, and clearly label the
+forecast as an estimate.
+
 - Black/white T-shirt inventory consumption is based primarily on actual
   warehouse daily outbound, not a direct SKU-for-SKU production deduction.
   Black/white volume is high, the SKU catalog is large, and warehouse staff may
