@@ -150,9 +150,16 @@ def _render_missing_costs(
     if not can_manage_cost:
         st.info(t("当前账号可以查看成本，但不能修改成本"))
         return
-    sku_df = missing_df[
-        ["品类", "品牌", "材质", "颜色"]
-    ].drop_duplicates().reset_index(drop=True)
+    sku_df = (
+        missing_df.pivot_table(
+            index=["品类", "品牌", "材质", "颜色"],
+            columns="size",
+            values="quantity",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        .reset_index()
+    )
     version = st.session_state.get("inventory_cost_editor_version", 0)
     edited_costs = render_size_cost_editor(sku_df, f"missing_costs_{version}")
     if st.button(t("保存库存成本"), width="stretch"):

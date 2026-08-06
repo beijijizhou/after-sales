@@ -54,6 +54,30 @@ class ContainerDisplayTests(unittest.TestCase):
             result["container_no"].tolist(), ["UV-NEW", "DTF-OLD"]
         )
 
+    def test_arrival_history_prioritizes_confirmation_time(self):
+        rows = pd.DataFrame([
+            {
+                "container_no": "CONFIRMED-LATEST",
+                "department": "DTF",
+                "actual_arrival_date": "2026-08-01",
+                "actual_arrival_at": "2026-08-01T09:00:00-04:00",
+                "arrival_confirmed_at": "2026-08-06T15:00:00+00:00",
+            },
+            {
+                "container_no": "ARRIVED-LATEST",
+                "department": "UV",
+                "actual_arrival_date": "2026-08-05",
+                "actual_arrival_at": "2026-08-05T10:00:00-04:00",
+                "arrival_confirmed_at": "2026-08-05T15:00:00+00:00",
+            },
+        ])
+
+        result = sort_arrival_history_rows(rows, mode="time")
+
+        self.assertEqual(result["container_no"].tolist(), [
+            "CONFIRMED-LATEST", "ARRIVED-LATEST",
+        ])
+
     def test_arrival_history_can_sort_by_department_then_latest_time(self):
         rows = pd.DataFrame([
             {

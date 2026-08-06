@@ -2,10 +2,41 @@ import unittest
 
 import pandas as pd
 
-from db.inventory.container.history import build_container_history_display
+from db.inventory.container.history import (
+    attach_arrival_confirmation_times,
+    build_container_history_display,
+)
 
 
 class ContainerHistoryTests(unittest.TestCase):
+    def test_latest_arrival_event_becomes_confirmation_time(self):
+        containers = pd.DataFrame([
+            {"container_key": "11柜"},
+            {"container_key": "12柜"},
+        ])
+        events = pd.DataFrame([
+            {
+                "container_key": "11柜", "event_type": "到柜",
+                "created_at": "2026-08-04T15:00:00+00:00",
+            },
+            {
+                "container_key": "11柜", "event_type": "到柜",
+                "created_at": "2026-08-05T15:00:00+00:00",
+            },
+            {
+                "container_key": "12柜", "event_type": "入库",
+                "created_at": "2026-08-06T15:00:00+00:00",
+            },
+        ])
+
+        result = attach_arrival_confirmation_times(containers, events)
+
+        self.assertEqual(
+            str(result.loc[0, "arrival_confirmed_at"]),
+            "2026-08-05 15:00:00+00:00",
+        )
+        self.assertTrue(pd.isna(result.loc[1, "arrival_confirmed_at"]))
+
     def test_actual_and_confirmation_times_use_new_york_time(self):
         source = pd.DataFrame([{
             "container_key": "9柜",

@@ -4,6 +4,10 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory.container.repository import load_inventory_containers
+from db.inventory.container.history import (
+    attach_arrival_confirmation_times,
+    load_container_events,
+)
 from db.inventory.container.tables import sort_arrival_history_rows
 from ui.inventory.container.tables import (
     render_container_inventory_summary,
@@ -30,6 +34,12 @@ def render_arrival_history_table(
     if raw_df.empty:
         st.info("当前日期范围内没有到柜记录")
         return raw_df
+    try:
+        raw_df = attach_arrival_confirmation_times(
+            raw_df, load_container_events(supabase)
+        )
+    except Exception as error:
+        st.warning(f"确认到柜时间加载失败，暂按实际到货时间排序：{error}")
     quantities = pd.to_numeric(
         raw_df["quantity"], errors="coerce"
     ).fillna(0)

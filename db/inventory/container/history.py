@@ -1,6 +1,9 @@
 import pandas as pd
 
 
+ARRIVAL_EVENT_TYPES = {"到柜", "到货"}
+
+
 def load_container_events(supabase, container_key=None):
     columns = (
         "container_key,container_no,event_type,effective_date,previous_status,"
@@ -31,6 +34,34 @@ def load_container_events(supabase, container_key=None):
     )
     result = pd.DataFrame(response.data)
     result["actual_arrival_at"] = None
+    return result
+
+
+def attach_arrival_confirmation_times(container_df, event_df):
+    result = container_df.copy()
+    result["arrival_confirmed_at"] = None
+    if result.empty or event_df is None or event_df.empty:
+        return result
+    required = {"container_key", "event_type", "created_at"}
+    if not required.issubset(event_df.columns):
+        return result
+    arrivals = event_df[
+        event_df["event_type"].fillna("").astype(str).isin(
+            ARRIVAL_EVENT_TYPES
+        )
+    ].copy()
+    if arrivals.empty:
+        return result
+    arrivals["_confirmed_at"] = pd.to_datetime(
+        arrivals["created_at"], errors="coerce", utc=True
+    )
+    latest = (
+        arrivals.dropna(subset=["_confirmed_at"])
+        .sort_values("_confirmed_at", ascending=False, kind="stable")
+        .drop_duplicates("container_key", keep="first")
+        .set_index("container_key")["_confirmed_at"]
+    )
+    result["arrival_confirmed_at"] = result["container_key"].map(latest)
     return result
 
 
