@@ -1,0 +1,50 @@
+name: Deployment Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deployment-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-deploy-tests:
+    name: Pre-deploy page and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run all tests, including every Streamlit page
+        run: python -m unittest discover -s tests -q
+
+  deployed-page-smoke:
+    name: Post-deploy online page smoke
+    if: github.event_name != 'pull_request'
+    needs: pre-deploy-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install browser smoke dependencies
+        run: |
+          python -m pip install playwright==1.61.0
+          python -m playwright install --with-deps chromium
+      - name: Check every deployed Streamlit page
+        run: >-
+          python -m automation.deployment.streamlit_smoke
+          --base-url https://after-sales-dash.streamlit.app
+          --initial-delay 75
+          --wait-seconds 300

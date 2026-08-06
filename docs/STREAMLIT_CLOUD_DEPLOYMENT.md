@@ -40,6 +40,22 @@ deploy a separate server-side S2B refresh service.
 
 ## Deployment check
 
+GitHub Actions runs `.github/workflows/deployment-gate.yml` for every pull
+request and every update to `main`:
+
+1. `Pre-deploy page and unit tests` starts the main app and every Streamlit
+   page in Python 3.14, then runs the full unit-test suite.
+2. `Post-deploy online page smoke` waits for Community Cloud and opens every
+   deployed page in Chromium. A red Streamlit exception, import error, or
+   startup failure makes the deployment check fail.
+
+In GitHub repository settings, protect `main`, require pull requests, and make
+`Pre-deploy page and unit tests` a required status check. Community Cloud
+automatically watches `main`; branch protection is what prevents untested code
+from reaching that branch. Direct emergency pushes should remain disabled.
+
+The online check can also be rerun from GitHub Actions with `Run workflow`.
+
 After saving Secrets, reboot the app and verify with an `after_sales` account:
 
 1. The `物流单号追踪` navigation entry is visible.
