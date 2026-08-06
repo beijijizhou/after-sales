@@ -107,7 +107,8 @@ def outbound_movements_for_date(movement_df, selected_date):
 
 
 def render_outbound_quantity_search(
-    filtered_movement_df, complete_movement_df, visible_sizes=None
+    filtered_movement_df, complete_movement_df, visible_sizes=None,
+    key_prefix="inventory_outbound_quantity",
 ):
     st.markdown("#### 按数量查找当天出库")
     st.caption(
@@ -117,7 +118,7 @@ def render_outbound_quantity_search(
     raw_value = st.text_input(
         "出库数量",
         placeholder="例如：20000",
-        key="inventory_outbound_quantity_search",
+        key=f"{key_prefix}_search",
     )
     target = parse_quantity_search(raw_value)
     if not str(raw_value or "").strip():
@@ -131,7 +132,7 @@ def render_outbound_quantity_search(
         min_value=0,
         value=default_tolerance,
         step=max(100, round(target * 0.01)),
-        key=f"inventory_outbound_quantity_tolerance_{target}",
+        key=f"{key_prefix}_tolerance_{target}",
         help="例如目标 20,000、浮动 2,000，会查找 18,000–22,000。",
     )
     candidates = find_outbound_quantity_candidates(
@@ -164,7 +165,7 @@ def render_outbound_quantity_search(
         "查看哪一天的全部出库",
         dates,
         format_func=lambda value: value.strftime("%Y-%m-%d"),
-        key="inventory_outbound_quantity_result_date",
+        key=f"{key_prefix}_result_date",
     )
     day_movements = outbound_movements_for_date(
         complete_movement_df, selected_date

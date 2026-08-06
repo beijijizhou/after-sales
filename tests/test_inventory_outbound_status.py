@@ -77,6 +77,12 @@ class OutboundStatusTests(unittest.TestCase):
             "系统库存扣减", inventory_tab_keys("DTF", category="卫衣")
         )
 
+    def test_sku_workflows_are_not_embedded_in_production_inventory(self):
+        tabs = inventory_tab_keys("DTF", category="黑白短袖")
+
+        self.assertNotIn("SKU 管理", tabs)
+        self.assertNotIn("SKU 操作历史", tabs)
+
     def test_combined_ledger_contains_daily_and_temporary_batches(self):
         batches = pd.DataFrame([
             {
@@ -134,9 +140,9 @@ class OutboundStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             filter_batches_by_outbound_kind(
-                batches, "临时出库"
+                batches, "临时库存调整"
             )["数量"].tolist(),
-            [300],
+            [300, 400],
         )
         self.assertEqual(
             filter_batches_by_outbound_kind(
@@ -167,12 +173,12 @@ class OutboundStatusTests(unittest.TestCase):
         daily = filter_batches_by_outbound_kind(
             batches, "每日库存扣减"
         )
-        temporary = filter_batches_by_outbound_kind(
-            batches, "临时出库"
+        temporary_adjustment = filter_batches_by_outbound_kind(
+            batches, "临时库存调整"
         )
 
         self.assertEqual(daily["数量"].tolist(), [120, 240])
-        self.assertEqual(temporary["数量"].tolist(), [30])
+        self.assertEqual(temporary_adjustment["数量"].tolist(), [30])
 
     def test_reversal_scope_separates_all_outbound_workflows(self):
         batches = pd.DataFrame([

@@ -5,16 +5,17 @@ from db.inventory.master_data import (
     create_brand,
     create_category,
     create_department,
+    create_material,
 )
 from ui.inventory.i18n import t
 from utils.auth import get_current_operator_name
 
 
-def render_master_data_forms(supabase, departments):
-    st.subheader(t("基础资料"))
-    st.caption(t("基础资料说明"))
-    department_tab, category_tab, brand_tab = st.tabs([
-        t("新增部门"), t("新增品类"), t("新增品牌"),
+def render_master_data_forms(supabase, departments, categories):
+    st.subheader(t("新增 SKU 选项"))
+    st.caption(t("新增 SKU 选项说明"))
+    department_tab, category_tab, brand_tab, material_tab = st.tabs([
+        t("新增部门"), t("新增品类"), t("新增品牌"), t("新增材质"),
     ])
     operator = get_current_operator_name()
 
@@ -82,6 +83,37 @@ def render_master_data_forms(supabase, departments):
                 lambda: create_brand(supabase, brand_name, operator),
                 t("品牌已新增"),
             )
+
+    with material_tab:
+        category_names = {
+            f"{department['code']}｜{row['name']}": row["id"]
+            for department in department_options
+            for row in categories[
+                (categories["department_id"] == department["id"])
+                & (categories["is_active"] == True)  # noqa: E712
+            ].to_dict("records")
+        }
+        if not category_names:
+            st.info(t("请先新增品类"))
+        else:
+            with st.form("create_inventory_material"):
+                category_label = st.selectbox(
+                    t("所属品类") + " *", list(category_names)
+                )
+                material_name = st.text_input(t("材质名称") + " *")
+                submitted = st.form_submit_button(
+                    t("保存材质"), width="stretch"
+                )
+            if submitted:
+                _save(
+                    lambda: create_material(
+                        supabase,
+                        category_names[category_label],
+                        material_name,
+                        operator,
+                    ),
+                    t("材质已新增"),
+                )
 
 
 def _save(action, message):

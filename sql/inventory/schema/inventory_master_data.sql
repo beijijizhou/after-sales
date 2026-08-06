@@ -52,6 +52,30 @@ create table if not exists public.inventory_brands (
 create unique index if not exists inventory_brands_name_unique
 on public.inventory_brands (lower(trim(name)));
 
+create table if not exists public.inventory_materials (
+    id uuid primary key default gen_random_uuid(),
+    name text not null,
+    is_active boolean not null default true,
+    created_by text not null default 'system',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint inventory_materials_name_required
+        check (trim(name) <> '')
+);
+
+create unique index if not exists inventory_materials_name_unique
+on public.inventory_materials (lower(trim(name)));
+
+create table if not exists public.inventory_category_materials (
+    category_id uuid not null
+        references public.inventory_categories(id) on delete cascade,
+    material_id uuid not null
+        references public.inventory_materials(id) on delete restrict,
+    created_by text not null default 'system',
+    created_at timestamptz not null default now(),
+    primary key (category_id, material_id)
+);
+
 alter table public.inventory_items
 add column if not exists department_id uuid;
 
@@ -114,6 +138,12 @@ from public.inventory_items item
 where nullif(trim(item.brand), '') is not null
 on conflict do nothing;
 
+insert into public.inventory_materials (name)
+select distinct trim(item.material)
+from public.inventory_items item
+where nullif(trim(item.material), '') is not null
+on conflict do nothing;
+
 update public.inventory_items item
 set department_id = department.id
 from public.inventory_departments department
@@ -126,6 +156,15 @@ from public.inventory_categories category
 where item.category_id is null
   and category.department_id = item.department_id
   and lower(trim(category.name)) = lower(trim(item.category));
+
+insert into public.inventory_category_materials (category_id, material_id)
+select distinct item.category_id, material.id
+from public.inventory_items item
+join public.inventory_materials material
+  on lower(trim(material.name)) = lower(trim(item.material))
+where item.category_id is not null
+  and nullif(trim(item.material), '') is not null
+on conflict do nothing;
 
 update public.inventory_items item
 set brand_id = brand.id
@@ -203,6 +242,12 @@ grant select, insert, update on public.inventory_categories
 to anon, authenticated, service_role;
 
 grant select, insert, update on public.inventory_brands
+to anon, authenticated, service_role;
+
+grant select, insert, update on public.inventory_materials
+to anon, authenticated, service_role;
+
+grant select, insert, update, delete on public.inventory_category_materials
 to anon, authenticated, service_role;
 
 commit;

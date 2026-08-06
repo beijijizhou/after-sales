@@ -148,13 +148,6 @@ def render_inventory_summary(supabase):
             visible_sizes, can_edit, can_view_cost, history_data,
             movement_types,
             filter_title,
-            {
-                "category": category,
-                "brand": brands,
-                "material": materials,
-                "color": colors,
-                "规格": selected_sizes,
-            },
             undo_history_data=complete_history_data,
         )
 

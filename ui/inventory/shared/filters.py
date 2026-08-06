@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from db.inventory import DEFAULT_DEPARTMENT, SIZE_COLUMNS
+from db.inventory import SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
 from ui.inventory.i18n import t
 
@@ -16,17 +16,54 @@ PREFERRED_COLORS = ["黑", "白"]
 
 
 def render_inventory_global_filters(dimensions, key="inventory_global"):
+    (
+        department, category, selected_brands, selected_materials,
+        selected_colors, selected_sizes,
+    ) = render_inventory_dimension_filters(dimensions, key)
+    movement_col, date_col = st.columns(2)
+    movement_types = movement_col.multiselect(
+        t("出入库类型"), ["入库", "出库"], format_func=t,
+        key=f"{key}_movement_types", placeholder=t("全部"),
+    )
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    use_snapshot_date = date_col.toggle(
+        t("查看库存日期"), value=True, key=f"{key}_use_snapshot_date"
+    )
+    if use_snapshot_date:
+        selected_date = date_col.date_input(
+            t("库存日期"), value=today, max_value=today,
+            key=f"{key}_snapshot_date",
+        )
+    else:
+        selected_date = today
+        date_col.caption(t("已关闭历史快照，当前显示最新库存"))
+    return (
+        department, category, selected_brands, selected_materials,
+        selected_colors, selected_sizes, movement_types, selected_date,
+        use_snapshot_date,
+    )
+
+
+def render_inventory_dimension_filters(
+    dimensions, key="inventory_dimensions", allow_all_departments=False,
+):
     dimensions = _normalize_dimensions(dimensions)
     departments = _ordered_options(
         dimensions.get("department", []), PREFERRED_DEPARTMENTS
     )
     department_col, category_col, brand_col = st.columns(3)
     material_col, color_col, size_col = st.columns(3)
+    department_options = ([""] if allow_all_departments else []) + departments
+    _reset_invalid_selectbox(f"{key}_department", department_options)
     department = department_col.selectbox(
-        t("库存部门"), departments, key=f"{key}_department", format_func=t
+        t("库存部门"), department_options, key=f"{key}_department",
+        format_func=lambda value: t("全部部门") if not value else t(value),
     )
 
-    department_rows = dimensions[dimensions["department"] == department]
+    department_rows = (
+        dimensions[dimensions["department"] == department]
+        if department else dimensions
+    )
     preferred_categories = PREFERRED_CATEGORIES if department == "DTF" else []
     categories = _ordered_options(
         department_rows.get("category", []), preferred_categories
@@ -34,9 +71,11 @@ def render_inventory_global_filters(dimensions, key="inventory_global"):
     category_options = ["", *categories]
     category_key = f"{key}_{department}_category"
     _reset_invalid_selectbox(category_key, category_options)
-    initialization_key = f"{category_key}_default_v2"
+    initialization_key = f"{category_key}_default_v3"
     if initialization_key not in st.session_state:
-        if not st.session_state.get(category_key) and "黑白短袖" in categories:
+        if allow_all_departments and not department:
+            st.session_state[category_key] = ""
+        elif not st.session_state.get(category_key) and "黑白短袖" in categories:
             st.session_state[category_key] = "黑白短袖"
         st.session_state[initialization_key] = True
     category = category_col.selectbox(
@@ -90,39 +129,30 @@ def render_inventory_global_filters(dimensions, key="inventory_global"):
     size_rows = color_rows
     if selected_colors:
         size_rows = size_rows[size_rows["color"].isin(selected_colors)]
+    preferred_sizes = (
+        SIZE_COLUMNS if department == "DTF"
+        else UV_MODEL_ORDER if department == "UV"
+        else []
+    )
     sizes = _ordered_options(
         size_rows.get("size", []),
-        SIZE_COLUMNS if department == "DTF" else UV_MODEL_ORDER,
+        preferred_sizes,
         include_missing=False,
     )
     _reset_invalid_multiselect(f"{key}_sizes", sizes)
-    size_filter_label = "筛选尺码" if department == "DTF" else "筛选型号"
+    size_filter_label = (
+        "筛选尺码" if department == "DTF"
+        else "筛选型号" if department == "UV"
+        else "筛选尺码 / 型号"
+    )
     selected_sizes = size_col.multiselect(
         t(size_filter_label), sizes, key=f"{key}_sizes",
         placeholder=t("全部"),
         format_func=lambda value: "yuan" if value == "YUAN" else value,
     )
-    movement_col, date_col = st.columns(2)
-    movement_types = movement_col.multiselect(
-        t("出入库类型"), ["入库", "出库"], format_func=t,
-        key=f"{key}_movement_types", placeholder=t("全部"),
-    )
-    today = datetime.now(ZoneInfo("America/New_York")).date()
-    use_snapshot_date = date_col.toggle(
-        t("查看库存日期"), value=True, key=f"{key}_use_snapshot_date"
-    )
-    if use_snapshot_date:
-        selected_date = date_col.date_input(
-            t("库存日期"), value=today, max_value=today,
-            key=f"{key}_snapshot_date",
-        )
-    else:
-        selected_date = today
-        date_col.caption(t("已关闭历史快照，当前显示最新库存"))
     return (
         department, category, selected_brands, selected_materials,
-        selected_colors, selected_sizes, movement_types, selected_date,
-        use_snapshot_date,
+        selected_colors, selected_sizes,
     )
 
 

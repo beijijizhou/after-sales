@@ -269,24 +269,28 @@ def render_inventory_history(
     supabase, department, mode, history_data=None, visible_sizes=None,
     movement_types=None, quantity_search_data=None,
 ):
-    movement_df, sku_import_df, batch_df = history_data or load_inventory_history_data(
+    history_data = history_data or load_inventory_history_data(
         supabase, department
+    )
+    movement_df, sku_import_df, batch_df = filter_history_department(
+        history_data, department
     )
     if batch_df.empty:
         st.info(t("暂无相关记录"))
         return
 
     selected_df = filter_history_batches(batch_df, mode)
-    history_key = f"inventory_{mode}_history_batch"
+    department_key = str(department or "all").strip().lower()
+    history_key = f"inventory_{department_key}_{mode}_history_batch"
     if mode == "all":
         outbound_kind = st.selectbox(
             t("流水记录类型"),
             [
                 "全部流水", "货柜入库", "每日库存扣减",
-                "临时出库",
+                "临时库存调整",
             ],
             format_func=t,
-            key="inventory_ledger_outbound_kind",
+            key=f"inventory_{department_key}_ledger_outbound_kind",
         )
         selected_df = filter_batches_by_outbound_kind(
             selected_df, outbound_kind
@@ -296,8 +300,12 @@ def render_inventory_history(
             if quantity_search_data is not None
             else movement_df
         )
+        complete_movement_df = _rows_for_department(
+            complete_movement_df, department
+        )
         if render_outbound_quantity_search(
-            movement_df, complete_movement_df, visible_sizes
+            movement_df, complete_movement_df, visible_sizes,
+            key_prefix=f"inventory_{department_key}_outbound_quantity",
         ):
             return
     if mode == "undo":
@@ -312,7 +320,7 @@ def render_inventory_history(
                 "临时库存调整", "其他出入库",
             ],
             default="全部可撤销记录",
-            key="inventory_reversal_scope",
+            key=f"inventory_{department_key}_reversal_scope",
         ) or "全部可撤销记录"
         selected_df = filter_reversal_scope(
             selected_df, reversal_scope
@@ -342,6 +350,26 @@ def render_inventory_history(
         visible_sizes=visible_sizes,
         sku_import=mode == "sku",
     )
+
+
+def filter_history_department(history_data, department):
+    movement_df, sku_import_df, _ = history_data
+    movement_df = _rows_for_department(movement_df, department)
+    sku_import_df = _rows_for_department(sku_import_df, department)
+    return (
+        movement_df,
+        sku_import_df,
+        build_movement_batches(movement_df, sku_import_df),
+    )
+
+
+def _rows_for_department(rows, department):
+    source = pd.DataFrame(rows).copy()
+    if source.empty or "department" not in source.columns:
+        return source
+    expected = str(department or "").strip().casefold()
+    values = source["department"].fillna("").astype(str).str.strip().str.casefold()
+    return source[values == expected].reset_index(drop=True)
 
 
 def render_sku_operation_history(inventory_df, history_data, visible_sizes=None):

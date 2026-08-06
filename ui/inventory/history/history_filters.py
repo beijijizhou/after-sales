@@ -29,6 +29,9 @@ def filter_batches_by_outbound_kind(batch_df, outbound_kind):
         batch_df["类型"].fillna("").astype(str) == "入库"
     ) & reasons.str.contains("货柜入库：", regex=False)
     is_daily = reasons.map(is_daily_consumption_reason)
+    is_temporary_adjustment = reasons.str.contains(
+        "临时库存调整", regex=False
+    )
     is_legacy = (
         reasons.str.contains(
             "每日正常出货|每日出货|黑白短袖出库", regex=True
@@ -41,7 +44,7 @@ def filter_batches_by_outbound_kind(batch_df, outbound_kind):
         "每日出库": is_outbound & is_daily,
         "每日库存扣减": is_outbound & is_daily,
         "每日消耗出库": is_outbound & is_daily,
-        "临时出库": is_outbound & ~is_daily & ~is_legacy,
+        "临时库存调整": is_temporary_adjustment,
     }
     mask = masks.get(outbound_kind)
     return batch_df if mask is None else batch_df[mask]

@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 
 import pandas as pd
 
@@ -7,9 +8,12 @@ from db.finance.summary import (
     build_daily_summary,
     build_department_summary,
     build_finance_overview,
+    build_inventory_value_overview,
 )
 from db.finance.repository import _normalize_cost_rows
-from ui.finance.cost_editor import find_cost_changes
+from ui.finance.cost_editor import build_cost_batch_summary, find_cost_changes
+from ui.finance.inbound_batches import build_inbound_batch_summary
+from ui.finance.page import _build_two_week_daily_amounts
 from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
 
 
@@ -40,6 +44,24 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result["outbound_amount"], 52)
         self.assertEqual(result["missing_outbound_quantity"], 5)
 
+    def test_inventory_value_overview_uses_current_remaining_value(self):
+        snapshot = pd.DataFrame([
+            {
+                "inventory_quantity": 100,
+                "inventory_value": 138,
+                "missing_cost_quantity": 0,
+            },
+            {
+                "inventory_quantity": 50,
+                "inventory_value": 20,
+                "missing_cost_quantity": 10,
+            },
+        ])
+        result = build_inventory_value_overview(snapshot)
+        self.assertEqual(result["inventory_quantity"], 150)
+        self.assertEqual(result["inventory_value"], 158)
+        self.assertEqual(result["missing_cost_quantity"], 10)
+
     def test_department_summary_calculates_net_change(self):
         result = build_department_summary(self.finance)
         dtf = result[result["部门"] == "DTF"].iloc[0]
@@ -51,6 +73,16 @@ class FinanceSummaryTests(unittest.TestCase):
         second_day = result.iloc[1]
         self.assertEqual(second_day["出库数量"], 45)
         self.assertEqual(second_day["入库数量"], 0)
+
+    def test_two_week_daily_amounts_has_date_labels_and_zero_days(self):
+        result = _build_two_week_daily_amounts(
+            self.finance, date(2026, 7, 14)
+        )
+        self.assertEqual(len(result), 14)
+        self.assertEqual(result.iloc[0]["日期"], "07/01")
+        self.assertEqual(result.iloc[-1]["日期"], "07/14")
+        self.assertEqual(result.iloc[1]["出库成本"], 52)
+        self.assertEqual(result.iloc[-1]["入库金额"], 0)
 
     def test_container_summary_groups_size_rows(self):
         source = pd.DataFrame([
@@ -101,6 +133,29 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(str(result.iloc[0]["date"]), "2026-07-29")
         self.assertEqual(result.iloc[0]["amount"], 13)
 
+    def test_inbound_cost_batches_group_skus_and_show_latest_first(self):
+        rows = pd.DataFrame([
+            _finance_inbound(
+                "lot-2030", "batch-today", "2030", 26400, 0.607,
+                "2026-08-06T22:30:00+00:00",
+            ),
+            _finance_inbound(
+                "lot-1040", "batch-today", "1040", 10800, 0.607,
+                "2026-08-06T22:30:01+00:00",
+            ),
+            _finance_inbound(
+                "lot-old", "batch-old", "2030", 1000, 0.41,
+                "2026-08-05T12:00:00+00:00",
+            ),
+        ])
+
+        result = build_inbound_batch_summary(rows)
+
+        self.assertEqual(result["批次号"].tolist(), ["batch-today", "batch-old"])
+        self.assertEqual(result.iloc[0]["SKU数"], 2)
+        self.assertEqual(result.iloc[0]["数量"], 37200)
+        self.assertAlmostEqual(result.iloc[0]["金额"], 22580.4)
+
     def test_finance_dashboard_is_admin_only(self):
         self.assertIn(
             "can_view_finance_dashboard", ROLE_PERMISSIONS["admin"]
@@ -124,13 +179,36 @@ class FinanceSummaryTests(unittest.TestCase):
         ])
         self.assertEqual(find_cost_changes(original, edited), [("a", 2.12)])
 
+    def test_cost_batches_group_legacy_opening_skus(self):
+        rows = pd.DataFrame([
+            {
+                **_finance_inbound(
+                    "opening-2xl", None, "2XL", 2000, 0,
+                    "2026-08-06T12:00:00+00:00",
+                ),
+                "source_type": "opening", "unit_cost": None,
+            },
+            {
+                **_finance_inbound(
+                    "opening-3xl", None, "3XL", 2000, 0,
+                    "2026-08-06T12:00:01+00:00",
+                ),
+                "source_type": "opening", "unit_cost": None,
+            },
+        ])
+        result = build_cost_batch_summary(rows)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["SKU数"], 2)
+        self.assertEqual(result.iloc[0]["数量"], 4000)
+        self.assertEqual(result.iloc[0]["缺成本SKU"], 2)
+
     def test_inventory_navigation_is_grouped(self):
         inventory_section = next(
             items for title, items in NAV_SECTIONS if title == "库存"
         )
         self.assertEqual(
             [label for _, label, _ in inventory_section],
-            ["库存总结", "生产库存", "耗材库存", "货柜安排"],
+            ["库存总结", "生产库存", "SKU 管理", "耗材库存", "货柜安排"],
         )
         independent = [
             label
@@ -140,6 +218,18 @@ class FinanceSummaryTests(unittest.TestCase):
         ]
         self.assertIn("财务", independent)
         self.assertIn("手机壳图片处理", independent)
+
+
+def _finance_inbound(record_id, batch_id, size, quantity, cost, recorded_at):
+    return {
+        "record_id": record_id, "batch_id": batch_id,
+        "recorded_at": recorded_at, "date": "2026-08-06",
+        "direction": "入库", "department": "UV", "category": "铁板画",
+        "brand": "", "material": "铝牌", "color": "白", "size": size,
+        "quantity": quantity, "unit_cost": cost,
+        "amount": quantity * cost, "source_type": "transfer",
+        "missing_cost": False,
+    }
 
 
 if __name__ == "__main__":

@@ -1,9 +1,7 @@
 import streamlit as st
 
-from utils.auth import has_permission
 from ui.inventory.history.history import (
     render_inventory_history,
-    render_sku_operation_history,
 )
 from ui.inventory.i18n import t
 from ui.inventory.operations.pages import (
@@ -27,17 +25,12 @@ from ui.inventory.stock.table import (
     render_inventory_table,
     render_inventory_view_mode,
 )
-from ui.inventory.sku import render_sku_management
-from ui.inventory.sku.initialization import (
-    render_inventory_initialization,
-)
 
 
 def render_inventory_tabs(
     supabase, department, category, inventory_df, raw_df, current_cost_df,
     inventory_date, selected_date, current_date, visible_sizes, can_edit,
     can_view_cost, history_data, movement_types, filter_title,
-    sku_filters=None,
     undo_history_data=None,
 ):
     tab_keys = inventory_tab_keys(
@@ -119,38 +112,12 @@ def render_inventory_tabs(
             movement_types, quantity_search_data=undo_history_data,
         )
 
-    with tabs["SKU 操作历史"]:
-        render_sku_operation_history(
-            raw_df, history_data, visible_sizes
-        )
-
     with tabs["撤销"]:
         _render_history(
             supabase, department, "undo",
             undo_history_data or history_data, visible_sizes,
             movement_types,
         )
-
-    with tabs["SKU 管理"]:
-        sku_tab, initialization_tab, sku_history_tab = st.tabs([
-            t("SKU 管理"), t("待初始化库存"), t("SKU 导入历史"),
-        ])
-        with sku_tab:
-            render_sku_management(
-                supabase,
-                department,
-                has_permission("can_manage_sku"),
-                sku_filters,
-            )
-        with initialization_tab:
-            render_inventory_initialization(
-                supabase, department, category, can_edit,
-            )
-        with sku_history_tab:
-            _render_history(
-                supabase, department, "sku", history_data, visible_sizes,
-                movement_types,
-            )
 
     if can_view_cost:
         with tabs["库存成本"]:
@@ -171,7 +138,7 @@ def inventory_tab_keys(department, can_view_cost=False, category=""):
     ):
         keys.append("系统库存扣减")
     keys.extend([
-        "临时库存调整", "库存流水", "SKU 操作历史", "撤销", "SKU 管理",
+        "临时库存调整", "库存流水", "撤销",
     ])
     if can_view_cost:
         keys.append("库存成本")

@@ -25,5 +25,15 @@ Treat UI modularity as seriously as code modularity. Group related functions
 in the same page area, and separate distinct workflows with tabs or focused
 views instead of stacking multiple full tables and forms on one screen.
 
+Batch-oriented workflows are a core ERP design rule. For inbound inventory,
+outbound inventory, inventory adjustments, costing, containers, and similar
+multi-row business operations, present a batch summary first, then let the
+user select a batch to view or edit its complete SKU-level details. Do not
+flatten every row from every batch into one large editor. Keep the batch ID,
+business date, source, totals, status, and audit history intact so related
+rows remain understandable and reversible as one business event. Legacy rows
+without an explicit batch ID should be grouped into a stable, explainable
+business batch where possible rather than exposed as unrelated records.
+
 Do not infer database structure when it can be inspected. Confirm schema before
 designing database changes. Never overwrite unrelated worktree changes.

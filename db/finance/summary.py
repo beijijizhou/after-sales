@@ -14,6 +14,22 @@ def build_finance_overview(finance_df):
     }
 
 
+def build_inventory_value_overview(snapshot_df):
+    if snapshot_df.empty:
+        return {
+            "inventory_value": 0,
+            "inventory_quantity": 0,
+            "missing_cost_quantity": 0,
+        }
+    return {
+        "inventory_value": _sum(snapshot_df, "inventory_value"),
+        "inventory_quantity": _sum(snapshot_df, "inventory_quantity"),
+        "missing_cost_quantity": int(
+            _sum(snapshot_df, "missing_cost_quantity")
+        ),
+    }
+
+
 def build_department_summary(finance_df):
     columns = [
         "部门", "品类", "入库数量", "入库金额",
