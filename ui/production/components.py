@@ -36,20 +36,59 @@ def get_working_hours_from_user_summary(user_summary):
 
 def render_person_platform_table(person_platform_summary, title):
     st.subheader(f"{title}人员平台明细")
+    overview_df = person_platform_summary[["人员", "总生产数量"]].copy()
+    overview_metrics = {
+        "汉森": ("汉森数量", "汉森占比"),
+        "多件": ("多件订单数量", "多件占比"),
+        "Haloo": ("Haloo 数量", "Haloo 占比"),
+        "小平台": ("小平台数量", "小平台占比"),
+    }
+    for label, (count_column, ratio_column) in overview_metrics.items():
+        overview_df[label] = person_platform_summary.apply(
+            lambda row: f"{int(row[count_column]):,}（{row[ratio_column]:.1f}%）",
+            axis=1,
+        )
     platform_columns = [
         column
         for column in person_platform_summary.columns
-        if column not in {"人员", "总生产数量", "多件订单数量", "时产量", "Haloo 数量", "Haloo 占比"}
+        if column not in {
+            "人员", "总生产数量", "多件订单数量", "多件占比", "时产量",
+            "Haloo 数量", "Haloo 占比", "小平台数量", "小平台占比",
+            "汉森数量", "汉森占比",
+        }
     ]
     column_config = {
+        "总生产数量": st.column_config.NumberColumn("总件数"),
+        "汉森": st.column_config.TextColumn("汉森（件数 / 占比）"),
+        "多件": st.column_config.TextColumn("多件（件数 / 占比）"),
+        "Haloo": st.column_config.TextColumn("Haloo（件数 / 占比）"),
+        "小平台": st.column_config.TextColumn("小平台（件数 / 占比）"),
         "Haloo 占比": st.column_config.ProgressColumn("Haloo 占比", format="%.1f%%", min_value=0, max_value=100),
+        "小平台占比": st.column_config.ProgressColumn("小平台占比", format="%.1f%%", min_value=0, max_value=100),
+        "汉森占比": st.column_config.ProgressColumn("汉森占比", format="%.1f%%", min_value=0, max_value=100),
+        "多件占比": st.column_config.ProgressColumn("多件占比", format="%.1f%%", min_value=0, max_value=100),
         "时产量": st.column_config.NumberColumn("时产量", format="%.1f"),
         "多件订单数量": st.column_config.NumberColumn("多件订单数量"),
+        "Haloo 数量": st.column_config.NumberColumn("Haloo 数量"),
+        "小平台数量": st.column_config.NumberColumn("小平台数量"),
+        "汉森数量": st.column_config.NumberColumn("汉森数量"),
     }
     for column in platform_columns:
         column_config[column] = st.column_config.NumberColumn(column)
 
-    st.dataframe(person_platform_summary, hide_index=True, width="stretch", column_config=column_config)
+    st.dataframe(
+        overview_df,
+        hide_index=True,
+        width="stretch",
+        column_config=column_config,
+    )
+    with st.expander("查看平台数量明细"):
+        st.dataframe(
+            person_platform_summary,
+            hide_index=True,
+            width="stretch",
+            column_config=column_config,
+        )
 
 
 def render_hourly_production(hourly_summary):

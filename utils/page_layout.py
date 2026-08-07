@@ -7,8 +7,8 @@ def configure_page():
         """
         <style>
         [data-testid="stMainBlockContainer"], .block-container {
-            width: 70%;
-            max-width: 1800px;
+            width: 80%;
+            max-width: 2200px;
             padding-left: 2rem;
             padding-right: 2rem;
         }

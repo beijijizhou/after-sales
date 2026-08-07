@@ -83,6 +83,9 @@ def build_rpc_working_hours(summary_df):
 
 
 def finalize_person_platform_summary(pivot_df, platform_columns):
+    pivot_df["多件占比"] = (
+        pivot_df["多件订单数量"] / pivot_df["总生产数量"] * 100
+    ).fillna(0).round(1)
     pivot_df["时产量"] = (
         pivot_df["总生产数量"] / pivot_df["working_hours"]
     ).replace([float("inf"), -float("inf")], 0).fillna(0).round(1)
@@ -90,10 +93,25 @@ def finalize_person_platform_summary(pivot_df, platform_columns):
         pivot_df[HALOO_PLATFORM] = 0
     pivot_df["Haloo 数量"] = pivot_df[HALOO_PLATFORM]
     pivot_df["Haloo 占比"] = (pivot_df["Haloo 数量"] / pivot_df["总生产数量"] * 100).fillna(0).round(1)
-    detail_columns = [column for column in platform_columns if column != HALOO_PLATFORM]
+    pivot_df["小平台数量"] = pivot_df["总生产数量"] - pivot_df["Haloo 数量"]
+    pivot_df["小平台占比"] = (
+        pivot_df["小平台数量"] / pivot_df["总生产数量"] * 100
+    ).fillna(0).round(1)
+    if "汉森" not in pivot_df.columns:
+        pivot_df["汉森"] = 0
+    pivot_df["汉森数量"] = pivot_df["汉森"]
+    pivot_df["汉森占比"] = (
+        pivot_df["汉森数量"] / pivot_df["总生产数量"] * 100
+    ).fillna(0).round(1)
+    detail_columns = [
+        column for column in platform_columns
+        if column not in {HALOO_PLATFORM, "汉森"}
+    ]
     ordered_columns = [
-        "人员", "总生产数量", "多件订单数量", "时产量",
-        "Haloo 数量", "Haloo 占比", *detail_columns,
+        "人员", "总生产数量", "多件订单数量", "多件占比", "时产量",
+        "Haloo 数量", "Haloo 占比", "小平台数量", "小平台占比",
+        "汉森数量", "汉森占比",
+        *detail_columns,
     ]
     return pivot_df[ordered_columns].sort_values("Haloo 占比", ascending=False).reset_index(drop=True)
 
