@@ -45,6 +45,8 @@ refactors, not after every small feature.
 - Database scripts: `sql/`, grouped by business domain; inventory scripts are
   further grouped under `sql/inventory/` by schema, operations, containers,
   planning, costs, imports, and one-time data fixes.
+- Production summary functions: `sql/production/summaries/`, split by person
+  platform, hourly totals, hourly people, pair workflow, and period summary.
 
 ## Inventory Model
 

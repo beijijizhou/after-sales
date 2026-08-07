@@ -107,9 +107,9 @@ def render_hourly_legend():
 
 def render_person_switch_table(person_switch_df):
     if person_switch_df.empty:
+        st.info("暂无人员平台切换数据")
         return
 
-    st.subheader("人员平台切换分析")
     st.dataframe(
         person_switch_df,
         hide_index=True,
@@ -119,3 +119,68 @@ def render_person_switch_table(person_switch_df):
             "切换路径": st.column_config.TextColumn("切换路径", width="large"),
         },
     )
+
+
+def render_pair_workflow_table(workflow_df, selection_key):
+    if workflow_df.empty:
+        st.info("暂无质检—烫印配对工作流数据")
+        return
+
+    st.caption(
+        "每个质检人员一行；只有对应的烫印人员变化时，才进入下一段配对工作。"
+    )
+    summary_df = workflow_df.drop(columns=["工作流"])
+    st.dataframe(
+        summary_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "质检人员": st.column_config.TextColumn("质检人员"),
+            "主要烫印人员": st.column_config.TextColumn("主要烫印人员"),
+            "烫印人员明细": st.column_config.TextColumn(
+                "烫印人员明细", width="large"
+            ),
+            "总产量": st.column_config.NumberColumn("总产量", format="%d"),
+            "切换次数": st.column_config.NumberColumn("切换次数", format="%d"),
+        },
+    )
+    people_options = sorted(workflow_df["质检人员"].tolist())
+    if (
+        selection_key in st.session_state
+        and st.session_state[selection_key] not in people_options
+    ):
+        del st.session_state[selection_key]
+    selected_person = st.selectbox(
+        "查看质检人员完整配对工作流",
+        people_options,
+        key=selection_key,
+    )
+    selected_row = workflow_df.loc[
+        workflow_df["质检人员"] == selected_person
+    ].iloc[0]
+    selected_name = selected_row["质检人员"]
+    selected_workflow = selected_row["工作流"]
+    st.markdown(f"**{selected_name} 配对工作流**")
+    st.markdown("\n".join(
+        f"- {step}" for step in selected_workflow.split(" → ")
+    ))
+
+
+def render_workflow_analysis(
+    person_switch_df, pair_workflow_df, title, selected_date
+):
+    st.subheader("工作流分析")
+    platform_tab, pair_tab = st.tabs([
+        f"{title}人员平台分析",
+        "质检—烫印配对",
+    ])
+    with platform_tab:
+        render_person_switch_table(person_switch_df)
+    with pair_tab:
+        render_pair_workflow_table(
+            pair_workflow_df,
+            selection_key=(
+                f"pair_workflow_person_v2_{title}_"
+                f"{selected_date.isoformat()}"
+            ),
+        )

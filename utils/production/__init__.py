@@ -8,6 +8,7 @@ from utils.production.loaders import (
     load_daily_production_rows,
     load_hourly_person_client_rows,
     load_hourly_summary_rows,
+    load_pair_platform_workflow_rows,
     load_period_person_platform_rows,
     load_person_platform_summary_rows,
 )
@@ -27,4 +28,8 @@ from utils.production.platform_summary import (
     summarize_by_user_from_rpc,
 )
 from utils.production.switching import build_person_switch_table
+from utils.production.pair_workflow import (
+    build_pair_workflow_from_detail,
+    build_pair_workflow_table,
+)
 from utils.production.constants import HALOO_PLATFORM, NY_TIMEZONE, OTHER_CLIENT, UNKNOWN_PLATFORM

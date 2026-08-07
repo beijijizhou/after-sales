@@ -8,20 +8,23 @@ from ui.production.components import (
     render_hourly_production,
     render_kpis,
     render_person_platform_table,
-    render_person_switch_table,
+    render_workflow_analysis,
 )
 from ui.production.analysis import render_qa_period_analysis
 from utils.date_display import format_date_with_weekday
 from utils.multiple_count_helpers import refresh_multiple_counts
 from utils.production_helpers import (
     NY_TIMEZONE,
+    build_pair_workflow_from_detail,
     build_person_platform_summary,
     build_person_platform_summary_from_rpc,
     build_person_switch_table,
+    build_pair_workflow_table,
     get_working_hours,
     load_daily_production_rows,
     load_hourly_person_client_rows,
     load_hourly_summary_rows,
+    load_pair_platform_workflow_rows,
     load_person_platform_summary_rows,
     prepare_production_df,
     summarize_by_hour,
@@ -69,7 +72,20 @@ def load_rpc_summary(supabase, selected_date, user_column, snapshot_at):
         supabase, selected_date, user_column, snapshot_at
     )
     person_switch_df = build_person_switch_table(hourly_person_rows)
-    return user_summary, person_platform_summary, hourly_summary, person_switch_df
+    try:
+        workflow_rows = load_pair_platform_workflow_rows(
+            supabase, selected_date, snapshot_at
+        )
+        pair_workflow_df = build_pair_workflow_table(workflow_rows)
+    except Exception:
+        pair_workflow_df = pd.DataFrame()
+    return (
+        user_summary,
+        person_platform_summary,
+        hourly_summary,
+        person_switch_df,
+        pair_workflow_df,
+    )
 
 
 def load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at):
@@ -86,13 +102,14 @@ def load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at
         build_person_platform_summary(df, user_column),
         summarize_by_hour(df, selected_date),
         pd.DataFrame(),
+        build_pair_workflow_from_detail(raw_df),
         get_working_hours(df),
     )
 
 
 def resolve_production_summary(supabase, selected_date, title, user_column, snapshot_at):
     try:
-        user_summary, person_platform_summary, hourly_summary, person_switch_df = load_rpc_summary(
+        user_summary, person_platform_summary, hourly_summary, person_switch_df, pair_workflow_df = load_rpc_summary(
             supabase, selected_date, user_column, snapshot_at
         )
     except Exception as e:
@@ -104,12 +121,28 @@ def resolve_production_summary(supabase, selected_date, title, user_column, snap
 
     working_hours = get_working_hours_from_user_summary(user_summary)
     if hourly_summary.empty:
-        st.warning("每小时产量正在使用旧算法。请在 Supabase SQL Editor 运行最新版 sql/production/production_summary_functions.sql")
+        st.warning(
+            "每小时产量正在使用旧算法。请在 Supabase SQL Editor 运行最新版 "
+            "sql/production/summaries/02_hourly_totals.sql"
+        )
         raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
         df = prepare_production_df(raw_df, user_column)
         hourly_summary = summarize_by_hour(df, selected_date)
         person_switch_df = pd.DataFrame()
-    return user_summary, person_platform_summary, hourly_summary, person_switch_df, working_hours
+        pair_workflow_df = pd.DataFrame()
+    if pair_workflow_df.empty:
+        raw_df = load_daily_production_rows(
+            supabase, selected_date, user_column, snapshot_at
+        )
+        pair_workflow_df = build_pair_workflow_from_detail(raw_df)
+    return (
+        user_summary,
+        person_platform_summary,
+        hourly_summary,
+        person_switch_df,
+        pair_workflow_df,
+        working_hours,
+    )
 
 
 def render_production_summary(supabase, selected_date, title, user_column):
@@ -155,13 +188,15 @@ def render_daily_production_content(
     supabase, selected_date, title, user_column, snapshot_at
 ):
     try:
-        user_summary, person_platform_summary, hourly_summary, person_switch_df, working_hours = (
+        user_summary, person_platform_summary, hourly_summary, person_switch_df, pair_workflow_df, working_hours = (
             resolve_production_summary(supabase, selected_date, title, user_column, snapshot_at)
         )
         render_kpis(user_summary, working_hours)
         render_person_platform_table(person_platform_summary, title)
         render_hourly_production(hourly_summary)
-        render_person_switch_table(person_switch_df)
+        render_workflow_analysis(
+            person_switch_df, pair_workflow_df, title, selected_date
+        )
     except Exception as e:
         if "没有生产数据" in str(e) or "没有" + title in str(e):
             st.warning(str(e))

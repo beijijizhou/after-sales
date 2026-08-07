@@ -25,8 +25,7 @@ as $$
         (scanned_at at time zone 'America/New_York')::date as work_date,
         trim(scanned_by) as person,
         coalesce(
-            nullif(trim(platform), ''),
-            '未标记平台'
+            nullif(trim(platform), ''), '未标记平台'
         ) as platform,
         count(*) as scan_count,
         count(*) filter (
@@ -41,16 +40,12 @@ as $$
           start_date::timestamp at time zone 'America/New_York'
       )
       and scanned_at < least(
-          (
-              (end_date + interval '1 day')::timestamp
-              at time zone 'America/New_York'
-          ),
+          (end_date + interval '1 day')::timestamp
+              at time zone 'America/New_York',
           coalesce(
               snapshot_at,
-              (
-                  (end_date + interval '1 day')::timestamp
+              (end_date + interval '1 day')::timestamp
                   at time zone 'America/New_York'
-              )
           )
       )
     group by work_date, person, platform

@@ -7,7 +7,8 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 | --- | --- | ---: |
 | `access/` | 权限、角色和初始账号 | 5 |
 | `after_sales/` | 售后字段和条码修复 | 2 |
-| `production/` | 生产、质检和条码汇总函数 | 4 |
+| `production/` | 生产条码历史和多件订单刷新 | 2 |
+| `production/summaries/` | 人员平台、小时、配对工作流和区间汇总 | 5 |
 | `inventory/schema/` | 库存基础表和主数据结构 | 5 |
 | `inventory/operations/` | 调整、批次、快照、撤销和 SKU 更新 | 5 |
 | `inventory/containers/` | 货柜表、到柜和历史 | 3 |
@@ -26,3 +27,12 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 - 生产环境执行前先做预检，执行后核对受影响行数和业务总数。
 - 文件移动后必须同步更新应用中的 SQL Editor 提示路径。
 
+## 生产汇总安装顺序
+
+生产汇总函数按职责拆分，按编号执行：
+
+1. `production/summaries/01_person_platform.sql`
+2. `production/summaries/02_hourly_totals.sql`
+3. `production/summaries/03_hourly_people.sql`
+4. `production/summaries/04_pair_workflow.sql`
+5. `production/summaries/05_qa_period.sql`

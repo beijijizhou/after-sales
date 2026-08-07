@@ -22,7 +22,10 @@ def load_daily_production_rows(supabase, selected_date, user_column, snapshot_at
     while True:
         response = (
             supabase.table("barcode_scans")
-            .select(f"id,barcode,{user_column},scanned_at,platform,multiple_count")
+            .select(
+                "id,barcode,scanned_by,hotstamp_by,"
+                "scanned_at,platform,multiple_count"
+            )
             .gte("scanned_at", start_at).lt("scanned_at", end_at)
             .order("scanned_at", desc=False)
             .order("id", desc=False)
@@ -81,6 +84,17 @@ def load_hourly_person_client_rows(supabase, selected_date, user_column, snapsho
         "get_daily_hotstamp_hourly_person_client_summary",
     )
     return load_summary_rpc(supabase, function_name, selected_date, snapshot_at) if function_name else pd.DataFrame()
+
+
+def load_pair_platform_workflow_rows(
+    supabase, selected_date, snapshot_at=None
+):
+    return load_summary_rpc(
+        supabase,
+        "get_daily_pair_workflow_summary",
+        selected_date,
+        snapshot_at,
+    )
 
 
 def load_period_person_platform_rows(
