@@ -32,16 +32,23 @@ def render_inventory_view_mode(category, inventory_df):
 
 def render_inventory_table(
     supabase, department, category, inventory_df, inventory_date, editable,
-    visible_sizes, filter_title,
+    visible_sizes, filter_title, is_historical=False,
 ):
     st.subheader(f"{filter_title} {t('库存明细')}")
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
 
     col1, col2 = st.columns(2)
     col1.metric(t("当前日期"), current_date.isoformat())
-    col2.metric(t("库存数据截至"), inventory_date.isoformat())
-    if inventory_date < current_date:
-        days = (current_date - inventory_date).days
+    date_context = build_inventory_date_context(
+        current_date, inventory_date, is_historical
+    )
+    col2.metric(t(date_context["label"]), inventory_date.isoformat())
+    if date_context["message"]:
+        st.info(t(date_context["message"]).format(
+            date=inventory_date.isoformat()
+        ))
+    if date_context["stale_days"]:
+        days = date_context["stale_days"]
         st.warning(
             t("该部门库存账已经 {days} 天没有更新").format(days=days)
         )
@@ -71,6 +78,26 @@ def render_inventory_table(
             display_df, hide_index=True, width="stretch",
             column_config=column_config, height=table_height,
         )
+
+
+def build_inventory_date_context(
+    current_date, inventory_date, is_historical=False,
+):
+    if is_historical:
+        return {
+            "label": "历史库存日期",
+            "message": "正在查看 {date} 的历史库存快照，不代表库存账停止更新",
+            "stale_days": 0,
+        }
+    stale_days = 0
+    if inventory_date < current_date:
+        days = (current_date - inventory_date).days
+        stale_days = days
+    return {
+        "label": "库存账最后变动",
+        "message": "",
+        "stale_days": stale_days,
+    }
 
 
 def render_inventory_metrics(inventory_df):

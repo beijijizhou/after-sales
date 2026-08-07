@@ -6,6 +6,10 @@ from utils.erp.inventory_mapping import normalize_production_for_inventory
 COLOR_TARGETS = {
     "浅灰": "灰色",
 }
+COLORED_CANONICAL_COLORS = {
+    "红色", "橙色", "黄色", "绿色", "蓝色", "紫色", "粉色",
+    "浅灰", "灰色", "深灰", "杏色", "棕色", "TiffanyBlue",
+}
 ALLOCATION_COLUMNS = [
     "品牌", "材质", "颜色", "尺码",
     "当前库存", "预计扣减", "扣减后库存", "状态",
@@ -23,9 +27,72 @@ def build_colored_tshirt_inventory_review(production_df, inventory_df):
     return source_map, allocation
 
 
+def build_colored_tshirt_source_mapping(production_df):
+    if production_df.empty:
+        return pd.DataFrame()
+    original_color = (
+        _column(production_df, "原始颜色")
+        if "原始颜色" in production_df
+        else _column(production_df, "颜色")
+    )
+    original_size = (
+        _column(production_df, "原始尺码")
+        if "原始尺码" in production_df
+        else _column(production_df, "尺码")
+    )
+    normalized = normalize_production_for_inventory(production_df)
+    normalized = normalized[
+        (normalized["department"] == "DTF")
+        & (normalized["category"] == "彩色短袖")
+    ].copy()
+    if normalized.empty:
+        return pd.DataFrame()
+    normalized["生产平台"] = _column(normalized, "运营商", "未知平台")
+    normalized["原始生产颜色"] = original_color.reindex(normalized.index)
+    normalized["原始生产尺码"] = original_size.reindex(normalized.index)
+    normalized["标准颜色"] = _column(normalized, "color")
+    normalized["标准尺码"] = _column(normalized, "size")
+    normalized["库存颜色口径"] = normalized["标准颜色"].map(
+        lambda value: COLOR_TARGETS.get(value, value)
+    )
+    normalized["生产数量"] = pd.to_numeric(
+        normalized["quantity"], errors="coerce"
+    ).fillna(0).astype(int)
+    normalized["转换状态"] = normalized.apply(
+        lambda row: (
+            "颜色缺失" if not row["标准颜色"]
+            else "颜色异常" if row["标准颜色"] not in COLORED_CANONICAL_COLORS
+            else "尺码异常" if not row["标准尺码"]
+            else "已标准化"
+        ),
+        axis=1,
+    )
+    columns = [
+        "生产平台", "原始生产颜色", "原始生产尺码",
+        "标准颜色", "标准尺码", "库存颜色口径", "转换状态",
+    ]
+    return (
+        normalized.groupby(columns, dropna=False, as_index=False)
+        .agg(生产数量=("生产数量", "sum"))
+        [[*columns, "生产数量"]]
+        .sort_values(["转换状态", "生产数量"], ascending=[False, False])
+        .reset_index(drop=True)
+    )
+
+
 def _build_source_map(production_df, inventory_df):
     if production_df.empty:
         return pd.DataFrame()
+    original_color = (
+        _column(production_df, "原始颜色")
+        if "原始颜色" in production_df
+        else _column(production_df, "颜色")
+    )
+    original_size = (
+        _column(production_df, "原始尺码")
+        if "原始尺码" in production_df
+        else _column(production_df, "尺码")
+    )
     normalized = normalize_production_for_inventory(production_df)
     normalized = normalized[
         (normalized["department"] == "DTF")
@@ -44,6 +111,8 @@ def _build_source_map(production_df, inventory_df):
     inventory_sizes = _values(inventory_df, "size")
     normalized["生产平台"] = _column(normalized, "运营商", "未知平台")
     normalized["生产材质"] = _column(normalized, "material")
+    normalized["原始生产颜色"] = original_color.reindex(normalized.index)
+    normalized["原始生产尺码"] = original_size.reindex(normalized.index)
     normalized["生产颜色"] = _column(normalized, "color")
     normalized["生产尺码"] = _column(normalized, "size")
     normalized["库存颜色"] = normalized["生产颜色"].map(
@@ -61,13 +130,14 @@ def _build_source_map(production_df, inventory_df):
         axis=1,
     )
     columns = [
-        "生产平台", "生产材质", "生产颜色", "生产尺码",
+        "生产平台", "生产材质", "原始生产颜色", "原始生产尺码",
+        "生产颜色", "生产尺码",
         "库存颜色", "库存尺码", "映射状态",
     ]
     return (
         normalized.groupby(columns, dropna=False, as_index=False)
         .agg(生产数量=("生产数量", "sum"))
-        [[*columns[:4], "生产数量", *columns[4:]]]
+        [[*columns[:6], "生产数量", *columns[6:]]]
         .sort_values(
             ["映射状态", "生产数量"],
             ascending=[False, False],

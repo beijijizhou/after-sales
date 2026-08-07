@@ -3,18 +3,37 @@ import streamlit as st
 
 from db.inventory.core.constants import SIZE_COLUMNS
 from automation.sync.dtf_colored_inventory import (
+    COLORED_MAPPING_RULE_VERSION,
     apply_colored_daily_deduction,
+    build_colored_mapping_audit,
+    build_colored_mapping_wide_table,
     build_colored_reconciliation_backlog,
     build_colored_consumption_wide_table,
     build_colored_daily_preview,
     load_colored_day_deducted_total,
     load_colored_consumption_history,
+    list_colored_cached_dates,
 )
 from utils.auth.session import get_current_operator_name, has_permission
 from ui.inventory.shared.filters import _reset_invalid_selectbox
 
 
 def render_colored_consumption(supabase, current_date, inventory_df):
+    view = st.segmented_control(
+        "彩色短袖数据视图",
+        ["日耗模型", "待核对差异"],
+        default="日耗模型",
+        key="colored_consumption_view",
+    ) or "日耗模型"
+    if view == "日耗模型":
+        _render_colored_consumption_model(
+            supabase, current_date, inventory_df
+        )
+    else:
+        _render_colored_reconciliation(supabase, current_date)
+
+
+def _render_colored_consumption_model(supabase, current_date, inventory_df):
     st.subheader("彩色短袖每日消耗")
     st.caption(
         "按最近 14 天的有效生产日计算；快速补录平台数据会立即进入模型，"
@@ -45,11 +64,59 @@ def render_colored_consumption(supabase, current_date, inventory_df):
                 for size in SIZE_COLUMNS
             },
         )
-    _render_colored_reconciliation(supabase, current_date)
+
+
+def _render_colored_mapping_review(current_date):
+    st.subheader("彩色短袖映射关系")
+    st.caption(
+        f"当前规则版本：{COLORED_MAPPING_RULE_VERSION}。这里只复查生产原始字段"
+        "如何转换成统一口径，不读取当前库存、品牌、材质或库存数量。"
+    )
+    dates = list_colored_cached_dates(current_date, 14)
+    if not dates:
+        st.info("最近 14 天没有可复查的彩色短袖生产缓存。")
+    else:
+        _reset_invalid_selectbox("colored_mapping_audit_date", dates)
+        selected_date = st.selectbox(
+            "查看生产日期",
+            dates,
+            format_func=lambda value: value.strftime("%Y-%m-%d"),
+            key="colored_mapping_audit_date",
+        )
+        try:
+            source_map, metadata = build_colored_mapping_audit(selected_date)
+        except Exception as error:
+            st.error(f"彩色短袖映射关系加载失败：{error}")
+        else:
+            included = "、".join(
+                metadata.get("included_platforms") or ()
+            ) or "未记录"
+            missing = "、".join(
+                metadata.get("missing_platforms") or ()
+            ) or "无"
+            st.info(f"已读取平台：{included}｜尚未读取平台：{missing}")
+            st.markdown("#### 生产字段标准化")
+            st.caption(
+                "颜色先按别名标准化（例如 golden → 黄色），浅灰再映射到库存灰色；"
+                "尺码统一为 S–5XL 并横向汇总。颜色或尺码异常会明确显示，"
+                "不会静默丢弃。实际扣减批次与 SKU 明细请在“库存流水”查看。"
+            )
+            if source_map.empty:
+                st.info("所选日期没有彩色短袖映射数据。")
+            else:
+                mapping_wide = build_colored_mapping_wide_table(source_map)
+                st.dataframe(
+                    mapping_wide, hide_index=True, width="stretch",
+                    column_config={
+                        size: st.column_config.NumberColumn(
+                            size, format="%d 件"
+                        )
+                        for size in [*SIZE_COLUMNS, "其他/异常"]
+                    },
+                )
 
 
 def _render_colored_reconciliation(supabase, current_date):
-    st.divider()
     st.subheader("彩色短袖待核对差异")
     st.caption(
         "每日快速出库只执行一次；库存不足、SKU 未匹配和未读取平台在这里单独处理。"
@@ -144,6 +211,19 @@ def _render_colored_reconciliation(supabase, current_date):
 
 
 def render_colored_daily_deduction(supabase, current_date):
+    view = st.segmented_control(
+        "彩色短袖库存扣减视图",
+        ["每日扣减", "生产字段映射"],
+        default="每日扣减",
+        key="colored_daily_deduction_view",
+    ) or "每日扣减"
+    if view == "生产字段映射":
+        _render_colored_mapping_review(current_date)
+        return
+    _render_colored_daily_deduction_form(supabase, current_date)
+
+
+def _render_colored_daily_deduction_form(supabase, current_date):
     st.subheader("彩色短袖系统库存扣减")
     st.caption(
         "从全部衣服平台读取当天生产数据；按纽约日期生成批次，"

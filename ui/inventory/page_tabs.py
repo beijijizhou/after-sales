@@ -31,7 +31,8 @@ def render_inventory_tabs(
     supabase, department, category, inventory_df, raw_df, current_cost_df,
     inventory_date, selected_date, current_date, visible_sizes, can_edit,
     can_view_cost, history_data, movement_types, filter_title,
-    undo_history_data=None,
+    undo_history_data=None, operation_inventory_df=None,
+    operation_raw_df=None,
 ):
     tab_keys = inventory_tab_keys(
         department, can_view_cost=can_view_cost, category=category
@@ -61,6 +62,7 @@ def render_inventory_tabs(
             render_inventory_table(
                 supabase, department, category, inventory_df, inventory_date,
                 editable, visible_sizes, filter_title,
+                is_historical=selected_date < current_date,
             )
             render_inventory_metrics(inventory_df)
 
@@ -103,7 +105,11 @@ def render_inventory_tabs(
 
     with tabs["临时库存调整"]:
         render_temporary_movement_operation(
-            supabase, department, category, raw_df, inventory_df, can_edit,
+            supabase, department, category,
+            operation_raw_df if operation_raw_df is not None else raw_df,
+            operation_inventory_df if operation_inventory_df is not None
+            else inventory_df,
+            can_edit,
         )
 
     with tabs["库存流水"]:

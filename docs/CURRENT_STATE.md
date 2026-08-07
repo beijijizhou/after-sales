@@ -19,10 +19,12 @@ refactors, not after every small feature.
 - Consumables: `pages/9_耗材库存.py`
 - Finance: `pages/10_财务.py`
 - Logistics label review: `pages/11_物流追踪.py`
+- Admin access management: `pages/12_权限管理.py`
 
 ## Major Modules
 
 - Authentication and navigation: `utils/auth/`
+- User-role administration: `db/access.py` and `ui/access/`
 - Inventory persistence and rules: `db/inventory/`
 - Inventory UI: `ui/inventory/`
 - Container workflow: `db/inventory/container/` and

@@ -335,9 +335,14 @@ forecast as an estimate.
 
 ## Access
 
-- The logistics tracking and shipping-label review page is restricted to the
-  after-sales and admin roles. Other roles must not see its navigation entry or
-  access it by direct URL.
+- The logistics tracking page is visible to supervisor, after-sales, and admin
+  roles. Supervisors may query existing/database-cached and live USPS Tracking
+  data, but only after-sales and admins may synchronize ERP data, run label
+  OCR, download label batches, or calibrate USPS usage.
+- User role assignment is available on a separate admin-only access-management
+  page. Role changes and account activation changes require an explicit preview
+  and confirmation, are written to an append-only audit trail, and must prevent
+  an administrator from disabling or demoting their own account.
 - Visitor access requires no login.
 - Supervisor inherits public visibility and can manage problem tracking.
 - Producer focuses on production and consumable reporting.

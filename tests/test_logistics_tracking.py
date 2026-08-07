@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pandas as pd
 
@@ -64,6 +64,7 @@ from ui.logistics.page import (
     _resolve_ocr_workers,
     _review_selection_defaults,
     _store_review_ocr_results,
+    render_logistics_page,
 )
 from ui.logistics.tracking_lookup import (
     _extract_live_label_details,
@@ -630,18 +631,33 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(rows, [])
         self.assertEqual(issues, ["第 2 行缺少物流单号"])
 
-    def test_logistics_page_is_limited_to_after_sales_and_admin(self):
-        allowed = {"after_sales", "admin"}
+    def test_logistics_page_allows_supervisor_query_without_management(self):
+        view_allowed = {"supervisor", "after_sales", "admin"}
+        manage_allowed = {"after_sales", "admin"}
         for role, permissions in ROLE_PERMISSIONS.items():
             with self.subTest(role=role):
                 self.assertEqual(
                     "can_view_logistics" in permissions,
-                    role in allowed,
+                    role in view_allowed,
                 )
                 self.assertEqual(
                     "can_manage_logistics" in permissions,
-                    role in allowed,
+                    role in manage_allowed,
                 )
+
+    def test_supervisor_logistics_page_hides_erp_and_ocr_workbench(self):
+        tabs = (MagicMock(), MagicMock())
+        with patch("ui.logistics.page.has_permission", return_value=False), patch(
+            "ui.logistics.page.st.tabs", return_value=tabs
+        ), patch("ui.logistics.page._render_sync") as render_sync, patch(
+            "ui.logistics.page.render_tracking_lookup"
+        ) as render_lookup, patch(
+            "ui.logistics.page.st.session_state", new_callable=dict
+        ):
+            render_logistics_page(Mock())
+
+        render_sync.assert_not_called()
+        self.assertIsNone(render_lookup.call_args.args[2])
 
     def test_usps_oauth_token_is_reused_within_expiry_window(self):
         USPSClient._TOKEN_CACHE.clear()

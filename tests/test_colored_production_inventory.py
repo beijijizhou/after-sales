@@ -3,7 +3,12 @@ from unittest.mock import patch
 import pandas as pd
 
 from utils.erp.catalog import normalize_color
+from utils.erp.inventory_review import (
+    build_colored_tshirt_inventory_review,
+    build_colored_tshirt_source_mapping,
+)
 from automation.sync.dtf_colored_inventory import (
+    build_colored_mapping_wide_table,
     build_colored_consumption_wide_table,
     build_colored_forecast_usage,
     build_colored_platform_audit,
@@ -14,6 +19,64 @@ from automation.sync.dtf_colored_inventory import (
 
 
 class ColoredProductionInventoryTests(unittest.TestCase):
+    def test_source_mapping_combines_sizes_into_wide_columns(self):
+        production = pd.DataFrame([
+            {
+                "部门": "DTF", "品类": "彩色短袖", "材质": "180g",
+                "颜色": "golden", "尺码": "l", "数量": 12,
+                "运营商": "S2B",
+            },
+            {
+                "部门": "DTF", "品类": "彩色短袖", "材质": "180g",
+                "颜色": "golden", "尺码": "XL", "数量": 8,
+                "运营商": "S2B",
+            },
+        ])
+
+        source = build_colored_tshirt_source_mapping(production)
+        wide = build_colored_mapping_wide_table(source)
+
+        self.assertEqual(wide.iloc[0]["原始颜色"], "golden")
+        self.assertEqual(wide.iloc[0]["标准颜色"], "黄色")
+        self.assertEqual(int(wide["L"].sum()), 12)
+        self.assertEqual(int(wide["XL"].sum()), 8)
+        self.assertNotIn("当前库存", wide.columns)
+        self.assertNotIn("品牌", wide.columns)
+
+    def test_source_mapping_exposes_invalid_color_without_inventory(self):
+        production = pd.DataFrame([{
+            "部门": "DTF", "品类": "彩色短袖", "材质": "180g",
+            "颜色": "L", "尺码": "M", "数量": 2,
+            "运营商": "SDS2",
+        }])
+
+        source = build_colored_tshirt_source_mapping(production)
+
+        self.assertEqual(source.iloc[0]["转换状态"], "颜色异常")
+
+    def test_mapping_audit_keeps_raw_and_normalized_color(self):
+        production = pd.DataFrame([{
+            "部门": "DTF", "品类": "彩色短袖", "材质": "180g",
+            "颜色": "golden", "尺码": "l", "数量": 12,
+            "运营商": "S2B",
+        }])
+        inventory = pd.DataFrame([{
+            "brand": "Caribbean", "material": "180g",
+            "color": "黄色", "size": "L", "quantity": 100,
+        }])
+
+        source, allocation = build_colored_tshirt_inventory_review(
+            production, inventory
+        )
+
+        self.assertEqual(source.iloc[0]["原始生产颜色"], "golden")
+        self.assertEqual(source.iloc[0]["生产颜色"], "黄色")
+        self.assertEqual(source.iloc[0]["库存颜色"], "黄色")
+        self.assertEqual(source.iloc[0]["原始生产尺码"], "l")
+        self.assertEqual(source.iloc[0]["库存尺码"], "L")
+        self.assertEqual(allocation.iloc[0]["品牌"], "Caribbean")
+        self.assertEqual(allocation.iloc[0]["预计扣减"], 12)
+
     def test_reconciliation_backlog_separates_processed_daily_difference(self):
         target = pd.Timestamp("2026-08-06").date()
         source = pd.DataFrame([{

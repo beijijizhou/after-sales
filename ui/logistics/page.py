@@ -53,16 +53,30 @@ def render_logistics_page(supabase):
     st.caption(
         "从ERP实时获取物流关系，并通过USPS接口核查Tracking Events与始发地点。"
     )
+    can_manage = has_permission("can_manage_logistics")
     review_tab, rules_tab = st.tabs([
-        "物流单号获取与USPS核查", "审核规则",
+        (
+            "物流单号获取与USPS核查"
+            if can_manage else "USPS物流查询"
+        ),
+        "审核规则",
     ])
     with review_tab:
-        _render_sync(supabase)
-        st.divider()
+        if can_manage:
+            _render_sync(supabase)
+            st.divider()
+        else:
+            st.info(
+                "主管账号可查询数据库记录和USPS实时状态；"
+                "ERP同步、面单OCR及批量下载由售后或管理员处理。"
+            )
         render_tracking_lookup(
             supabase,
             _database_error,
-            st.session_state.get("logistics_usps_candidates", []),
+            (
+                st.session_state.get("logistics_usps_candidates", [])
+                if can_manage else None
+            ),
         )
     with rules_tab:
         _render_rules()

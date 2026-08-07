@@ -1,3 +1,5 @@
+import time
+
 import streamlit as st
 
 from db.supabase_client import supabase
@@ -20,6 +22,9 @@ from utils.auth.cookies import (
 from utils.auth.security import build_auth_token, parse_auth_token, verify_password
 
 
+ROLE_REFRESH_SECONDS = 30
+
+
 def get_current_user():
     cookie_action = render_pending_auth_cookie()
     if cookie_action == "delete" or st.session_state.get(
@@ -28,6 +33,7 @@ def get_current_user():
         return st.session_state.get("current_user")
     restore_user_from_browser()
     render_pending_auth_cookie()
+    _refresh_current_user_role()
     return st.session_state.get("current_user")
 
 
@@ -87,6 +93,37 @@ def set_current_user(user):
             for permission in ALL_PERMISSIONS
         },
     }
+    st.session_state["current_user_role_checked_at"] = time.monotonic()
+
+
+def _refresh_current_user_role():
+    current = st.session_state.get("current_user")
+    if not current:
+        return
+    role = current.get("role") or ROLE_VISITOR
+    permissions = ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS[ROLE_VISITOR])
+    current["role_label"] = ROLE_LABELS.get(role, role)
+    current.update({
+        permission: permission in permissions
+        for permission in ALL_PERMISSIONS
+    })
+
+    now = time.monotonic()
+    checked_at = float(
+        st.session_state.get("current_user_role_checked_at") or 0
+    )
+    if now - checked_at < ROLE_REFRESH_SECONDS:
+        return
+    st.session_state["current_user_role_checked_at"] = now
+    try:
+        refreshed = load_user(str(current.get("username") or ""))
+    except Exception:
+        return
+    if refreshed:
+        set_current_user(refreshed)
+        return
+    st.session_state.pop("current_user", None)
+    clear_persistent_login()
 
 
 def get_query_value(key):

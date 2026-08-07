@@ -472,19 +472,28 @@ class InventoryDashboardTests(unittest.TestCase):
             },
         ])
         movement_date = date(2026, 8, 6)
-        with patch(
-            "automation.sync.dtf_colored_inventory.apply_adjustment_rows"
-        ) as apply_rows:
+        with (
+            patch(
+                "automation.sync.dtf_colored_inventory.apply_adjustment_rows"
+            ) as apply_rows,
+            patch(
+                "automation.sync.dtf_colored_inventory."
+                "load_daily_colored_production_source",
+                return_value=(pd.DataFrame(), {
+                    "included_platforms": ["汉森", "S2B", "SDS1", "SDS2"]
+                }),
+            ),
+        ):
             quantity = apply_colored_daily_deduction(
                 object(), preview, movement_date, "Andy"
             )
 
         self.assertEqual(quantity, 10)
         adjustment = apply_rows.call_args.args[3]
-        self.assertEqual(
-            adjustment.iloc[0]["备注"],
-            colored_partial_reason(movement_date),
-        )
+        reason = adjustment.iloc[0]["备注"]
+        self.assertTrue(reason.startswith(colored_partial_reason(movement_date)))
+        self.assertIn("来源 汉森、S2B、SDS1、SDS2", reason)
+        self.assertIn("映射规则 colored-v1", reason)
 
     def test_partial_colored_reason_marks_daily_run_complete(self):
         movements = pd.DataFrame([{

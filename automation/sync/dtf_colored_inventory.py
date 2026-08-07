@@ -6,13 +6,18 @@ from automation.production import PLATFORMS_BY_DEPARTMENT
 from db.inventory.core.queries import load_inventory_items
 from db.inventory.core.constants import SIZE_COLUMNS
 from db.inventory.operations.adjustments import apply_adjustment_rows
-from utils.erp.inventory_review import build_colored_tshirt_inventory_review
+from utils.erp.inventory_review import (
+    build_colored_tshirt_inventory_review,
+    build_colored_tshirt_source_mapping,
+)
 from utils.erp.catalog import normalize_color
+from utils.erp.inventory_mapping import normalize_size
 
 
 CATEGORY = "彩色短袖"
 SOURCE_TYPE = "production_sync"
 AGGREGATE_PLATFORM = "全部衣服平台"
+COLORED_MAPPING_RULE_VERSION = "colored-v1"
 
 
 def colored_daily_reason(movement_date):
@@ -99,7 +104,10 @@ def load_daily_colored_production_source(
     if daily.empty:
         return pd.DataFrame(), metadata
     daily["数量"] = pd.to_numeric(daily["数量"], errors="coerce").fillna(0)
+    daily["原始颜色"] = daily["颜色"].fillna("").astype(str).str.strip()
+    daily["原始尺码"] = daily["尺码"].fillna("").astype(str).str.strip()
     daily["颜色"] = daily["颜色"].map(normalize_color)
+    daily["尺码"] = daily["尺码"].map(normalize_size)
     if "运营商" not in daily:
         daily["运营商"] = "未标记平台"
     daily["运营商"] = (
@@ -107,10 +115,34 @@ def load_daily_colored_production_source(
         .replace("", "未标记平台")
     )
     detail = (
-        daily.groupby(["运营商", "颜色", "尺码"], as_index=False)
+        daily.groupby(
+            ["运营商", "原始颜色", "原始尺码", "颜色", "尺码"],
+            as_index=False,
+        )
         .agg(生产数量=("数量", "sum"), 生产记录数=("数量", "size"))
     )
     return detail, metadata
+
+
+def list_colored_cached_dates(current_date, days=14):
+    start_date = current_date.fromordinal(
+        current_date.toordinal() - int(days) + 1
+    )
+    available = set()
+    for path in CACHE_DIR.glob("*.json"):
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+            target = current_date.fromisoformat(metadata["start_date"])
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if (
+            metadata.get("platform") == AGGREGATE_PLATFORM
+            and metadata.get("start_date") == metadata.get("end_date")
+            and start_date <= target <= current_date
+            and path.with_suffix(".parquet").exists()
+        ):
+            available.add(target)
+    return sorted(available, reverse=True)
 
 
 def load_daily_colored_production(current_date, require_complete=False):
@@ -188,6 +220,63 @@ def build_colored_daily_preview(supabase, current_date):
     return _cap_allocation_at_zero(source, allocation)
 
 
+def build_colored_mapping_audit(current_date):
+    detail, metadata = load_daily_colored_production_source(current_date)
+    if detail.empty:
+        return pd.DataFrame(), metadata
+    production = detail.rename(columns={"生产数量": "数量"}).copy()
+    production["部门"] = "DTF"
+    production["品类"] = CATEGORY
+    production["材质"] = "180g"
+    return build_colored_tshirt_source_mapping(production), metadata
+
+
+def build_colored_mapping_wide_table(source_map):
+    columns = [
+        "生产平台", "原始颜色", "标准颜色", "库存颜色口径",
+        "尺码转换", "转换状态", *SIZE_COLUMNS, "其他/异常",
+    ]
+    if source_map is None or source_map.empty:
+        return pd.DataFrame(columns=columns)
+    source = source_map.copy()
+    source["尺码转换项"] = source.apply(
+        lambda row: (
+            str(row["原始生产尺码"])
+            if str(row["原始生产尺码"]) == str(row["标准尺码"])
+            else f"{row['原始生产尺码']} → {row['标准尺码']}"
+        ),
+        axis=1,
+    )
+    source["尺码列"] = source["标准尺码"].where(
+        source["标准尺码"].isin(SIZE_COLUMNS), "其他/异常"
+    )
+    index = [
+        "生产平台", "原始生产颜色", "标准颜色", "库存颜色口径",
+        "转换状态",
+    ]
+    conversion = (
+        source.groupby(index, dropna=False, as_index=False)["尺码转换项"]
+        .agg(lambda values: "；".join(dict.fromkeys(values)))
+        .rename(columns={"尺码转换项": "尺码转换"})
+    )
+    wide = source.pivot_table(
+        index=index,
+        columns="尺码列",
+        values="生产数量",
+        aggfunc="sum",
+        fill_value=0,
+    ).reset_index()
+    wide = wide.merge(conversion, on=index, how="left")
+    wide = wide.rename(columns={"原始生产颜色": "原始颜色"})
+    for column in [*SIZE_COLUMNS, "其他/异常"]:
+        if column not in wide:
+            wide[column] = 0
+    return wide[columns].sort_values(
+        ["转换状态", "生产平台", "标准颜色"],
+        ascending=[False, True, True],
+    ).reset_index(drop=True)
+
+
 def apply_colored_daily_deduction(
     supabase, preview, movement_date, created_by="system",
 ):
@@ -197,9 +286,15 @@ def apply_colored_daily_deduction(
     unresolved = int(pd.to_numeric(
         preview.get("未扣数量", 0), errors="coerce"
     ).fillna(0).sum())
-    reason = (
+    base_reason = (
         colored_partial_reason(movement_date)
         if unresolved else colored_daily_reason(movement_date)
+    )
+    _source, metadata = load_daily_colored_production_source(movement_date)
+    included = "、".join(metadata.get("included_platforms") or ()) or "未知"
+    reason = (
+        f"{base_reason}｜来源 {included}｜映射规则 "
+        f"{COLORED_MAPPING_RULE_VERSION}"
     )
     adjustment = pd.DataFrame({
         "日期": [movement_date] * len(rows),

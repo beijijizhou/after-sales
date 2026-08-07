@@ -84,9 +84,7 @@ def build_daily_completion_dates(movements, consumable_batches):
     colored_reason = COLORED_REASON_PREFIX + " " + dates.astype(str)
     colored_complete = set(dates[
         outbound & department.eq("DTF") & category.eq("彩色短袖")
-        & (reasons.eq(colored_reason) | reasons.eq(
-            colored_reason + "｜部分扣减"
-        ))
+        & reasons.str.split("｜").str[0].eq(colored_reason)
     ])
     completed = {
         "black_white": set(dates[

@@ -80,9 +80,12 @@ def render_inventory_summary(supabase):
     st.session_state["inventory_today"] = datetime.now(ZoneInfo("America/New_York")).date()
 
     try:
-        raw_df = load_inventory_items(supabase, department, category)
+        complete_category_raw_df = load_inventory_items(
+            supabase, department, category
+        )
         raw_df = filter_inventory_rows(
-            raw_df, category, brands, materials, colors, selected_sizes
+            complete_category_raw_df,
+            category, brands, materials, colors, selected_sizes,
         )
         try:
             snapshot_df = load_inventory_snapshot(supabase, department, category, selected_date)
@@ -110,6 +113,12 @@ def render_inventory_summary(supabase):
         can_view_cost = has_permission("can_view_cost")
         inventory_df = build_inventory_table(
             snapshot_df, category, include_cost=False, department=department
+        )
+        operation_inventory_df = build_inventory_table(
+            complete_category_raw_df,
+            category,
+            include_cost=False,
+            department=department,
         )
         current_cost_df = (
             build_inventory_table(
@@ -149,6 +158,8 @@ def render_inventory_summary(supabase):
             movement_types,
             filter_title,
             undo_history_data=complete_history_data,
+            operation_inventory_df=operation_inventory_df,
+            operation_raw_df=complete_category_raw_df,
         )
 
     except Exception as e:

@@ -26,9 +26,16 @@ secret values from the UI.
 
 ## User access
 
-Only users whose Supabase application role is `after_sales` or `admin` can see
-or directly open the logistics page. Adding secrets does not grant page access;
-each employee still needs an application account with one of those roles.
+Users whose Supabase application role is `supervisor`, `after_sales`, or
+`admin` can see and directly open the logistics page. Supervisors have query
+access only; ERP synchronization, OCR, label download, and USPS usage
+calibration remain restricted to `after_sales` and `admin`. Adding secrets does
+not grant page access; each employee still needs an application account with
+one of those roles.
+
+Run `sql/access/02_role_management.sql` before using the admin-only permissions
+page. It installs the audited role/status update function and append-only role
+change history.
 
 ## S2B limitation
 

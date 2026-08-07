@@ -34,6 +34,16 @@ its parent scope and option set are unchanged. Add regression coverage for
 important cascading selectors so the UI never displays data from the previous
 scope under a newly selected parent.
 
+ERP automation must be reviewable and traceable in the product UI. Never hide
+business mappings, normalization rules, substitutions, allocation priorities,
+or source coverage only in Python code. Before a consequential operation, show
+the source fields, normalized values, target business records, rule/version,
+quantities, exceptions, and the exact scope being applied. After the operation,
+preserve a batch-first audit trail containing the business date, source scope,
+mapping rule/version, final row-level targets, quantities, operator, timestamp,
+status, and reversals. Users must be able to reconstruct why a row changed
+without reading source code or asking an administrator to query the database.
+
 Batch-oriented workflows are a core ERP design rule. For inbound inventory,
 outbound inventory, inventory adjustments, costing, containers, and similar
 multi-row business operations, present a batch summary first, then let the

@@ -30,6 +30,7 @@ PRODUCTION_ACCESS = {
 }
 LOGISTICS_ACCESS = {"can_view_logistics"}
 LOGISTICS_MANAGE = {"can_manage_logistics"}
+ACCESS_MANAGE = {"can_manage_access"}
 INVENTORY_VIEW = {
     "can_view_inventory",
     "can_view_container",
@@ -81,13 +82,14 @@ ALL_PERMISSIONS = set().union(
     FINANCE_DASHBOARD,
     LOGISTICS_ACCESS,
     LOGISTICS_MANAGE,
+    ACCESS_MANAGE,
 )
 
 ROLE_PERMISSIONS = {
     ROLE_VISITOR: PUBLIC_ACCESS,
     ROLE_SUPERVISOR: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW | CONSUMABLE_VIEW
-        | {"can_mark_barcode_operations"}
+        | LOGISTICS_ACCESS | {"can_mark_barcode_operations"}
     ),
     ROLE_PRODUCER: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
@@ -124,6 +126,7 @@ PAGE_ACCESS = {
     "finance": "can_view_finance_dashboard",
     "operation_tracking": "can_view_operation_tracking",
     "image_stretch": "can_use_image_stretch",
+    "access_management": "can_manage_access",
 }
 
 PUBLIC_PERMISSIONS = PUBLIC_ACCESS
@@ -149,6 +152,9 @@ NAV_SECTIONS = [
     (None, [
         ("finance", "财务", "pages/10_财务.py"),
         ("image_stretch", "手机壳图片处理", "pages/8_图片拉伸.py"),
+    ]),
+    ("系统管理", [
+        ("access_management", "权限管理", "pages/12_权限管理.py"),
     ]),
 ]
 

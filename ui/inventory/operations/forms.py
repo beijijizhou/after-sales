@@ -1,4 +1,5 @@
 from datetime import datetime
+from hashlib import sha1
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -37,13 +38,12 @@ def render_adjust_form(supabase, department, category, inventory_df):
 
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
     form_version = st.session_state.get("manual_adjustment_editor_version", 0)
-    brand_values = sorted(inventory_df["品牌"].unique().tolist()) if not inventory_df.empty else []
-    brands = list(dict.fromkeys(["", *brand_values]))
-    materials = sorted(inventory_df["材质"].unique().tolist()) if not inventory_df.empty else ["180g"]
-    colors = sorted(inventory_df["颜色"].unique().tolist()) if not inventory_df.empty else []
+    brands, materials, colors = adjustment_dimension_options(inventory_df)
     default_df = build_wide_adjustment_template()
     default_df.loc[0, "日期"] = current_date
-    default_df.loc[0, "材质"] = "180g"
+    default_df.loc[0, "材质"] = (
+        "180g" if "180g" in materials else materials[0]
+    )
     show_cost = has_permission("can_manage_cost")
     action = st.radio(
         t("操作"), ["增加", "扣减"], horizontal=True, format_func=t
@@ -72,7 +72,8 @@ def render_adjust_form(supabase, department, category, inventory_df):
         column_config=adjustment_columns,
         key=(
             f"manual_inventory_adjustments_{get_language()}_"
-            f"{current_date.isoformat()}_{form_version}"
+            f"{current_date.isoformat()}_{form_version}_"
+            f"{_adjustment_scope_key(department, category, brands, materials, colors)}"
         ),
     )
     cost_df = None
@@ -107,6 +108,29 @@ def render_adjust_form(supabase, department, category, inventory_df):
             st.rerun()
         except Exception as e:
             st.error(f"{t('库存更新失败')}: {e}")
+
+
+def adjustment_dimension_options(inventory_df):
+    source = inventory_df
+    if source is None or source.empty:
+        return [""], ["180g"], []
+
+    def values(column):
+        if column not in source:
+            return []
+        return sorted({
+            str(value).strip()
+            for value in source[column].dropna()
+            if str(value).strip()
+        })
+
+    brands = list(dict.fromkeys(["", *values("品牌")]))
+    return brands, values("材质") or ["180g"], values("颜色")
+
+
+def _adjustment_scope_key(department, category, brands, materials, colors):
+    value = repr((department, category, brands, materials, colors))
+    return sha1(value.encode("utf-8")).hexdigest()[:10]
 
 
 def render_new_sku_form(supabase, department, category, inventory_df=None):
