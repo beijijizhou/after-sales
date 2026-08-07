@@ -3,6 +3,8 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+from ui.inventory.shared.filters import _reset_invalid_selectbox
+
 from db.inventory.container.history import (
     build_container_history_display,
     load_container_events,
@@ -114,6 +116,7 @@ def render_container_history(supabase, raw_df):
     if not labels:
         st.info("当前范围内没有货柜历史")
         return
+    _reset_invalid_selectbox("container_history_target", labels)
     selected = st.selectbox("查看货柜", labels, key="container_history_target")
     try:
         events_df = load_container_events(supabase, choices[selected])

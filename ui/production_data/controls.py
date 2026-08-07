@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -11,20 +11,42 @@ def render_production_filters(platform):
         ["当天", "近7日", "近14日", "近28日", "自定义"],
         default="当天",
     )
-    period_days = {
-        "当天": 1,
-        "近7日": 7,
-        "近14日": 14,
-        "近28日": 28,
-        "自定义": 1,
-    }
-    start_date = today - timedelta(days=period_days[period] - 1)
-    selected_range = st.date_input(
-        "生产日期",
-        value=(start_date, today),
-        max_value=today,
-        key=f"production_date_range_{period}",
-    )
+    if period == "自定义":
+        date_columns = st.columns(2)
+        start_date = date_columns[0].date_input(
+            "开始日期",
+            value=today,
+            max_value=today,
+            key="production_custom_start_date",
+        )
+        end_key = "production_custom_end_date"
+        if (
+            end_key in st.session_state
+            and st.session_state[end_key] < start_date
+        ):
+            st.session_state[end_key] = start_date
+        end_date = date_columns[1].date_input(
+            "结束日期",
+            value=today,
+            min_value=start_date,
+            max_value=today,
+            key=end_key,
+        )
+    else:
+        selected_date = st.date_input(
+            "生产日期" if period == "当天" else "截止日期",
+            value=today,
+            max_value=today,
+            key=f"production_end_date_{period}",
+        )
+        start_date, end_date = resolve_production_period(
+            period, selected_date
+        )
+        if period != "当天":
+            st.caption(
+                f"查询区间：{start_date:%Y/%m/%d} – {end_date:%Y/%m/%d}"
+            )
+    selected_range = (start_date, end_date)
     start_col, end_col = st.columns(2)
     with start_col:
         start_hour = st.selectbox(
@@ -47,23 +69,36 @@ def render_production_filters(platform):
         help="未勾选时，相同平台和时间范围会直接读取本地缓存。",
     )
 
-    has_date_range = len(selected_range) == 2
+    valid_dates = start_date <= end_date
     valid_hours = (
-        not has_date_range
-        or selected_range[0] != selected_range[1]
+        not valid_dates
+        or start_date != end_date
         or start_hour <= end_hour
     )
     submitted = st.button(
         "获取生产数据",
         type="primary",
         width="stretch",
-        disabled=not has_date_range or not platform or not valid_hours,
+        disabled=not valid_dates or not platform or not valid_hours,
     )
-    if not has_date_range:
-        st.info("请选择开始日期和结束日期。")
-    elif not valid_hours:
+    if not valid_hours:
         st.warning("同一天查询时，结束小时不能早于开始小时。")
     return selected_range, start_hour, end_hour, force_refresh, submitted
+
+
+def resolve_production_period(period, selected_date):
+    days = {
+        "当天": 1,
+        "近7日": 7,
+        "近14日": 14,
+        "近28日": 28,
+    }.get(period, 1)
+    end_date = selected_date
+    if isinstance(end_date, datetime):
+        end_date = end_date.date()
+    if not isinstance(end_date, date):
+        raise ValueError("生产日期无效")
+    return end_date - timedelta(days=days - 1), end_date
 
 
 def _format_hour(value):

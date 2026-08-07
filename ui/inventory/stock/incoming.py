@@ -59,6 +59,7 @@ def render_incoming_inventory_forecast(
             effective_days = int(colored_model["有效天数"].max())
             st.caption(
                 f"彩色短袖按最近 14 天中的 {effective_days} 个有效生产日计算日耗；"
+                "快速补录数据立即参与计算，全平台到齐后自动更新；"
                 "缺失平台仅提示，不停止货柜预测。"
             )
         else:

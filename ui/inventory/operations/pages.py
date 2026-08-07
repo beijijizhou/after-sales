@@ -1,6 +1,7 @@
 import streamlit as st
 
 from ui.inventory.i18n import t
+from ui.inventory.shared.filters import _reset_invalid_selectbox
 from ui.inventory.operations.forms import (
     render_adjust_form,
     render_inventory_unit_calculator,
@@ -59,5 +60,6 @@ def _select_operation_category(category, raw_df, key):
     if not options:
         st.info(t("当前没有可操作的库存品类"))
         return ""
+    _reset_invalid_selectbox(key, options)
     st.caption(t("当前查看全部品类，请选择本次库存操作的目标品类"))
     return st.selectbox(t("操作品类"), options, key=key, format_func=t)

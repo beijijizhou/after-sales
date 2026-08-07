@@ -25,6 +25,15 @@ Treat UI modularity as seriously as code modularity. Group related functions
 in the same page area, and separate distinct workflows with tabs or focused
 views instead of stacking multiple full tables and forms on one screen.
 
+Treat dependent UI state as a data dependency, not as an isolated widget
+choice. When an upstream department, category, date range, mode, or filter
+changes, recompute every downstream option set in the same rerun. Clear or
+reset stale selections, selected batches, editors, previews, and displayed
+details before rendering them. Preserve a user's child selection only while
+its parent scope and option set are unchanged. Add regression coverage for
+important cascading selectors so the UI never displays data from the previous
+scope under a newly selected parent.
+
 Batch-oriented workflows are a core ERP design rule. For inbound inventory,
 outbound inventory, inventory adjustments, costing, containers, and similar
 multi-row business operations, present a batch summary first, then let the
@@ -37,3 +46,10 @@ business batch where possible rather than exposed as unrelated records.
 
 Do not infer database structure when it can be inspected. Confirm schema before
 designing database changes. Never overwrite unrelated worktree changes.
+
+Treat every user-requested Git push as a release gate. Before pushing, run the
+full project test suite and expose the test command's direct result to the user
+instead of spending response tokens restating the log. Do not push when any
+test fails; diagnose and fix the failure first, then rerun the gate. Push only
+after the complete suite passes. A short final pass/fail statement is enough
+unless a failure needs explanation.

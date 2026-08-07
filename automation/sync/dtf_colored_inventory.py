@@ -19,21 +19,60 @@ def colored_daily_reason(movement_date):
     return f"彩色短袖生产自动扣减 {movement_date:%Y-%m-%d}"
 
 
+def colored_partial_reason(movement_date):
+    return f"{colored_daily_reason(movement_date)}｜部分扣减"
+
+
 def load_colored_day_deducted_total(supabase, movement_date):
+    summary = load_colored_day_deducted_by_sku(supabase, movement_date)
+    return int(summary["已扣数量"].sum()) if not summary.empty else 0
+
+
+def load_colored_day_deducted_by_sku(supabase, movement_date):
     rows = (
         supabase.table("inventory_movements")
-        .select("quantity_change")
+        .select(
+            "color,size,quantity_change,reason,batch_id,reversal_of_batch_id"
+        )
         .eq("department", "DTF")
         .eq("category", CATEGORY)
         .eq("movement_date", movement_date.isoformat())
-        .eq("reason", colored_daily_reason(movement_date))
-        .lt("quantity_change", 0)
         .execute().data
+        or []
     )
-    return sum(abs(int(row.get("quantity_change") or 0)) for row in rows)
+    if not rows:
+        return pd.DataFrame(columns=["颜色", "尺码", "已扣数量"])
+    movements = pd.DataFrame(rows)
+    reversed_ids = set(
+        movements.get("reversal_of_batch_id", pd.Series(dtype=str))
+        .dropna().astype(str)
+    )
+    active = movements[
+        movements["reversal_of_batch_id"].isna()
+        & movements["reason"].fillna("").astype(str).str.startswith(
+            colored_daily_reason(movement_date)
+        )
+        & pd.to_numeric(
+            movements["quantity_change"], errors="coerce"
+        ).fillna(0).lt(0)
+    ].copy()
+    if reversed_ids:
+        active = active[~active["batch_id"].astype(str).isin(reversed_ids)]
+    if active.empty:
+        return pd.DataFrame(columns=["颜色", "尺码", "已扣数量"])
+    active["颜色"] = active["color"].map(normalize_color)
+    active["尺码"] = active["size"].fillna("").astype(str).str.strip()
+    active["已扣数量"] = pd.to_numeric(
+        active["quantity_change"], errors="coerce"
+    ).fillna(0).abs().astype(int)
+    return active.groupby(
+        ["颜色", "尺码"], as_index=False
+    )["已扣数量"].sum()
 
 
-def load_daily_colored_production_source(current_date):
+def load_daily_colored_production_source(
+    current_date, require_complete=False
+):
     candidates = []
     for path in CACHE_DIR.glob("*.json"):
         try:
@@ -51,6 +90,8 @@ def load_daily_colored_production_source(current_date):
         return pd.DataFrame(), {}
     metadata_path = max(candidates)[1]
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if require_complete and not metadata.get("is_complete"):
+        return pd.DataFrame(), metadata
     raw = pd.read_parquet(metadata_path.with_suffix(".parquet"))
     if "生产项状态" in raw:
         raw = raw[~raw["生产项状态"].astype(str).str.contains("取消", na=False)]
@@ -72,8 +113,10 @@ def load_daily_colored_production_source(current_date):
     return detail, metadata
 
 
-def load_daily_colored_production(current_date):
-    detail, _metadata = load_daily_colored_production_source(current_date)
+def load_daily_colored_production(current_date, require_complete=False):
+    detail, _metadata = load_daily_colored_production_source(
+        current_date, require_complete=require_complete
+    )
     if detail.empty:
         return pd.DataFrame()
     return detail.groupby(
@@ -119,6 +162,18 @@ def build_colored_daily_preview(supabase, current_date):
     daily = load_daily_colored_production(current_date)
     if daily.empty:
         return pd.DataFrame()
+    deducted = load_colored_day_deducted_by_sku(supabase, current_date)
+    if not deducted.empty:
+        daily = daily.merge(deducted, on=["颜色", "尺码"], how="left")
+        daily["已扣数量"] = pd.to_numeric(
+            daily["已扣数量"], errors="coerce"
+        ).fillna(0)
+        daily["生产数量"] = (
+            daily["生产数量"] - daily["已扣数量"]
+        ).clip(lower=0)
+        daily = daily[daily["生产数量"] > 0].drop(columns=["已扣数量"])
+    if daily.empty:
+        return pd.DataFrame()
     production = daily.rename(columns={
         "颜色": "颜色", "尺码": "尺码", "生产数量": "数量",
     })
@@ -139,6 +194,13 @@ def apply_colored_daily_deduction(
     rows = preview[preview["状态"] == "可扣减"].copy()
     if rows.empty:
         return 0
+    unresolved = int(pd.to_numeric(
+        preview.get("未扣数量", 0), errors="coerce"
+    ).fillna(0).sum())
+    reason = (
+        colored_partial_reason(movement_date)
+        if unresolved else colored_daily_reason(movement_date)
+    )
     adjustment = pd.DataFrame({
         "日期": [movement_date] * len(rows),
         "操作": ["扣减"] * len(rows),
@@ -148,9 +210,7 @@ def apply_colored_daily_deduction(
         "尺码": rows["尺码"].tolist(),
         "数量": rows["预计扣减"].astype(int).tolist(),
         "成本": [pd.NA] * len(rows),
-        "备注": [
-            colored_daily_reason(movement_date)
-        ] * len(rows),
+        "备注": [reason] * len(rows),
     })
     apply_adjustment_rows(
         supabase, "DTF", CATEGORY, adjustment,
@@ -166,7 +226,9 @@ def load_colored_consumption_history(supabase, current_date, days=14):
         target_date = current_date.fromordinal(
             current_date.toordinal() - offset
         )
-        daily = load_daily_colored_production(target_date)
+        daily = load_daily_colored_production(
+            target_date, require_complete=False
+        )
         if daily.empty:
             continue
         effective_days += 1
@@ -182,6 +244,55 @@ def load_colored_consumption_history(supabase, current_date, days=14):
     summary["每日消耗"] = summary["生产数量"] / effective_days
     summary["有效天数"] = effective_days
     return summary[["颜色", "尺码", "每日消耗", "有效天数"]]
+
+
+def build_colored_reconciliation_backlog(
+    supabase, current_date, days=14,
+):
+    rows = []
+    for offset in range(int(days)):
+        movement_date = current_date.fromordinal(
+            current_date.toordinal() - offset
+        )
+        source, metadata = load_daily_colored_production_source(
+            movement_date
+        )
+        if source.empty:
+            continue
+        deducted = load_colored_day_deducted_total(
+            supabase, movement_date
+        )
+        if deducted <= 0:
+            continue
+        source_quantity = int(pd.to_numeric(
+            source["生产数量"], errors="coerce"
+        ).fillna(0).sum())
+        remaining = max(source_quantity - deducted, 0)
+        missing = tuple(metadata.get("missing_platforms") or ())
+        if remaining <= 0 and not missing:
+            continue
+        preview = build_colored_daily_preview(supabase, movement_date)
+        deductable = int(pd.to_numeric(
+            preview.get("预计扣减", pd.Series(dtype="float64")),
+            errors="coerce",
+        ).fillna(0).sum())
+        unresolved = max(remaining - deductable, 0)
+        if deductable:
+            status = "有库存差额可继续扣减"
+        elif unresolved:
+            status = "等待补库存或修正 SKU"
+        else:
+            status = "等待补齐平台数据"
+        rows.append({
+            "日期": movement_date,
+            "生产数据": source_quantity,
+            "已扣库存": deducted,
+            "当前可补扣": deductable,
+            "库存/SKU待核对": unresolved,
+            "尚未读取平台": "、".join(missing) or "无",
+            "状态": status,
+        })
+    return pd.DataFrame(rows)
 
 
 def build_colored_forecast_usage(history):

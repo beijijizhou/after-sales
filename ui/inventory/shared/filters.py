@@ -71,7 +71,7 @@ def render_inventory_dimension_filters(
     category_options = ["", *categories]
     category_key = f"{key}_{department}_category"
     _reset_invalid_selectbox(category_key, category_options)
-    initialization_key = f"{category_key}_default_v3"
+    initialization_key = f"{category_key}_default_v4"
     if initialization_key not in st.session_state:
         if allow_all_departments and not department:
             st.session_state[category_key] = ""
@@ -242,8 +242,11 @@ def render_department_category_filters(dimensions, key="inventory_shared"):
         str(value).strip() for value in category_rows.get("category", [])
         if pd.notna(value) and str(value).strip()
     })
+    category_key = f"{key}_category"
+    category_options = ["全部品类", *categories, "自定义"]
+    _reset_invalid_selectbox(category_key, category_options)
     category_label = col2.selectbox(
-        "品类", ["全部品类", *categories, "自定义"], key=f"{key}_category"
+        "品类", category_options, key=category_key
     )
     if category_label == "自定义":
         category = col2.text_input(

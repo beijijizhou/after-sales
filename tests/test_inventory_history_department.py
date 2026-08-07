@@ -3,9 +3,31 @@ import unittest
 import pandas as pd
 
 from ui.inventory.history.history import filter_history_department
+from ui.inventory.history.history_batches import (
+    synchronize_batch_selector_state,
+)
 
 
 class InventoryHistoryDepartmentTests(unittest.TestCase):
+    def test_batch_selection_resets_when_filtered_category_options_change(self):
+        state = {}
+
+        changed = synchronize_batch_selector_state(
+            state, "inventory_batch", ["black-latest", "black-old"]
+        )
+        state["inventory_batch"] = "black-old"
+        unchanged = synchronize_batch_selector_state(
+            state, "inventory_batch", ["black-latest", "black-old"]
+        )
+        changed_category = synchronize_batch_selector_state(
+            state, "inventory_batch", ["colored-latest", "colored-old"]
+        )
+
+        self.assertTrue(changed)
+        self.assertFalse(unchanged)
+        self.assertTrue(changed_category)
+        self.assertEqual(state["inventory_batch"], "colored-latest")
+
     def test_uv_history_never_contains_dtf_rows(self):
         movements = pd.DataFrame([
             _movement("DTF", "黑白短袖", 10000),

@@ -81,6 +81,13 @@ def build_daily_completion_dates(movements, consumable_batches):
     ).fillna("").astype(str)
     outbound = quantities.lt(0) & dates.notna()
 
+    colored_reason = COLORED_REASON_PREFIX + " " + dates.astype(str)
+    colored_complete = set(dates[
+        outbound & department.eq("DTF") & category.eq("彩色短袖")
+        & (reasons.eq(colored_reason) | reasons.eq(
+            colored_reason + "｜部分扣减"
+        ))
+    ])
     completed = {
         "black_white": set(dates[
             outbound & department.eq("DTF") & category.eq("黑白短袖")
@@ -89,10 +96,7 @@ def build_daily_completion_dates(movements, consumable_batches):
                 "黑白短袖出库",
             })
         ]),
-        "colored": set(dates[
-            outbound & department.eq("DTF") & category.eq("彩色短袖")
-            & reasons.str.startswith(COLORED_REASON_PREFIX)
-        ]),
+        "colored": colored_complete,
         "uv": set(dates[
             outbound & department.eq("UV")
             & reasons.str.startswith(UV_REASON_PREFIX)
@@ -163,6 +167,62 @@ def build_today_completion_status(completed, today):
         "completed": completed_labels,
         "pending": pending_labels,
     }
+
+
+def build_today_completion_table(completed, today):
+    rows = []
+    for code, label in DAILY_FLOW_LABELS.items():
+        automatic = code in {"colored", "uv"}
+        is_completed = today in set(completed.get(code, set()))
+        if is_completed:
+            next_step = "无需处理"
+        elif automatic:
+            next_step = "今日结束后由系统读取"
+        else:
+            next_step = "今日结束后补录实际出库"
+        rows.append({
+            "出库项目": label,
+            "数据方式": "系统读取" if automatic else "人工登记",
+            "今日状态": "已完成" if is_completed else "进行中",
+            "计入补录": "否",
+            "下一步": next_step,
+        })
+    return pd.DataFrame(rows)
+
+
+def build_daily_operation_table(summary, completed, today):
+    if summary.empty:
+        return pd.DataFrame(columns=[
+            "出库项目", "数据方式", "截止昨日", "待补日期",
+            "今日状态", "当前操作",
+        ])
+    result = summary.copy()
+    today_status = build_today_completion_table(
+        completed, today
+    ).set_index("出库项目")
+    result["截止昨日"] = result.apply(
+        lambda row: f"{int(row['已完成天数'])}/{int(row['检查天数'])} 天",
+        axis=1,
+    )
+    result["今日状态"] = result["出库项目"].map(
+        today_status["今日状态"]
+    )
+    result["当前操作"] = result.apply(
+        _daily_operation_label, axis=1
+    )
+    return result.rename(columns={"待处理日期": "待补日期"})[[
+        "出库项目", "数据方式", "截止昨日", "待补日期",
+        "今日状态", "当前操作",
+    ]]
+
+
+def _daily_operation_label(row):
+    missing = int(row["待处理天数"])
+    if missing:
+        if row["数据方式"] == "系统读取":
+            return f"系统预览并补扣 {missing} 天"
+        return f"补录实际出库 {missing} 天"
+    return "无需补录"
 
 
 def load_inventory_overview(supabase, today):

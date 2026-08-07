@@ -27,7 +27,12 @@ from automation.sync.state import (
 )
 
 
-def sync_missing_days(lookback_days=7, target_date=None, force=False):
+COLORED_PRIMARY_PLATFORMS = ("汉森", "S2B", "SDS1", "SDS2")
+
+
+def sync_missing_days(
+    lookback_days=7, target_date=None, force=False, secrets=None
+):
     dates = (
         [target_date]
         if target_date
@@ -40,17 +45,22 @@ def sync_missing_days(lookback_days=7, target_date=None, force=False):
                 f"[{index}/{len(dates)}] 检查 {day.isoformat()}",
                 flush=True,
             )
-            results.append(sync_production_day(day, force=force))
+            results.append(sync_production_day(
+                day, force=force, secrets=secrets
+            ))
     return results
 
 
-def sync_production_day(target_date, force=False):
+def sync_production_day(
+    target_date, force=False, secrets=None, required_platforms=None
+):
+    required = tuple(required_platforms or DTF_PRODUCTION_PLATFORMS)
     aggregate = load_production_cache(
         ALL_CLOTHING_PLATFORMS, target_date, target_date
     )
-    if not force and is_complete(aggregate):
+    if not force and _cache_covers(aggregate, required):
         print(
-            f"  已有完整缓存，跳过（获取于 {aggregate.saved_at}）",
+            f"  已有需要的平台缓存，跳过（获取于 {aggregate.saved_at}）",
             flush=True,
         )
         return "skipped"
@@ -65,14 +75,14 @@ def sync_production_day(target_date, force=False):
 
     existing = {} if force else _load_platform_caches(target_date)
     missing = [
-        platform for platform in DTF_PRODUCTION_PLATFORMS
+        platform for platform in required
         if platform not in existing
     ]
     print(
         "  需要获取：" + ("、".join(missing) if missing else "无"),
         flush=True,
     )
-    credentials, credential_errors = _load_credentials(missing)
+    credentials, credential_errors = _load_credentials(missing, secrets)
     if missing:
         batch = load_all_clothing_production(
             target_date,
@@ -103,6 +113,10 @@ def sync_production_day(target_date, force=False):
         f"{len(batch.platform_results)} 个平台 / "
         f"{len(batch.data):,} 个衣服生产项"
     )
+    included = set(batch.platform_results)
+    missing_platforms = (
+        set(DTF_PRODUCTION_PLATFORMS) - included
+    ) | set(batch.errors)
     save_production_cache(
         ALL_CLOTHING_PLATFORMS,
         target_date,
@@ -111,11 +125,18 @@ def sync_production_day(target_date, force=False):
         source,
         extra_metadata={
             "included_platforms": sorted(batch.platform_results),
-            "missing_platforms": sorted(batch.errors),
+            "missing_platforms": sorted(missing_platforms),
             "platform_errors": {
                 name: str(message) for name, message in batch.errors.items()
             },
-            "is_complete": not batch.errors,
+            "is_complete": (
+                not batch.errors
+                and set(DTF_PRODUCTION_PLATFORMS).issubset(included)
+            ),
+            "colored_primary_complete": (
+                not set(COLORED_PRIMARY_PLATFORMS) & set(batch.errors)
+                and set(COLORED_PRIMARY_PLATFORMS).issubset(included)
+            ),
         },
     )
     if batch.errors:
@@ -129,6 +150,13 @@ def sync_production_day(target_date, force=False):
         return "partial"
     print(f"  完成：{len(batch.data):,} 个衣服生产项", flush=True)
     return "completed"
+
+
+def _cache_covers(cached, required_platforms):
+    if cached is None:
+        return False
+    included = set(cached.metadata.get("included_platforms") or [])
+    return set(required_platforms).issubset(included)
 
 
 def _load_platform_caches(target_date):
@@ -157,11 +185,13 @@ def _combine_existing(results):
     return pd.concat(frames, ignore_index=True)
 
 
-def _load_credentials(platforms):
+def _load_credentials(platforms, secrets=None):
     credentials, errors = {}, {}
     for platform in platforms:
         try:
-            credentials[platform] = load_platform_credentials(platform)
+            credentials[platform] = load_platform_credentials(
+                platform, secrets
+            )
         except Exception as error:
             errors[platform] = str(error)
     return credentials, errors

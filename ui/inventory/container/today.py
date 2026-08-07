@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
 
+from ui.inventory.shared.filters import _reset_invalid_selectbox
+
 from db.inventory.container.repository import load_inventory_containers
 from db.inventory.container.workflow import post_container_inventory
 from ui.inventory.container.tables import (
@@ -98,9 +100,11 @@ def render_today_arrival_posting(supabase, raw_df):
         number = row.get("container_no") or container_key
         quantity = int(row["quantity"])
         choices[f"{number}｜{quantity:,} 件"] = container_key
+    choice_labels = list(choices)
+    _reset_invalid_selectbox("today_arrival_posting_target", choice_labels)
     selected = st.selectbox(
         "选择待入库货柜",
-        list(choices),
+        choice_labels,
         key="today_arrival_posting_target",
     )
     container_key = choices[selected]

@@ -9,18 +9,18 @@ from automation.production import SDS_PLATFORM_PROFILES
 from automation.logistics.config import load_s2b_account
 
 
-def load_platform_credentials(platform):
-    empty_secrets = {}
+def load_platform_credentials(platform, secrets=None):
+    configured_secrets = secrets or {}
     if platform == "S2B":
-        return load_s2b_account(empty_secrets, "DTF")
+        return load_s2b_account(configured_secrets, "DTF")
     if platform in SDS_PLATFORM_PROFILES:
         return load_sds_credentials(
-            empty_secrets, SDS_PLATFORM_PROFILES[platform]
+            configured_secrets, SDS_PLATFORM_PROFILES[platform]
         )
     if platform == "汉森":
-        return load_hansen_credentials(empty_secrets)
+        return load_hansen_credentials(configured_secrets)
     if platform == "方果":
-        return load_fangguo_credentials(empty_secrets)
+        return load_fangguo_credentials(configured_secrets)
     if platform in DIY19_BASE_URLS:
-        return load_diy19_credentials(empty_secrets, platform)
+        return load_diy19_credentials(configured_secrets, platform)
     return None

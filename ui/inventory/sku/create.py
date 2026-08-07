@@ -20,7 +20,11 @@ def render_create_skus(
         return
 
     category_names = department_categories["name"].tolist()
-    category_name = st.selectbox(t("品类") + " *", category_names)
+    category_name = st.selectbox(
+        t("品类") + " *",
+        category_names,
+        key=f"create_sku_category_{department['id']}",
+    )
     category = department_categories[
         department_categories["name"] == category_name
     ].iloc[0].to_dict()
@@ -147,5 +151,7 @@ def _render_custom_skus(
             "规格": st.column_config.TextColumn(specification_label),
             "单位": st.column_config.TextColumn(t("单位"), required=True),
         },
-        key=f"self_service_skus_{department_id}_{version}",
+        key=(
+            f"self_service_skus_{department_id}_{category['id']}_{version}"
+        ),
     ))

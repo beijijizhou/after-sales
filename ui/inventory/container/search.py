@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
 
+from ui.inventory.shared.filters import _reset_invalid_selectbox
+
 from db.inventory.container.history import (
     build_container_history_display,
     load_container_events,
@@ -58,10 +60,12 @@ def render_container_search(supabase):
         st.info("目前还没有货柜记录")
         return
     choices = build_container_search_choices(raw_df)
+    search_options = ["", *choices]
+    _reset_invalid_selectbox("container_search_dropdown", search_options)
     st.caption("可以直接浏览，也可以输入货柜号、部门或品类关键词查找。")
     container_key = st.selectbox(
         "查找货柜",
-        ["", *choices],
+        search_options,
         format_func=lambda value: (
             "请选择货柜" if not value else choices[value]
         ),

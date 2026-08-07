@@ -204,12 +204,12 @@ def render_batch_selector(
     batch_df, key="inventory_history_batch", sku_import=False
 ):
     if batch_df.empty:
+        synchronize_batch_selector_state(st.session_state, key, [])
         st.info(t("暂无相关记录"))
         return None
 
     options = batch_df["batch_key"].tolist()
-    if key in st.session_state and st.session_state[key] not in options:
-        del st.session_state[key]
+    synchronize_batch_selector_state(st.session_state, key, options)
     if sku_import:
         labels = {
             row["batch_key"]: (
@@ -251,3 +251,23 @@ def render_batch_selector(
     )
     st.caption(t(caption))
     return selected_batch
+
+
+def synchronize_batch_selector_state(state, key, options):
+    """Reset a child batch selector whenever its filtered options change."""
+    options = list(options)
+    signature_key = f"{key}__options_signature"
+    signature = tuple(str(value) for value in options)
+    if state.get(signature_key) != signature:
+        if options:
+            state[key] = options[0]
+        else:
+            state.pop(key, None)
+        state[signature_key] = signature
+        return True
+    if key in state and state[key] not in options:
+        state[key] = options[0] if options else None
+        if not options:
+            state.pop(key, None)
+        return True
+    return False
