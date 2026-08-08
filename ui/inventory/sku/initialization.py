@@ -11,6 +11,7 @@ from db.inventory.master_data import (
 from ui.inventory.i18n import t
 from ui.inventory.shared import filter_inventory_rows
 from utils.auth import get_current_operator_name
+from utils.sku_sorting import sort_sku_rows
 
 
 def render_inventory_initialization(
@@ -120,10 +121,13 @@ def _build_editor_source(pending):
         "sku_code", "sku_name", "category", "brand", "material",
         "color", "size", "unit", "初始库存",
     ]
-    return source[columns].sort_values(
-        ["category", "material", "color", "size"],
-        kind="stable",
-    ).reset_index(drop=True)
+    return sort_sku_rows(
+        source[columns],
+        material="material",
+        color="color",
+        size="size",
+        leading=["category"],
+    )
 
 
 def build_initialization_signature(source):

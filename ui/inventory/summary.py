@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+from ui.consumables import render_consumable_department_workspace
 from db.inventory import (
     SIZE_COLUMNS,
     build_inventory_snapshot,
@@ -20,15 +21,18 @@ from ui.inventory.history.history import (
     load_inventory_history_data,
 )
 from ui.inventory.i18n import get_language, render_language_selector, t
+from ui.inventory.category_routing import is_consumable_category
 from ui.inventory.operations.outbound_feedback import (
     render_saved_outbound_audit_feedback,
 )
 from ui.inventory.operations.outbound_i18n import TEXT as OUTBOUND_TEXT
 from ui.inventory.operations.outbound_status import (
+    clear_daily_outbound_backfill,
     render_colored_daily_consumption_alert,
     render_daily_outbound_alert,
     render_uv_daily_consumption_alert,
 )
+from ui.inventory.operations.pages import render_daily_outbound_operation
 from ui.inventory.page_tabs import render_inventory_tabs
 from ui.inventory.shared import (
     build_inventory_filter_title,
@@ -62,6 +66,13 @@ def render_inventory_summary(supabase):
     ) = (
         render_inventory_global_filters(dimensions_df)
     )
+    if is_consumable_category(category):
+        st.info(
+            "当前显示 DTF 耗材工作区；库存、出入库流水和撤销均读取"
+            "耗材账，不读取服装库存流水。"
+        )
+        render_consumable_department_workspace(supabase, department)
+        return
     visible_sizes = selected_sizes or (
         SIZE_COLUMNS if department == "DTF" else None
     )
@@ -83,6 +94,32 @@ def render_inventory_summary(supabase):
         complete_category_raw_df = load_inventory_items(
             supabase, department, category
         )
+        focused_outbound_date = st.session_state.get(
+            "daily_outbound_focus_date"
+        )
+        if focused_outbound_date and flow and flow.entry_source == ENTRY_MANUAL:
+            st.divider()
+            title_column, action_column = st.columns([4, 1])
+            title_column.subheader(
+                f"补录仓库每日出货｜{focused_outbound_date:%Y-%m-%d}"
+            )
+            action_column.button(
+                "返回库存",
+                key="close_daily_outbound_backfill",
+                width="stretch",
+                on_click=clear_daily_outbound_backfill,
+            )
+            st.caption(
+                "日期已经自动带入；核对各 SKU 数量后保存，系统会保留完整批次流水。"
+            )
+            render_daily_outbound_operation(
+                supabase,
+                department,
+                category,
+                complete_category_raw_df,
+                can_edit,
+            )
+            return
         raw_df = filter_inventory_rows(
             complete_category_raw_df,
             category, brands, materials, colors, selected_sizes,

@@ -21,6 +21,11 @@ from ui.inventory.history.history_filters import (
     filter_reversal_scope,
 )
 from ui.inventory.page_tabs import inventory_tab_keys
+from ui.inventory.operations.outbound_status import (
+    activate_daily_outbound_backfill,
+    clear_daily_outbound_backfill,
+    finish_daily_outbound_backfill,
+)
 
 
 class BatchQueryStub:
@@ -41,6 +46,38 @@ class BatchQueryStub:
 
 
 class OutboundStatusTests(unittest.TestCase):
+    def test_missing_date_opens_and_clears_daily_outbound_backfill(self):
+        state = {"daily_outbound_version": 3}
+        missing_date = date(2026, 8, 6)
+
+        activate_daily_outbound_backfill(missing_date, state)
+
+        self.assertEqual(
+            state["daily_outbound_focus_date"], missing_date
+        )
+        self.assertEqual(
+            state["daily_outbound_batch_date"], missing_date
+        )
+        self.assertEqual(state["daily_outbound_version"], 4)
+
+        clear_daily_outbound_backfill(state)
+
+        self.assertNotIn("daily_outbound_focus_date", state)
+        self.assertNotIn("daily_outbound_batch_date", state)
+
+    def test_finishing_backfill_defers_date_widget_reset(self):
+        missing_date = date(2026, 8, 6)
+        state = {
+            "daily_outbound_focus_date": missing_date,
+            "daily_outbound_batch_date": missing_date,
+        }
+
+        finish_daily_outbound_backfill(state)
+
+        self.assertNotIn("daily_outbound_focus_date", state)
+        self.assertEqual(state["daily_outbound_batch_date"], missing_date)
+        self.assertTrue(state["daily_outbound_reset_date"])
+
     def test_signed_quantity_format_does_not_mark_zero(self):
         self.assertEqual(_format_signed_quantity(500), "+500")
         self.assertEqual(_format_signed_quantity(-500), "-500")
@@ -75,6 +112,10 @@ class OutboundStatusTests(unittest.TestCase):
         )
         self.assertNotIn(
             "系统库存扣减", inventory_tab_keys("DTF", category="卫衣")
+        )
+        self.assertNotIn(
+            "客户销售出库",
+            inventory_tab_keys("DTF", category="黑白短袖"),
         )
 
     def test_sku_workflows_are_not_embedded_in_production_inventory(self):

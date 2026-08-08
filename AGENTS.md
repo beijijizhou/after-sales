@@ -25,6 +25,15 @@ Treat UI modularity as seriously as code modularity. Group related functions
 in the same page area, and separate distinct workflows with tabs or focused
 views instead of stacking multiple full tables and forms on one screen.
 
+Inventory SKU entry and review interfaces must minimize scanning effort. Use
+separate fields for brand, material, color, and size instead of one long SKU
+label when users need to select or compare those dimensions. Wherever apparel
+sizes are offered or displayed, keep the business order `S, M, L, XL, 2XL,
+3XL, 4XL, 5XL`; do not use alphabetical sorting.
+Interactive SKU entry must reuse the shared linked selector and narrow choices
+in the order `material -> brand -> color -> size`; do not recreate independent
+unfiltered SKU dropdowns in individual pages.
+
 Treat dependent UI state as a data dependency, not as an isolated widget
 choice. When an upstream department, category, date range, mode, or filter
 changes, recompute every downstream option set in the same rerun. Clear or
@@ -53,6 +62,14 @@ business date, source, totals, status, and audit history intact so related
 rows remain understandable and reversible as one business event. Legacy rows
 without an explicit batch ID should be grouped into a stable, explainable
 business batch where possible rather than exposed as unrelated records.
+
+Use one human review order for SKU data throughout the ERP. Any long-form
+table or editor containing material, color, and apparel size must group rows
+as material, then color, then the fixed size order S, M, L, XL, 2XL, 3XL,
+4XL, 5XL. Apply the same order to entry, preview, verification, costing,
+history, and detail views. Wide apparel tables must expose size columns in
+that same fixed order. Use the shared SKU sorter instead of local alphabetical
+sorting so users never have to relearn row order between workflows.
 
 Do not infer database structure when it can be inspected. Confirm schema before
 designing database changes. Never overwrite unrelated worktree changes.

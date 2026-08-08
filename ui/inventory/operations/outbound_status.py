@@ -72,7 +72,41 @@ def render_daily_outbound_alert(supabase, department, lookback_days=7):
             f"仓库每日出货待核对：最近 {lookback_days} 天缺少 "
             f"{labels} 的登记记录。"
         )
+        st.caption("选择缺失日期后，直接进入该日的仓库出货补录。")
+        columns = st.columns(min(len(previous_missing), 4))
+        for index, missing_date in enumerate(previous_missing):
+            columns[index % len(columns)].button(
+                f"补录 {missing_date:%m/%d}",
+                key=f"daily_outbound_backfill_{missing_date.isoformat()}",
+                type="primary" if index == 0 else "secondary",
+                width="stretch",
+                on_click=activate_daily_outbound_backfill,
+                args=(missing_date,),
+            )
     if not today_is_recorded:
         st.warning("今日仓库出货尚未登记；完成出货后请确认保存。")
     elif not previous_missing:
         st.success("仓库每日出货记录完整，今日已登记。")
+
+
+def activate_daily_outbound_backfill(movement_date, state=None):
+    """Open the warehouse-outbound workflow with a missing date selected."""
+    target_state = st.session_state if state is None else state
+    target_state["daily_outbound_focus_date"] = movement_date
+    target_state["daily_outbound_batch_date"] = movement_date
+    target_state["daily_outbound_version"] = (
+        int(target_state.get("daily_outbound_version", 0)) + 1
+    )
+
+
+def clear_daily_outbound_backfill(state=None):
+    target_state = st.session_state if state is None else state
+    target_state.pop("daily_outbound_focus_date", None)
+    target_state.pop("daily_outbound_batch_date", None)
+
+
+def finish_daily_outbound_backfill(state=None):
+    """Leave backfill mode and reset the date before the next widget render."""
+    target_state = st.session_state if state is None else state
+    target_state.pop("daily_outbound_focus_date", None)
+    target_state["daily_outbound_reset_date"] = True

@@ -6,6 +6,7 @@ from db.inventory.core.constants import UV_MODEL_ORDER
 from utils.auth import has_permission
 from ui.inventory.i18n import t
 from utils.daily_consumption import daily_consumption_source
+from utils.sku_sorting import sort_sku_rows
 
 
 def format_date_columns(df, date_columns):
@@ -81,8 +82,11 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
             display_df[size] = 0
         display_df[size] = pd.to_numeric(display_df[size], errors="coerce").fillna(0).astype(int)
     display_df["合计"] = display_df[sizes].sum(axis=1)
-    display_df = display_df.sort_values(
-        ["日期", "流水记录类型"], ascending=[False, True]
+    display_df = sort_sku_rows(
+        display_df,
+        size="__wide_size_columns__",
+        leading=["日期", "流水记录类型"],
+        leading_ascending=[False, True],
     )
     return display_df[[
         "日期", "流水记录类型", "消耗来源", "部门", "品类", "品牌", "材质", "颜色", "库存来源",

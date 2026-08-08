@@ -3,18 +3,59 @@ from pathlib import Path
 from unittest.mock import Mock
 from unittest.mock import patch
 
+import pandas as pd
+
 from db.access import (
     load_app_users,
+    save_role_definition,
     update_user_access,
     validate_access_change,
+    validate_role_definition,
 )
-from ui.access.page import access_change_preview
+from ui.access.page import access_change_preview, filter_access_users
 from ui.access.permissions import permission_matrix
+from ui.access.role_editor import role_permission_preview
 import utils.auth.session as auth_session
-from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
+from utils.auth.constants import NAV_SECTIONS
 
 
 class AccessManagementTests(unittest.TestCase):
+    def test_role_and_status_filters_group_users_in_selected_role_order(self):
+        users = pd.DataFrame([
+            {
+                "name": "售后二", "user_name": "after-2",
+                "role": "after_sales", "is_active": True,
+            },
+            {
+                "name": "主管一", "user_name": "lead-1",
+                "role": "supervisor", "is_active": True,
+            },
+            {
+                "name": "售后一", "user_name": "after-1",
+                "role": "after_sales", "is_active": False,
+            },
+            {
+                "name": "生产一", "user_name": "producer-1",
+                "role": "producer", "is_active": True,
+            },
+        ])
+
+        filtered = filter_access_users(
+            users, ["supervisor", "after_sales"], "启用"
+        )
+
+        self.assertEqual(
+            filtered["user_name"].tolist(), ["lead-1", "after-2"]
+        )
+
+    def test_empty_role_filter_clears_user_selection_source(self):
+        users = pd.DataFrame([{
+            "name": "主管一", "user_name": "lead-1",
+            "role": "supervisor", "is_active": True,
+        }])
+
+        self.assertTrue(filter_access_users(users, [], "全部").empty)
+
     @patch.object(auth_session.st, "session_state", new_callable=dict)
     def test_existing_supervisor_session_receives_new_logistics_permission(
         self, state
@@ -49,13 +90,19 @@ class AccessManagementTests(unittest.TestCase):
         self.assertEqual(state["current_user"]["role"], "supervisor")
         self.assertTrue(state["current_user"]["can_view_logistics"])
 
-    def test_only_admin_can_open_access_management(self):
-        for role, permissions in ROLE_PERMISSIONS.items():
-            with self.subTest(role=role):
-                self.assertEqual(
-                    "can_manage_access" in permissions,
-                    role == "admin",
-                )
+    @patch.object(auth_session.st, "session_state", new_callable=dict)
+    def test_database_permissions_override_hardcoded_role_defaults(self, state):
+        auth_session.set_current_user({
+            "username": "custom-manager",
+            "display_name": "Custom Manager",
+            "role": "custom_manager",
+            "role_label": "自定义管理员",
+            "permissions": ["can_manage_access", "can_view_logistics"],
+        })
+
+        self.assertTrue(state["current_user"]["can_manage_access"])
+        self.assertTrue(state["current_user"]["can_view_logistics"])
+        self.assertFalse(state["current_user"]["can_edit_inventory"])
 
     def test_access_management_has_separate_admin_navigation(self):
         system_items = next(
@@ -67,29 +114,72 @@ class AccessManagementTests(unittest.TestCase):
         )
 
     def test_supervisor_matrix_has_logistics_query_not_management(self):
-        matrix = permission_matrix().set_index("角色")
+        roles, catalog, assigned = _dynamic_role_frames()
+        matrix = permission_matrix(roles, catalog, assigned).set_index("角色")
         self.assertEqual(matrix.at["主管", "查看物流查询"], "✓")
         self.assertEqual(matrix.at["主管", "同步ERP、OCR与物流管理"], "")
-        self.assertEqual(matrix.at["主管", "管理用户角色"], "")
+        self.assertEqual(matrix.at["主管", "管理用户与角色权限"], "")
 
     def test_access_preview_lists_added_and_removed_permissions(self):
+        roles, catalog, assigned = _dynamic_role_frames()
         preview = access_change_preview({
             "user_name": "worker",
             "role": "visitor",
             "is_active": True,
-        }, "supervisor", True)
+        }, "supervisor", True, {
+            "visitor": "游客", "supervisor": "主管",
+        }, {
+            "visitor": {"can_view_app"},
+            "supervisor": {"can_view_app", "can_view_logistics"},
+        }, catalog)
 
         self.assertTrue(preview["是否变化"])
         self.assertIn("查看物流查询", preview["新增权限"])
         self.assertEqual(preview["移除权限"], "无")
 
     def test_admin_cannot_disable_or_demote_self(self):
-        with self.assertRaisesRegex(ValueError, "不能停用"):
+        with self.assertRaisesRegex(ValueError, "不能修改自己的角色"):
             validate_access_change("admin-user", "admin", False, "admin-user")
-        with self.assertRaisesRegex(ValueError, "不能停用"):
+        with self.assertRaisesRegex(ValueError, "不能修改自己的角色"):
             validate_access_change(
                 "admin-user", "supervisor", True, "admin-user"
             )
+
+    def test_role_permission_preview_is_reviewable_row_by_row(self):
+        _, catalog, _ = _dynamic_role_frames()
+
+        preview = role_permission_preview(
+            catalog,
+            ["can_view_app", "can_manage_logistics"],
+            ["can_view_app", "can_view_logistics"],
+        ).set_index("权限标识")
+
+        self.assertEqual(preview.at["can_view_app", "变化"], "保留")
+        self.assertEqual(preview.at["can_view_logistics", "变化"], "新增")
+        self.assertEqual(preview.at["can_manage_logistics", "变化"], "移除")
+
+    def test_custom_role_validation_and_audited_save(self):
+        validate_role_definition(
+            "logistics_viewer", "物流查看员", ["can_view_logistics"]
+        )
+        supabase = Mock()
+        supabase.rpc.return_value.execute.return_value.data = [{
+            "role_key": "logistics_viewer",
+            "role_name": "物流查看员",
+        }]
+
+        save_role_definition(
+            supabase, "logistics_viewer", "物流查看员", "仅查询物流",
+            ["can_view_logistics"], "admin-user",
+        )
+
+        supabase.rpc.assert_called_once_with("upsert_app_role", {
+            "p_role_key": "logistics_viewer",
+            "p_role_name": "物流查看员",
+            "p_description": "仅查询物流",
+            "p_permissions": ["can_view_logistics"],
+            "p_changed_by": "admin-user",
+        })
 
     def test_load_users_selects_no_password_fields(self):
         supabase = Mock()
@@ -107,6 +197,30 @@ class AccessManagementTests(unittest.TestCase):
         self.assertEqual(users.iloc[0]["role"], "supervisor")
         selected = supabase.table.return_value.select.call_args.args[0]
         self.assertNotIn("password", selected)
+
+    def test_load_users_excludes_rows_without_login_account(self):
+        supabase = Mock()
+        execute = (
+            supabase.table.return_value.select.return_value
+            .order.return_value.execute
+        )
+        execute.return_value.data = [
+            {
+                "name": "Production Staff", "user_name": None,
+                "employee_id": "P1", "department": "生产",
+                "role": None, "is_active": True,
+            },
+            {
+                "name": "Lead", "user_name": "lead",
+                "employee_id": "S1", "department": "客服",
+                "role": "supervisor", "is_active": True,
+            },
+        ]
+
+        users = load_app_users(supabase)
+
+        self.assertEqual(users["user_name"].tolist(), ["lead"])
+        self.assertIsInstance(users.iloc[0]["user_name"], str)
 
     def test_update_access_uses_audited_database_function(self):
         supabase = Mock()
@@ -128,13 +242,55 @@ class AccessManagementTests(unittest.TestCase):
         })
 
     def test_database_function_rechecks_active_admin_actor(self):
-        sql = (
+        sql_directory = (
             Path(__file__).resolve().parents[1]
-            / "sql" / "access" / "02_role_management.sql"
-        ).read_text()
+            / "sql" / "access" / "role_management"
+        )
+        scripts = sorted(sql_directory.glob("[0-9][0-9]_*.sql"))
+        self.assertEqual(len(scripts), 6)
+        self.assertTrue(all(
+            len(script.read_text().splitlines()) < 200 for script in scripts
+        ))
+        sql = "\n".join(script.read_text() for script in scripts)
         self.assertIn("actor.role", sql)
         self.assertIn("actor.is_active", sql)
-        self.assertIn("Only an active admin can change access", sql)
+        self.assertIn("app_actor_can_manage_access", sql)
+        self.assertIn("app_role_change_audit", sql)
+        self.assertIn("upsert_app_role", sql)
+
+
+def _dynamic_role_frames():
+    roles = pd.DataFrame([
+        {"role_key": "visitor", "role_name": "游客"},
+        {"role_key": "supervisor", "role_name": "主管"},
+    ])
+    catalog = pd.DataFrame([
+        {
+            "permission_key": "can_view_app", "permission_name": "查看售后查询",
+            "permission_group": "基础页面", "sort_order": 10,
+        },
+        {
+            "permission_key": "can_view_logistics",
+            "permission_name": "查看物流查询",
+            "permission_group": "物流", "sort_order": 20,
+        },
+        {
+            "permission_key": "can_manage_logistics",
+            "permission_name": "同步ERP、OCR与物流管理",
+            "permission_group": "物流", "sort_order": 30,
+        },
+        {
+            "permission_key": "can_manage_access",
+            "permission_name": "管理用户与角色权限",
+            "permission_group": "系统管理", "sort_order": 40,
+        },
+    ])
+    assigned = pd.DataFrame([
+        {"role_key": "visitor", "permission_key": "can_view_app"},
+        {"role_key": "supervisor", "permission_key": "can_view_app"},
+        {"role_key": "supervisor", "permission_key": "can_view_logistics"},
+    ])
+    return roles, catalog, assigned
 
 
 if __name__ == "__main__":

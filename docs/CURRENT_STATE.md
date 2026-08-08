@@ -71,4 +71,6 @@ refactors, not after every small feature.
   model.
 - UV currently contains iron-board art, wood product, thermos, and phone-case
   categories.
-- Stable access behavior comes from code-defined role permissions.
+- Page requirements use stable permission identifiers in code; role creation,
+  role labels, and role-permission composition are managed in the database and
+  audited through the admin access-management page.

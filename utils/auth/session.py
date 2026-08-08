@@ -53,7 +53,7 @@ def has_permission(permission):
     user = get_current_user()
     if not user:
         return permission in PUBLIC_PERMISSIONS
-    return bool(user.get(permission)) or user.get("role") == ROLE_ADMIN
+    return bool(user.get(permission))
 
 
 def has_role(required_role):
@@ -79,7 +79,12 @@ def load_user(username):
 def set_current_user(user):
     role = user.get("role") or ROLE_VISITOR
     username = str(user["username"]).strip()
-    permissions = ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS[ROLE_VISITOR])
+    supplied_permissions = user.get("permissions")
+    permissions = (
+        set(supplied_permissions)
+        if isinstance(supplied_permissions, (list, tuple, set))
+        else ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS[ROLE_VISITOR])
+    )
     display_name = str(
         user.get("display_name") or user["username"]
     ).strip()
@@ -87,7 +92,10 @@ def set_current_user(user):
         "username": username,
         "display_name": display_name,
         "role": role,
-        "role_label": ROLE_LABELS.get(role, role),
+        "role_label": str(
+            user.get("role_label") or ROLE_LABELS.get(role, role)
+        ),
+        "permissions": sorted(permissions),
         **{
             permission: permission in permissions
             for permission in ALL_PERMISSIONS
@@ -101,8 +109,15 @@ def _refresh_current_user_role():
     if not current:
         return
     role = current.get("role") or ROLE_VISITOR
-    permissions = ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS[ROLE_VISITOR])
-    current["role_label"] = ROLE_LABELS.get(role, role)
+    supplied_permissions = current.get("permissions")
+    permissions = (
+        set(supplied_permissions)
+        if isinstance(supplied_permissions, (list, tuple, set))
+        else ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS[ROLE_VISITOR])
+    )
+    current["role_label"] = str(
+        current.get("role_label") or ROLE_LABELS.get(role, role)
+    )
     current.update({
         permission: permission in permissions
         for permission in ALL_PERMISSIONS

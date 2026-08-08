@@ -24,6 +24,7 @@ def render_packaging_rule_editor(
     department,
     category,
     language,
+    sku_df=None,
 ):
     text = TEXT[language]
     version_key = f"packaging_rule_table_version_{language}"
@@ -69,6 +70,7 @@ def render_packaging_rule_editor(
         category,
         language,
         version,
+        sku_df,
     )
     st.caption(text["rule_scope"])
     if st.button(
@@ -90,9 +92,11 @@ def _render_sku_rule_table(
     category,
     language,
     version,
+    sku_df=None,
 ):
     text = TEXT[language]
-    sku_df = load_sku_catalog(supabase, department)
+    if sku_df is None:
+        sku_df = load_sku_catalog(supabase, department)
     if category and not sku_df.empty:
         sku_df = sku_df[sku_df["category"] == category]
     if "is_active" in sku_df:

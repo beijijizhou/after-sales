@@ -3,6 +3,7 @@ from db.finance.repository import (
     load_inventory_finance_month,
     load_missing_inventory_cost_lots,
     load_inventory_value_snapshot,
+    update_consumable_movement_cost,
     update_inbound_lot_cost,
 )
 from db.finance.summary import (
@@ -23,5 +24,6 @@ __all__ = [
     "load_inventory_finance_month",
     "load_missing_inventory_cost_lots",
     "load_inventory_value_snapshot",
+    "update_consumable_movement_cost",
     "update_inbound_lot_cost",
 ]

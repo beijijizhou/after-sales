@@ -8,7 +8,8 @@ from utils.auth import get_current_operator_name
 
 
 def render_create_skus(
-    supabase, department, categories, brands, materials
+    supabase, department, categories, brands, materials,
+    selected_category="",
 ):
     st.subheader(t("新增 SKU"))
     department_categories = categories[
@@ -20,10 +21,13 @@ def render_create_skus(
         return
 
     category_names = department_categories["name"].tolist()
+    category_key = f"create_sku_category_{department['id']}"
+    if selected_category in category_names:
+        st.session_state[category_key] = selected_category
     category_name = st.selectbox(
         t("品类") + " *",
         category_names,
-        key=f"create_sku_category_{department['id']}",
+        key=category_key,
     )
     category = department_categories[
         department_categories["name"] == category_name

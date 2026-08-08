@@ -3,11 +3,15 @@ from hashlib import sha1
 import pandas as pd
 import streamlit as st
 
+from utils.sku_sorting import sort_sku_rows
+
 
 SOURCE_LABELS = {
     "opening": "期初库存",
     "bulk": "正常入库",
     "transfer": "临时调货",
+    "consumable_inbound": "耗材入库",
+    "consumable_adjustment": "耗材库存修正",
 }
 
 
@@ -114,7 +118,7 @@ def _batch_detail(finance_df, batch_key):
     rows["source_type"] = rows["source_type"].map(SOURCE_LABELS).fillna(
         rows["source_type"]
     )
-    return rows.rename(columns={
+    detail = rows.rename(columns={
         "date": "入库日期", "source_type": "来源",
         "department": "部门", "category": "品类", "brand": "品牌",
         "material": "材质", "color": "颜色", "size": "尺码/型号",
@@ -122,7 +126,8 @@ def _batch_detail(finance_df, batch_key):
     })[[
         "入库日期", "来源", "部门", "品类", "品牌", "材质", "颜色",
         "尺码/型号", "数量", "单位成本", "金额",
-    ]].sort_values(["材质", "颜色", "尺码/型号"]).reset_index(drop=True)
+    ]]
+    return sort_sku_rows(detail)
 
 
 def _summarize_values(values):

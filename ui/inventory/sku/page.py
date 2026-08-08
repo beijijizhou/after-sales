@@ -18,6 +18,7 @@ from utils.auth import get_current_operator_name
 
 def render_sku_management(
     supabase, selected_department, can_manage, sku_filters=None,
+    selected_category="",
 ):
     try:
         departments, categories, brands = load_master_data(supabase)
@@ -57,7 +58,8 @@ def render_sku_management(
         _render_catalog(supabase, department_code, sku_filters)
     with create_tab:
         render_create_skus(
-            supabase, department, categories, brands, materials
+            supabase, department, categories, brands, materials,
+            selected_category=selected_category,
         )
     with edit_tab:
         _render_editor(

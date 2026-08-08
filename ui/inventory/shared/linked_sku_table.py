@@ -1,0 +1,143 @@
+import pandas as pd
+import streamlit as st
+
+from db.inventory import SIZE_COLUMNS
+
+
+def linked_sku_options(
+    sku_df, material=None, brand=None, color=None,
+):
+    source = pd.DataFrame(sku_df).copy()
+    if source.empty:
+        return {"materials": [], "brands": [], "colors": [], "sizes": []}
+    if material:
+        source = source[source["material"] == material]
+    brands = _values(source, "brand")
+    if brand:
+        source = source[source["brand"] == brand]
+    colors = _ordered(_values(source, "color"), ["黑", "白"])
+    if color:
+        source = source[source["color"] == color]
+    sizes = _ordered(_values(source, "size"), SIZE_COLUMNS)
+    return {
+        "materials": _values(sku_df, "material"),
+        "brands": brands,
+        "colors": colors,
+        "sizes": sizes,
+    }
+
+
+def render_linked_sku_sales_table(sku_df, key_prefix):
+    row_ids_key = f"{key_prefix}_row_ids"
+    next_id_key = f"{key_prefix}_next_id"
+    if row_ids_key not in st.session_state:
+        st.session_state[row_ids_key] = [0]
+        st.session_state[next_id_key] = 1
+
+    widths = [1.15, 1.15, 0.8, 0.75, 0.75, 0.85, 0.8, 0.35]
+    headers = st.columns(widths)
+    for column, label in zip(
+        headers,
+        ["材质", "品牌", "颜色", "尺码", "数量", "单价", "金额", ""],
+    ):
+        column.markdown(f"**{label}**")
+
+    records = []
+    remove_id = None
+    for row_id in list(st.session_state[row_ids_key]):
+        columns = st.columns(widths, vertical_alignment="bottom")
+        all_options = linked_sku_options(sku_df)
+        material = _linked_selectbox(
+            columns[0], "材质", all_options["materials"],
+            f"{key_prefix}_{row_id}_material",
+        )
+        material_options = linked_sku_options(sku_df, material)
+        brand = _linked_selectbox(
+            columns[1], "品牌", material_options["brands"],
+            f"{key_prefix}_{row_id}_brand",
+        )
+        brand_options = linked_sku_options(sku_df, material, brand)
+        color = _linked_selectbox(
+            columns[2], "颜色", brand_options["colors"],
+            f"{key_prefix}_{row_id}_color",
+        )
+        color_options = linked_sku_options(
+            sku_df, material, brand, color
+        )
+        size = _linked_selectbox(
+            columns[3], "尺码", color_options["sizes"],
+            f"{key_prefix}_{row_id}_size",
+        )
+        quantity = columns[4].number_input(
+            "数量", min_value=0, step=1, label_visibility="collapsed",
+            key=f"{key_prefix}_{row_id}_quantity",
+        )
+        unit_price = columns[5].number_input(
+            "单价", min_value=0.0, step=0.01, format="%.2f",
+            label_visibility="collapsed",
+            key=f"{key_prefix}_{row_id}_unit_price",
+        )
+        amount = round(int(quantity) * float(unit_price), 2)
+        columns[6].markdown(f"${amount:,.2f}")
+        if columns[7].button(
+            "×", key=f"{key_prefix}_{row_id}_remove",
+            help="删除这一行",
+        ):
+            remove_id = row_id
+        records.append({
+            "材质": material,
+            "品牌": brand,
+            "颜色": color,
+            "尺码": size,
+            "数量": int(quantity),
+            "单价": float(unit_price),
+            "金额": amount,
+        })
+
+    if remove_id is not None:
+        remaining = [
+            value for value in st.session_state[row_ids_key]
+            if value != remove_id
+        ]
+        if not remaining:
+            next_id = int(st.session_state[next_id_key])
+            remaining = [next_id]
+            st.session_state[next_id_key] = next_id + 1
+        st.session_state[row_ids_key] = remaining
+        st.rerun()
+    if st.button("+ 添加销售 SKU", key=f"{key_prefix}_add_row"):
+        next_id = int(st.session_state[next_id_key])
+        st.session_state[row_ids_key].append(next_id)
+        st.session_state[next_id_key] = next_id + 1
+        st.rerun()
+    return pd.DataFrame(records)
+
+
+def _linked_selectbox(container, label, options, key):
+    if not options:
+        container.text_input(
+            label, value="", disabled=True, label_visibility="collapsed",
+            key=f"{key}_empty",
+        )
+        return ""
+    if st.session_state.get(key) not in options:
+        st.session_state[key] = options[0]
+    return container.selectbox(
+        label, options, key=key, label_visibility="collapsed",
+    )
+
+
+def _values(frame, column):
+    source = pd.DataFrame(frame)
+    if source.empty or column not in source:
+        return []
+    return sorted({
+        str(value).strip() for value in source[column].dropna()
+        if str(value).strip()
+    })
+
+
+def _ordered(values, preferred):
+    values = set(values)
+    result = [value for value in preferred if value in values]
+    return [*result, *sorted(values - set(result))]

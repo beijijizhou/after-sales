@@ -3,13 +3,19 @@ from hashlib import sha1
 import pandas as pd
 import streamlit as st
 
-from db.finance import update_inbound_lot_cost
+from db.finance import (
+    update_consumable_movement_cost,
+    update_inbound_lot_cost,
+)
+from utils.sku_sorting import sort_sku_rows
 
 
 SOURCE_LABELS = {
     "opening": "初始化库存",
     "bulk": "正常入库",
     "transfer": "临时调货",
+    "consumable_inbound": "耗材入库",
+    "consumable_adjustment": "耗材库存修正",
 }
 
 
@@ -88,8 +94,17 @@ def render_inbound_cost_editor(supabase, finance_df):
     if not changes:
         st.warning("请先修改需要保存的单位成本")
         return
+    source_by_record = prepared.set_index("record_id")[
+        "source_type"
+    ].to_dict()
     for cost_lot_id, unit_cost in changes:
-        update_inbound_lot_cost(supabase, cost_lot_id, unit_cost)
+        source_type = str(source_by_record.get(cost_lot_id) or "")
+        if source_type.startswith("consumable_"):
+            update_consumable_movement_cost(
+                supabase, cost_lot_id, unit_cost
+            )
+        else:
+            update_inbound_lot_cost(supabase, cost_lot_id, unit_cost)
     st.session_state["finance_cost_saved"] = (
         f"已更新这个批次中 {len(changes)} 个 SKU 的成本"
     )
@@ -207,7 +222,9 @@ def _build_editor_data(finance_df):
         "材质", "颜色", "尺码/型号", "数量", "成本状态", "单位成本",
     ]]
     result["_missing_order"] = (result["成本状态"] != "缺成本").astype(int)
-    return result.sort_values(
-        ["_missing_order", "日期", "部门", "品类", "品牌", "材质", "颜色", "尺码/型号"],
-        ascending=[True, False, True, True, True, True, True, True],
-    ).drop(columns=["_missing_order"]).reset_index(drop=True)
+    result = sort_sku_rows(
+        result,
+        leading=["_missing_order", "日期"],
+        leading_ascending=[True, False],
+    )
+    return result.drop(columns=["_missing_order"]).reset_index(drop=True)

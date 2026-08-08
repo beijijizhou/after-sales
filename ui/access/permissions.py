@@ -1,57 +1,59 @@
 import pandas as pd
 
-from utils.auth.constants import (
-    ALL_PERMISSIONS,
-    ROLE_LABELS,
-    ROLE_PERMISSIONS,
-)
+
+def role_labels(roles):
+    if roles.empty:
+        return {}
+    return dict(zip(
+        roles["role_key"].astype(str),
+        roles["role_name"].astype(str),
+    ))
 
 
-PERMISSION_LABELS = {
-    "can_view_logistics": "查看物流查询",
-    "can_manage_logistics": "同步ERP、OCR与物流管理",
-    "can_manage_access": "管理用户角色",
-    "can_view_app": "查看售后查询",
-    "can_register": "使用注册页面",
-    "can_view_qa": "查看质检",
-    "can_view_hotstamp": "查看烫印",
-    "can_view_platform": "查看平台",
-    "can_view_operation_tracking": "查看问题件追踪",
-    "can_mark_barcode_operations": "处理问题件",
-    "can_view_production_data": "查看生产数据",
-    "can_view_inventory": "查看库存",
-    "can_edit_inventory": "修改库存",
-    "can_manage_sku": "管理SKU",
-    "can_view_container": "查看货柜",
-    "can_edit_container": "修改货柜",
-    "can_view_consumables": "查看耗材",
-    "can_edit_consumables": "修改耗材",
-    "can_manage_consumable_sku": "管理耗材SKU",
-    "can_report_consumables": "登记耗材",
-    "can_input_after_sales": "录入售后",
-    "can_view_cost": "查看成本",
-    "can_manage_cost": "管理成本",
-    "can_view_finance_reports": "查看财务报表",
-    "can_view_finance_dashboard": "查看财务页面",
-    "can_use_image_stretch": "使用图片处理",
-}
+def role_permission_map(role_permissions):
+    if role_permissions.empty:
+        return {}
+    return {
+        str(role): set(group["permission_key"].astype(str))
+        for role, group in role_permissions.groupby("role_key")
+    }
 
 
-def permission_matrix():
+def permission_labels(catalog):
+    if catalog.empty:
+        return {}
+    return dict(zip(
+        catalog["permission_key"].astype(str),
+        catalog["permission_name"].astype(str),
+    ))
+
+
+def permission_names(permissions, catalog):
+    labels = permission_labels(catalog)
+    return "、".join(labels.get(item, item) for item in permissions)
+
+
+def permission_matrix(roles, catalog, role_permissions):
+    labels = role_labels(roles)
+    assigned = role_permission_map(role_permissions)
+    ordered_permissions = (
+        catalog.sort_values("sort_order")[
+            ["permission_key", "permission_name"]
+        ].to_dict("records")
+        if not catalog.empty else []
+    )
     rows = []
-    for role, label in ROLE_LABELS.items():
-        permissions = ROLE_PERMISSIONS.get(role, set())
+    for role in roles.to_dict("records"):
+        role_key = str(role["role_key"])
         rows.append({
-            "角色": label,
+            "角色": labels.get(role_key, role_key),
             **{
-                PERMISSION_LABELS.get(permission, permission): (
-                    "✓" if permission in permissions else ""
+                str(permission["permission_name"]): (
+                    "✓"
+                    if str(permission["permission_key"])
+                    in assigned.get(role_key, set()) else ""
                 )
-                for permission in sorted(ALL_PERMISSIONS)
+                for permission in ordered_permissions
             },
         })
     return pd.DataFrame(rows)
-
-
-def permission_names(permissions):
-    return "、".join(PERMISSION_LABELS.get(item, item) for item in permissions)

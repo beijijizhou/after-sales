@@ -21,6 +21,7 @@ from ui.inventory.shared import (
     filter_inventory_rows,
     render_inventory_dimension_filters,
 )
+from utils.sku_sorting import sort_sku_rows
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -135,12 +136,12 @@ def _render_inventory_report(
     )
     if missing:
         st.warning(
-            f"所选月份有 {missing:,} 件进出库记录缺少成本，"
+            f"所选月份有 {missing:,} 个库存单位的进出库记录缺少成本，"
             "本月金额暂未完整。请打开“成本维护”，填写对应入库批次的单位成本。"
         )
     if inventory_value["missing_cost_quantity"]:
         st.warning(
-            f"当前库存有 {inventory_value['missing_cost_quantity']:,} 件缺少成本，"
+            f"当前库存有 {inventory_value['missing_cost_quantity']:,} 个库存单位缺少成本，"
             "库存总成本暂未包含这些商品。请打开“成本维护”，"
             "优先处理标记为“缺成本”的批次。"
         )
@@ -251,6 +252,11 @@ def _render_cost_detail(finance_df):
         "日期", "类型", "部门", "品类", "品牌", "材质",
         "颜色", "尺码/型号", "数量", "单位成本", "金额", "成本来源",
     ]
+    detail = sort_sku_rows(
+        detail,
+        leading=["日期", "类型"],
+        leading_ascending=[False, True],
+    )
     st.dataframe(
         detail[visible] if not detail.empty else detail,
         width="stretch",

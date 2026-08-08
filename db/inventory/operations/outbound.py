@@ -148,6 +148,91 @@ def convert_packages_to_adjustments(
     return pd.DataFrame(rows)
 
 
+def build_outbound_sku_lookup(sku_df):
+    lookup = {}
+    for row in pd.DataFrame(sku_df).to_dict("records"):
+        if row.get("is_active") is False:
+            continue
+        identity = {
+            key: str(row.get(key) or "").strip()
+            for key in ["brand", "material", "color", "size"]
+        }
+        if not all(identity.values()):
+            continue
+        label = " / ".join(identity.values())
+        lookup[label] = identity
+    return dict(sorted(lookup.items()))
+
+
+def convert_sku_package_entries(
+    entry_df,
+    sku_lookup,
+    movement_date,
+    packaging_rules=None,
+    sku_packaging_rules=None,
+):
+    adjustment_rows = []
+    preview_rows = []
+    for source in pd.DataFrame(entry_df).to_dict("records"):
+        sku_label = str(source.get("SKU") or "").strip()
+        if not sku_label:
+            sku_label = " / ".join(
+                str(source.get(column) or "").strip()
+                for column in ["品牌", "材质", "颜色", "尺码"]
+            )
+        sku = sku_lookup.get(sku_label)
+        count_value = pd.to_numeric(
+            source.get("包装数量"), errors="coerce"
+        )
+        package_count = int(count_value) if pd.notna(count_value) else 0
+        package_type = str(source.get("包装单位") or "Box").strip()
+        if sku is None or package_count <= 0:
+            continue
+        explicit_units = pd.to_numeric(source.get("箱规"), errors="coerce")
+        units = int(explicit_units) if pd.notna(explicit_units) and explicit_units > 0 else None
+        if units is None:
+            units = get_special_package_units(
+                sku_packaging_rules,
+                sku["brand"], sku["material"], sku["color"], sku["size"],
+                package_type,
+            )
+        if units is None:
+            units = get_units_per_package(
+                sku["brand"], package_type, sku["size"], packaging_rules
+            )
+        total = package_count * units
+        preview_rows.append({
+            "品牌": sku["brand"],
+            "材质": sku["material"],
+            "颜色": sku["color"],
+            "尺码": sku["size"],
+            "包装单位": package_type,
+            "箱规": units,
+            "包装数量": package_count,
+            "总件数": total,
+        })
+        adjustment_rows.append({
+            "日期": movement_date,
+            "操作": "扣减",
+            "品牌": sku["brand"],
+            "材质": sku["material"],
+            "颜色": sku["color"],
+            "尺码": sku["size"],
+            "数量": total,
+            "成本": pd.NA,
+            "备注": "仓库每日出货",
+        })
+    adjustments = pd.DataFrame(adjustment_rows)
+    if not adjustments.empty:
+        adjustments = adjustments.groupby(
+            ["日期", "操作", "品牌", "材质", "颜色", "尺码", "备注"],
+            as_index=False,
+            sort=False,
+        )["数量"].sum()
+        adjustments["成本"] = pd.NA
+    return adjustments, pd.DataFrame(preview_rows)
+
+
 def load_container_outbound_specs(supabase, department, category):
     query = (
         supabase.table("inventory_container_imports")
@@ -170,6 +255,40 @@ def load_container_outbound_specs(supabase, department, category):
             label = f"{material}/{brand}/Box/{units}件"
             specs[label] = (brand, material, "Box", units)
     return specs
+
+
+def load_sku_outbound_specs(
+    supabase, department, category, existing_specs=None,
+):
+    query = (
+        supabase.table("inventory_items")
+        .select("brand,material,is_active")
+        .eq("department", department)
+    )
+    if category:
+        query = query.eq("category", category)
+    rows = query.limit(5000).execute().data or []
+    return build_sku_outbound_specs(rows, existing_specs)
+
+
+def build_sku_outbound_specs(rows, existing_specs=None):
+    """Add a basic box option for active SKU brand/material pairs."""
+    covered_pairs = {
+        (str(value[0]).strip(), str(value[1]).strip())
+        for value in (existing_specs or {}).values()
+        if len(value) >= 2
+    }
+    specs = {}
+    for row in rows:
+        if row.get("is_active") is False:
+            continue
+        brand = str(row.get("brand") or "").strip()
+        material = str(row.get("material") or "").strip()
+        if not brand or not material or (brand, material) in covered_pairs:
+            continue
+        label = f"{material}/{brand}/Box"
+        specs[label] = (brand, material, "Box")
+    return dict(sorted(specs.items()))
 
 
 def extract_size_box_units(note, size):

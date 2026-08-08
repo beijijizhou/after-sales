@@ -28,8 +28,28 @@ class ConsumableInventoryTests(unittest.TestCase):
         rows, preview = _normalize_entry_rows(edited, labels, False)
 
         self.assertEqual(rows[0]["quantity"], 24)
-        self.assertEqual(preview.iloc[0]["箱数"], 2)
+        self.assertEqual(preview.iloc[0]["本次变动（箱）"], 2)
         self.assertEqual(preview.iloc[0]["换算数量"], 24)
+
+    def test_issue_preview_shows_current_change_and_resulting_boxes(self):
+        edited = pd.DataFrame([{
+            "耗材 SKU": "墨水｜白色墨水", "箱数": 2, "备注": "",
+        }])
+        labels = {
+            "墨水｜白色墨水": {
+                "id": "item-1", "current_quantity": 100,
+                "base_unit": "瓶", "package_unit": "箱",
+                "units_per_package": 20,
+            }
+        }
+
+        _, preview = _normalize_entry_rows(
+            edited, labels, False, direction=-1
+        )
+
+        self.assertEqual(preview.iloc[0]["当前库存（箱）"], 5)
+        self.assertEqual(preview.iloc[0]["本次变动（箱）"], -2)
+        self.assertEqual(preview.iloc[0]["操作后库存（箱）"], 3)
 
     def test_latest_cost_uses_newest_priced_movement(self):
         movements = pd.DataFrame([

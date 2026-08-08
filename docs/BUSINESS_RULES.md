@@ -43,6 +43,24 @@
 - Consumables are counted and entered in boxes across the UI. The ledger keeps
   base-unit quantities internally and uses each SKU's required units-per-box
   conversion for accurate inventory arithmetic.
+- Customer sales outbound is separate from warehouse production issue. It
+  stores reusable company/person customer records, the seller company profile,
+  an immutable Invoice header and priced SKU lines, and one linked inventory
+  movement batch. Invoice issue and inventory deduction must commit in one
+  database transaction so neither can exist without the other.
+- Customer sales outbound is a standalone inventory navigation page, not a tab
+  inside production inventory. Its reusable SKU selector follows the inventory
+  identity dependency `material -> brand -> color -> size`; each downstream
+  option is limited to active combinations that exist under the selections,
+  and apparel sizes retain the business order `S` through `5XL`.
+- Customer sales prices are entered for the sale and do not modify inventory
+  cost. Issued Invoices retain seller/customer address snapshots through their
+  linked records and remain downloadable from batch history. Corrections use
+  an explicit void/reversal workflow rather than overwriting ledger history.
+- A customer Invoice must follow `edit -> preview -> explicit confirmation ->
+  issue`. Previewing never changes inventory. Any change to seller, customer,
+  SKU, quantity, price, date, number, or note invalidates the preview and
+  requires a new preview before the inventory transaction can be confirmed.
 
 ## Containers
 
@@ -343,6 +361,12 @@ forecast as an estimate.
   page. Role changes and account activation changes require an explicit preview
   and confirmation, are written to an append-only audit trail, and must prevent
   an administrator from disabling or demoting their own account.
+- Roles and role-permission composition are database-managed business records,
+  not Python-defined business mappings. An access administrator can create a
+  role and freely combine the registered permissions in the role-configuration
+  tab. User assignment, permission matrices, login sessions, filters, and
+  navigation use those persisted combinations. Every role creation or update
+  stores before/after permission snapshots, operator, and timestamp.
 - Visitor access requires no login.
 - Supervisor inherits public visibility and can manage problem tracking.
 - Producer focuses on production and consumable reporting.
@@ -351,4 +375,6 @@ forecast as an estimate.
 - Finance can view cost and finance reports but does not receive broad admin
   access automatically.
 - Admin has all permissions and is the only role with unrestricted cost access.
-- Permission composition is defined in `utils/auth/constants.py`.
+- `utils/auth/constants.py` defines technical permission identifiers and page
+  requirements only. Runtime role composition comes from `app_roles` and
+  `app_role_permissions` in the database.

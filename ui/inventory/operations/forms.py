@@ -22,6 +22,9 @@ from ui.inventory.operations.adjustment_costs import (
     render_adjustment_totals,
     render_size_cost_editor,
 )
+from ui.inventory.operations.adjustment_preview import (
+    render_adjustment_stock_comparison,
+)
 from ui.inventory.operations.model_forms import (
     render_model_adjust_form,
     render_model_sku_form,
@@ -75,6 +78,9 @@ def render_adjust_form(supabase, department, category, inventory_df):
             f"{current_date.isoformat()}_{form_version}_"
             f"{_adjustment_scope_key(department, category, brands, materials, colors)}"
         ),
+    )
+    render_adjustment_stock_comparison(
+        inventory_df, edited_df, action
     )
     cost_df = None
     if show_cost and action == "增加":

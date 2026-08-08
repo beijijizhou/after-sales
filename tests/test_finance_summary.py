@@ -10,7 +10,10 @@ from db.finance.summary import (
     build_finance_overview,
     build_inventory_value_overview,
 )
-from db.finance.repository import _normalize_cost_rows
+from db.finance.repository import (
+    _normalize_cost_rows,
+    normalize_consumable_finance_rows,
+)
 from ui.finance.cost_editor import build_cost_batch_summary, find_cost_changes
 from ui.finance.inbound_batches import build_inbound_batch_summary
 from ui.finance.page import _build_two_week_daily_amounts
@@ -132,6 +135,50 @@ class FinanceSummaryTests(unittest.TestCase):
         )
         self.assertEqual(str(result.iloc[0]["date"]), "2026-07-29")
         self.assertEqual(result.iloc[0]["amount"], 13)
+
+    def test_consumable_finance_uses_latest_cost_for_outbound(self):
+        departments = pd.DataFrame([{"id": "d1", "code": "DTF"}])
+        items = pd.DataFrame([{
+            "id": "i1", "department_id": "d1", "category": "墨水",
+            "name": "白色墨水", "specification": "", "brand": "",
+            "base_unit": "瓶", "package_unit": "箱",
+            "units_per_package": 20, "current_quantity": 720,
+        }])
+        batches = pd.DataFrame([
+            {
+                "id": "b-out", "department_id": "d1",
+                "movement_type": "issue", "reversal_of_batch_id": None,
+            },
+            {
+                "id": "b-in", "department_id": "d1",
+                "movement_type": "inbound", "reversal_of_batch_id": None,
+            },
+        ])
+        movements = pd.DataFrame([
+            {
+                "id": "m-out", "batch_id": "b-out", "item_id": "i1",
+                "movement_date": "2026-08-06", "quantity_change": -120,
+                "unit_cost": None, "created_at": "2026-08-06T12:00:00Z",
+            },
+            {
+                "id": "m-in", "batch_id": "b-in", "item_id": "i1",
+                "movement_date": "2026-08-07", "quantity_change": 840,
+                "unit_cost": 10, "created_at": "2026-08-07T12:00:00Z",
+            },
+        ])
+
+        result = normalize_consumable_finance_rows(
+            departments, items, batches, movements,
+            date(2026, 8, 1), date(2026, 9, 1),
+        )
+
+        outbound = result[result["direction"] == "出库"].iloc[0]
+        self.assertEqual(outbound["category"], "DTF耗材")
+        self.assertEqual(outbound["material"], "墨水")
+        self.assertEqual(outbound["color"], "白色墨水")
+        self.assertEqual(outbound["unit_cost"], 10)
+        self.assertEqual(outbound["amount"], 1200)
+        self.assertFalse(outbound["missing_cost"])
 
     def test_inbound_cost_batches_group_skus_and_show_latest_first(self):
         rows = pd.DataFrame([

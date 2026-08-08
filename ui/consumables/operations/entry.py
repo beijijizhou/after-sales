@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from db.consumables import apply_consumable_batch
-from ui.consumables.units import boxes_to_base, package_size
+from ui.consumables.units import boxes_to_base, package_size, to_boxes
 from utils.auth import get_current_operator_name
 
 
@@ -87,7 +87,10 @@ def render_movement_entry(
 
     try:
         rows, preview = _normalize_entry_rows(
-            edited, label_to_row, show_cost and movement_label == "入库"
+            edited,
+            label_to_row,
+            show_cost and movement_label == "入库",
+            direction=1 if movement_label == "入库" else -1,
         )
     except ValueError as error:
         st.error(str(error))
@@ -98,7 +101,9 @@ def render_movement_entry(
         st.dataframe(
             preview, width="stretch", hide_index=True,
             column_config={
-                "箱数": st.column_config.NumberColumn(format="%.2f"),
+                "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+                "本次变动（箱）": st.column_config.NumberColumn(format="%+.2f"),
+                "操作后库存（箱）": st.column_config.NumberColumn(format="%.2f"),
                 "单位成本": st.column_config.NumberColumn(format="$%.4f"),
             },
         )
@@ -145,7 +150,9 @@ def _build_sku_labels(items_df):
     return list(labels), labels
 
 
-def _normalize_entry_rows(edited, label_to_row, include_cost):
+def _normalize_entry_rows(
+    edited, label_to_row, include_cost, direction=1,
+):
     records, preview = [], []
     for row in edited.to_dict("records"):
         label = row.get("耗材 SKU")
@@ -167,9 +174,18 @@ def _normalize_entry_rows(edited, label_to_row, include_cost):
         if include_cost and not pd.isna(unit_cost):
             record["unit_cost"] = float(unit_cost)
         records.append(record)
+        current_quantity = pd.to_numeric(
+            item.get("current_quantity"), errors="coerce"
+        )
+        current_quantity = 0 if pd.isna(current_quantity) else float(current_quantity)
+        signed_quantity = actual_quantity * (1 if direction > 0 else -1)
         preview.append({
             "耗材 SKU": label,
-            "箱数": float(quantity),
+            "当前库存（箱）": to_boxes(current_quantity, item),
+            "本次变动（箱）": float(quantity) * (1 if direction > 0 else -1),
+            "操作后库存（箱）": to_boxes(
+                current_quantity + signed_quantity, item
+            ),
             "换算数量": actual_quantity,
             "换算单位": item["base_unit"],
             **({"单位成本": record.get("unit_cost")} if include_cost else {}),

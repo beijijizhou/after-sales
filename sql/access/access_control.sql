@@ -1,6 +1,6 @@
 -- Access control foundation for the Streamlit app.
--- Database stores only user identity and role.
--- Role permissions are defined in utils/auth/constants.py.
+-- Database stores user identity and the assigned role key.
+-- Then install role_management/01_schema.sql through 06_login_and_grants.sql.
 
 alter table public.users
 add column if not exists role text not null default 'visitor';
@@ -10,15 +10,6 @@ add column if not exists is_active boolean not null default true;
 
 alter table public.users
 drop constraint if exists user_role_check;
-
-alter table public.users
-add constraint user_role_check
-check (
-    role in (
-        'visitor', 'supervisor', 'producer', 'warehouse',
-        'after_sales', 'finance', 'admin'
-    )
-);
 
 drop function if exists public.get_app_user_login(text);
 

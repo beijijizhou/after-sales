@@ -33,9 +33,12 @@ calibration remain restricted to `after_sales` and `admin`. Adding secrets does
 not grant page access; each employee still needs an application account with
 one of those roles.
 
-Run `sql/access/02_role_management.sql` before using the admin-only permissions
-page. It installs the audited role/status update function and append-only role
-change history.
+Before using the admin-only permissions page, run the six scripts in
+`sql/access/role_management/` in numeric order. Its `README.md` contains the
+installation and verification sequence. These migrations install the dynamic
+role and permission catalog, audited user-role updates, administrator-created
+role configuration, database-backed login permissions, and both append-only
+audit histories.
 
 ## S2B limitation
 

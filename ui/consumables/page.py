@@ -43,6 +43,35 @@ def render_consumables_page(supabase):
     department_id = departments.loc[
         departments["code"] == department_code, "id"
     ].iloc[0]
+    _render_department_workspace(
+        supabase, department_code, department_id
+    )
+
+
+def render_consumable_department_workspace(supabase, department_code):
+    """Render the complete consumables workflow for a selected department."""
+    saved_message = st.session_state.pop("consumable_saved_message", None)
+    if saved_message:
+        st.success(saved_message)
+    try:
+        departments = load_departments(supabase)
+    except Exception as error:
+        st.error(f"耗材数据加载失败：{error}")
+        return
+    department_rows = departments[
+        departments["code"] == department_code
+    ]
+    if department_rows.empty:
+        st.warning("当前部门尚未建立耗材库存资料。")
+        return
+    _render_department_workspace(
+        supabase, department_code, department_rows.iloc[0]["id"]
+    )
+
+
+def _render_department_workspace(
+    supabase, department_code, department_id,
+):
     try:
         items = load_consumable_items(supabase, department_id)
         batches = load_consumable_batches(supabase, department_id)
