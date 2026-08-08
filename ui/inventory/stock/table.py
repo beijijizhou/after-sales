@@ -10,6 +10,13 @@ from ui.inventory.stock.table_filters import render_inventory_table_filters
 
 
 def render_inventory_view_mode(category, inventory_df):
+    if category == "彩色短袖":
+        return st.segmented_control(
+            "彩色短袖库存显示规则",
+            ["跨品牌合并", "按品牌查看"],
+            default="跨品牌合并",
+            key="inventory_stock_view_mode_colored",
+        )
     has_black_white = (
         category == "黑白短袖"
         or (

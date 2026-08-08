@@ -219,6 +219,45 @@ class InventoryDashboardTests(unittest.TestCase):
             ],
         )
 
+    def test_uv_preview_marks_iphone_outside_statistics_and_deduction(self):
+        uv = AUTOMATIC_DAILY_FLOWS[1]
+        preview_rows = pd.DataFrame([
+            {
+                "表格产品": "Tie_2030", "当日消耗": 2000,
+                "预计扣减": 2000, "状态": "可扣减",
+            },
+            {
+                "表格产品": "Iphone", "当日消耗": 500,
+                "预计扣减": 0, "状态": "待分配 SKU（本次不扣）",
+            },
+        ])
+        with (
+            patch(
+                "automation.sync.daily_inventory_consumption."
+                "load_uv_daily_consumption_total", return_value=0,
+            ),
+            patch(
+                "automation.sync.daily_inventory_consumption.load_daily_summary",
+                return_value={"Tie_2030": 2000, "Iphone": 500},
+            ),
+            patch(
+                "automation.sync.daily_inventory_consumption.load_inventory_items",
+                return_value=pd.DataFrame(),
+            ),
+            patch(
+                "automation.sync.daily_inventory_consumption.build_daily_sync_preview",
+                return_value=preview_rows,
+            ),
+        ):
+            result = _load_flow_preview(
+                uv, object(), date(2026, 8, 7), object(), "sheet"
+            )
+
+        self.assertEqual(result.state, "ready")
+        self.assertEqual(result.quantity, 2000)
+        self.assertIn("Iphone（手机壳） 500 件", result.message)
+        self.assertIn("未进入统计及库存扣减", result.message)
+
     def test_applied_result_reports_refreshed_completion_state(self):
         movement_date = date(2026, 8, 3)
 

@@ -9,6 +9,7 @@ from .repository import (
     void_sales_invoice,
 )
 from .service import (
+    allocate_brand_merged_sales,
     build_invoice_number,
     build_sales_draft_signature,
     build_sales_adjustments,
@@ -17,6 +18,7 @@ from .service import (
 )
 
 __all__ = [
+    "allocate_brand_merged_sales",
     "build_invoice_number",
     "build_sales_adjustments",
     "build_sales_draft_signature",

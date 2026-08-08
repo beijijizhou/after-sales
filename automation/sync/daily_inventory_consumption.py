@@ -317,16 +317,35 @@ def _load_flow_preview(
     rows = build_daily_sync_preview(
         supabase, summary, movement_date, inventory
     )
+    excluded = rows[rows["状态"] == "待分配 SKU（本次不扣）"]
+    exclusion_note = _uv_exclusion_note(excluded)
     blocking = rows[~rows["状态"].isin(SYNCABLE_STATUSES)]
     quantity = int(pd.to_numeric(
         rows["预计扣减"], errors="coerce"
     ).fillna(0).sum())
     if not blocking.empty:
-        message = "；".join(
+        problems = "；".join(
             f"{row['表格产品']}：{row['状态']}"
             for row in blocking.to_dict("records")
         )
+        message = "；".join(filter(None, [problems, exclusion_note]))
         return AutomaticDailyPreview(
             flow, "blocked", quantity, rows, message
         )
-    return AutomaticDailyPreview(flow, "ready", quantity, rows)
+    return AutomaticDailyPreview(
+        flow, "ready", quantity, rows, exclusion_note
+    )
+
+
+def _uv_exclusion_note(excluded_rows):
+    if excluded_rows is None or excluded_rows.empty:
+        return ""
+    labels = []
+    for row in excluded_rows.to_dict("records"):
+        product = str(row.get("表格产品") or "未识别产品").strip()
+        quantity = int(pd.to_numeric(
+            pd.Series([row.get("当日消耗", 0)]), errors="coerce"
+        ).fillna(0).iloc[0])
+        product_label = f"{product}（手机壳）" if product == "Iphone" else product
+        labels.append(f"{product_label} {quantity:,} 件")
+    return "、".join(labels) + "未进入统计及库存扣减"

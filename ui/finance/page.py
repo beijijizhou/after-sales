@@ -17,6 +17,9 @@ from db.finance import (
 )
 from ui.finance.cost_editor import render_inbound_cost_editor
 from ui.finance.inbound_batches import render_inbound_batch_browser
+from ui.production_data.uv_monthly_summary import (
+    render_uv_monthly_summary,
+)
 from ui.inventory.shared import (
     filter_inventory_rows,
     render_inventory_dimension_filters,
@@ -60,6 +63,7 @@ def render_finance_page(supabase):
         edit_tab,
         detail_tab,
         container_tab,
+        uv_tab,
     ) = st.tabs([
         "商品库存月报",
         "部门 / 品类",
@@ -67,6 +71,7 @@ def render_finance_page(supabase):
         "成本维护",
         "流水明细",
         "货柜采购",
+        "UV生产月汇总",
     ])
     with inventory_tab:
         _render_inventory_report(
@@ -83,6 +88,8 @@ def render_finance_page(supabase):
         _render_cost_detail(finance_df)
     with container_tab:
         _render_container_report(container_df, month)
+    with uv_tab:
+        render_uv_monthly_summary(default_month=month)
 
 
 def _render_month_selector():

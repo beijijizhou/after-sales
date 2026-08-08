@@ -9,6 +9,11 @@ from db.inventory.operations.adjustments import apply_adjustment_rows
 
 
 DATE_TAB_PATTERN = re.compile(r"^\d{4}$")
+MONTHLY_SUMMARY_CANDIDATE_RANGES = (
+    "P17:Q35",
+    "M17:N35",
+    "P16:Q40",
+)
 
 
 @dataclass(frozen=True)
@@ -103,6 +108,45 @@ def load_daily_summary(
     return result
 
 
+def load_monthly_sku_summary(
+    sheets, spreadsheet_id, year, month,
+    candidate_ranges=MONTHLY_SUMMARY_CANDIDATE_RANGES,
+):
+    daily_rows = []
+    sku_totals = {}
+    tabs = _list_month_tabs(sheets, spreadsheet_id, year, month)
+    for movement_date, tab in tabs:
+        summary, selected_range, note = _load_daily_summary_from_candidates(
+            sheets,
+            spreadsheet_id,
+            movement_date,
+            tab,
+            candidate_ranges,
+        )
+        total_quantity = int(sum(summary.values()))
+        daily_rows.append({
+            "date": movement_date,
+            "sheet_name": tab,
+            "total_quantity": total_quantity,
+            "range": selected_range,
+            "status": "ok" if summary else "no_data",
+            "note": note,
+        })
+        for sku, quantity in summary.items():
+            sku_totals[sku] = sku_totals.get(sku, 0) + quantity
+    daily_df = pd.DataFrame(daily_rows)
+    if daily_df.empty:
+        daily_df = pd.DataFrame(columns=[
+            "date", "sheet_name", "total_quantity", "range", "status", "note",
+        ])
+    sku_df = pd.DataFrame([
+        {"sku": sku, "total_quantity": quantity}
+        for sku, quantity in sorted(sku_totals.items())
+    ])
+    missing_dates = _missing_month_dates(year, month, {day for day, _ in tabs})
+    return daily_df, sku_df, missing_dates
+
+
 def sync_usage_to_inventory(
     supabase, sku, daily_usage, created_by="system",
     reason_product_code="", reason_prefix="Google Sheets UV每日消耗",
@@ -177,6 +221,59 @@ def _summary_range_for_date(
     return selected
 
 
+def _load_daily_summary_from_candidates(
+    sheets, spreadsheet_id, movement_date, tab, candidate_ranges
+):
+    requested = [f"'{tab}'!{cell_range}" for cell_range in candidate_ranges]
+    values_by_range = sheets.batch_get_values(spreadsheet_id, requested)
+    best_summary = {}
+    best_range = candidate_ranges[0]
+    best_note = "未找到有效汇总区"
+    best_score = -1
+    for cell_range in candidate_ranges:
+        requested_range = f"'{tab}'!{cell_range}"
+        values = _range_values(values_by_range, tab, requested_range)
+        summary, note = _parse_summary_values(values)
+        score = len(summary)
+        if summary and score > best_score:
+            best_summary = summary
+            best_range = cell_range
+            best_note = note
+            best_score = score
+    return best_summary, best_range, best_note
+
+
+def _parse_summary_values(values):
+    result = {}
+    unmatched_quantity = 0
+    found_total = False
+    for row in values:
+        if len(row) < 2:
+            continue
+        product = str(row[0] or "").strip()
+        raw_quantity = row[1]
+        try:
+            quantity = int(float(raw_quantity or 0))
+        except (TypeError, ValueError):
+            continue
+        if quantity <= 0:
+            continue
+        if product == "总计":
+            found_total = True
+            continue
+        if product in {"材质", "操作人"}:
+            continue
+        if not product:
+            unmatched_quantity += quantity
+            continue
+        result[product] = quantity
+    note = "ok" if found_total else "missing_total"
+    if unmatched_quantity:
+        result["UNMAPPED"] = result.get("UNMAPPED", 0) + unmatched_quantity
+        note = f"{note};unmapped={unmatched_quantity}"
+    return result, note
+
+
 def _range_values(values_by_range, tab, requested_range):
     if requested_range in values_by_range:
         return values_by_range[requested_range]
@@ -187,6 +284,32 @@ def _range_values(values_by_range, tab, requested_range):
         ):
             return values
     return []
+
+
+def _list_month_tabs(sheets, spreadsheet_id, year, month):
+    tabs = []
+    prefix = f"{month:02d}"
+    for item in sheets.list_sheets(spreadsheet_id):
+        title = str(item.get("title") or "").strip()
+        if not DATE_TAB_PATTERN.fullmatch(title):
+            continue
+        if not title.startswith(prefix):
+            continue
+        movement_date = _tab_date(title, year)
+        tabs.append((movement_date, title))
+    return sorted(tabs)
+
+
+def _missing_month_dates(year, month, existing_dates):
+    month_start = date(year, month, 1)
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+    return [
+        day for day in pd.date_range(month_start, next_month, inclusive="left")
+        if day.date() not in existing_dates
+    ]
 
 
 def _existing_usage(supabase, sku, movement_date, reason_prefix):

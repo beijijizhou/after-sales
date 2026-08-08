@@ -393,6 +393,8 @@ def _render_automatic_daily_operation(
             f"{movement_date:%Y-%m-%d}｜{flow.label}｜"
             f"预计扣减 {preview.quantity:,} 件"
         ):
+            if preview.message:
+                st.info(preview.message)
             if preview.source_rows is not None:
                 st.markdown("**平台来源核对**")
                 st.caption(

@@ -5,6 +5,7 @@ import unittest
 import pandas as pd
 
 from db.inventory.sales import (
+    allocate_brand_merged_sales,
     build_invoice_number,
     build_sales_adjustments,
     build_sales_draft_signature,
@@ -15,6 +16,48 @@ from ui.inventory.sales.pdf_preview import render_pdf_pages
 
 
 class InventorySalesInvoiceTests(unittest.TestCase):
+    def test_colored_sale_combines_brands_and_keeps_real_movement_skus(self):
+        lines = pd.DataFrame([{
+            "品牌": "", "材质": "180g", "颜色": "粉色",
+            "尺码": "L", "数量": 10, "单价": 1.6,
+        }])
+        inventory = pd.DataFrame([
+            {"brand": "Haloo", "material": "180g", "color": "粉色",
+             "size": "L", "quantity": 8},
+            {"brand": "临时进货", "material": "180g", "color": "粉色",
+             "size": "L", "quantity": 4},
+        ])
+
+        adjustments, issues = allocate_brand_merged_sales(
+            lines, inventory, date(2026, 8, 8), "INV-TEST"
+        )
+
+        self.assertTrue(issues.empty)
+        self.assertEqual(int(adjustments["数量"].sum()), 10)
+        self.assertEqual(adjustments.iloc[0]["品牌"], "临时进货")
+        self.assertEqual(set(adjustments["品牌"]), {"临时进货", "Haloo"})
+
+    def test_colored_sale_shortage_uses_all_brand_inventory(self):
+        lines = pd.DataFrame([{
+            "品牌": "", "材质": "180g", "颜色": "绿色",
+            "尺码": "M", "数量": 20, "单价": 1.6,
+        }])
+        inventory = pd.DataFrame([
+            {"brand": "A", "material": "180g", "color": "绿色",
+             "size": "M", "quantity": 7},
+            {"brand": "B", "material": "180g", "color": "绿色",
+             "size": "M", "quantity": 5},
+        ])
+
+        adjustments, issues = allocate_brand_merged_sales(
+            lines, inventory, date(2026, 8, 8), "INV-TEST"
+        )
+
+        self.assertTrue(adjustments.empty)
+        self.assertEqual(issues.iloc[0]["品牌"], "全部品牌")
+        self.assertEqual(issues.iloc[0]["当前库存"], 12)
+        self.assertEqual(issues.iloc[0]["缺口"], 8)
+
     def test_sales_lines_keep_manual_price_and_calculate_amount(self):
         result = normalize_sales_lines(pd.DataFrame([{
             "品牌": "Cotton", "材质": "CVC", "颜色": "白",

@@ -9,6 +9,7 @@ from db.inventory.operations.outbound_audit import (
     load_outbound_inventory,
 )
 from db.inventory.sales import (
+    allocate_brand_merged_sales,
     build_invoice_number,
     build_sales_adjustments,
     build_sales_draft_signature,
@@ -127,8 +128,23 @@ def _render_sales_entry(
         key=f"sales_invoice_number_{version}",
     )
     note = st.text_input("Invoice 备注（可选）", key=f"sales_note_{version}")
+    combine_brands = False
+    if category == "彩色短袖":
+        brand_rule = st.segmented_control(
+            "彩色短袖品牌处理规则",
+            ["跨品牌合并", "按品牌出库"],
+            default="跨品牌合并",
+            key="sales_colored_brand_rule",
+        )
+        combine_brands = brand_rule == "跨品牌合并"
+        if combine_brands:
+            st.caption(
+                "同一材质、颜色和尺码合并销售；确认后按实际库存自动分摊到各品牌。"
+            )
+        else:
+            st.caption("每一行选择具体品牌，并从该品牌库存中扣减。")
     edited_lines = render_linked_sku_sales_table(
-        raw_df, f"sales_lines_{version}"
+        raw_df, f"sales_lines_{version}", combine_brands=combine_brands,
     )
     lines = sort_sku_rows(
         normalize_sales_lines(edited_lines),
@@ -144,9 +160,16 @@ def _render_sales_entry(
     metrics[1].metric("销售数量", f"{total_quantity:,}")
     metrics[2].metric("Invoice 金额", f"${subtotal:,.2f}")
 
-    adjustments = build_sales_adjustments(lines, invoice_date, invoice_number)
     inventory = load_outbound_inventory(supabase, department, category)
-    issues = find_outbound_inventory_issues(adjustments, inventory)
+    if combine_brands:
+        adjustments, issues = allocate_brand_merged_sales(
+            lines, inventory, invoice_date, invoice_number
+        )
+    else:
+        adjustments = build_sales_adjustments(
+            lines, invoice_date, invoice_number
+        )
+        issues = find_outbound_inventory_issues(adjustments, inventory)
     if not issues.empty:
         st.error("销售出库包含无效 SKU 或库存不足，尚不能生成 Invoice。")
         st.dataframe(issues, hide_index=True, width="stretch")
@@ -228,6 +251,7 @@ def _render_sales_entry(
             invoice_payload,
             lines,
             get_current_operator_name(),
+            inventory_adjustments=adjustments,
         )
         pdf = build_sales_invoice_pdf(
             {"invoice_number": invoice_number, "invoice_date": invoice_date, "note": note},

@@ -80,9 +80,11 @@ def build_sales_invoice_pdf(invoice, company, customer, lines):
 
     table_rows = [["Description", "Qty", "Unit Price", "Amount"]]
     for row in lines.to_dict("records"):
-        description = " / ".join(str(row.get(key) or "") for key in [
-            "品牌", "材质", "颜色", "尺码",
-        ])
+        description = " / ".join(filter(None, (
+            str(row.get(key) or "").strip() for key in [
+                "品牌", "材质", "颜色", "尺码",
+            ]
+        )))
         table_rows.append([
             description,
             f"{int(row['数量']):,}",

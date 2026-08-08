@@ -81,8 +81,80 @@ def build_sales_adjustments(lines, invoice_date, invoice_number):
     })
 
 
+def allocate_brand_merged_sales(lines, inventory_df, invoice_date, invoice_number):
+    """Allocate brandless sale demand to real brand SKUs without losing audit data."""
+    normalized = normalize_sales_lines(lines)
+    inventory = pd.DataFrame(inventory_df).copy()
+    for column in ["brand", "material", "color", "size"]:
+        if column not in inventory:
+            inventory[column] = ""
+        inventory[column] = inventory[column].fillna("").astype(str).str.strip()
+    inventory["size"] = inventory["size"].str.upper()
+    quantity = (
+        inventory["quantity"]
+        if "quantity" in inventory
+        else pd.Series(0, index=inventory.index)
+    )
+    inventory["quantity"] = pd.to_numeric(
+        quantity, errors="coerce"
+    ).fillna(0).astype(int)
+    inventory["_priority"] = inventory["brand"].ne("临时进货").astype(int)
+    inventory = inventory.sort_values(
+        ["material", "color", "size", "_priority", "brand"], kind="stable"
+    ).reset_index(drop=True)
+
+    demand = normalized.groupby(
+        ["材质", "颜色", "尺码"], as_index=False
+    )["数量"].sum()
+    adjustments = []
+    issues = []
+    for row in demand.to_dict("records"):
+        matches = (
+            (inventory["material"] == row["材质"])
+            & (inventory["color"] == row["颜色"])
+            & (inventory["size"] == row["尺码"])
+        )
+        candidates = inventory[matches & inventory["quantity"].gt(0)]
+        available = int(candidates["quantity"].sum())
+        requested = int(row["数量"])
+        if available < requested:
+            issues.append({
+                "品牌": "全部品牌", "材质": row["材质"],
+                "颜色": row["颜色"], "尺码": row["尺码"],
+                "数量": requested, "当前库存": available,
+                "缺口": requested - available, "问题": "库存不足",
+            })
+            continue
+        remaining = requested
+        for index, item in candidates.iterrows():
+            if remaining <= 0:
+                break
+            quantity = min(remaining, int(item["quantity"]))
+            adjustments.append({
+                "日期": invoice_date, "操作": "扣减",
+                "品牌": item["brand"], "材质": item["material"],
+                "颜色": item["color"], "尺码": item["size"],
+                "数量": quantity, "成本": pd.NA,
+                "备注": f"客户销售出库｜{invoice_number}",
+            })
+            inventory.at[index, "quantity"] -= quantity
+            remaining -= quantity
+    adjustment_columns = [
+        "日期", "操作", "品牌", "材质", "颜色", "尺码",
+        "数量", "成本", "备注",
+    ]
+    issue_columns = [
+        "品牌", "材质", "颜色", "尺码", "数量", "当前库存", "缺口", "问题",
+    ]
+    return (
+        pd.DataFrame(adjustments, columns=adjustment_columns),
+        pd.DataFrame(issues, columns=issue_columns),
+    )
+
+
 def save_sales_invoice(
     supabase, company, customer, invoice, lines, created_by,
+    inventory_adjustments=None,
 ):
     normalized = normalize_sales_lines(lines)
     if normalized.empty:
@@ -91,9 +163,15 @@ def save_sales_invoice(
         raise ValueError("我方公司名称不能为空")
     if not str(customer.get("display_name") or "").strip():
         raise ValueError("客户名称不能为空")
-    adjustments = build_sales_adjustments(
-        normalized, invoice["invoice_date"], invoice["invoice_number"]
+    adjustments = (
+        build_sales_adjustments(
+            normalized, invoice["invoice_date"], invoice["invoice_number"]
+        )
+        if inventory_adjustments is None
+        else pd.DataFrame(inventory_adjustments).copy()
     )
+    if int(adjustments["数量"].sum()) != int(normalized["数量"].sum()):
+        raise ValueError("销售数量与实际库存扣减数量不一致")
     inventory_rows = [{
         "brand": row["品牌"],
         "material": row["材质"],

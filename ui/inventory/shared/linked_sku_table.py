@@ -27,18 +27,28 @@ def linked_sku_options(
     }
 
 
-def render_linked_sku_sales_table(sku_df, key_prefix):
+def render_linked_sku_sales_table(
+    sku_df, key_prefix, combine_brands=False,
+):
     row_ids_key = f"{key_prefix}_row_ids"
     next_id_key = f"{key_prefix}_next_id"
     if row_ids_key not in st.session_state:
         st.session_state[row_ids_key] = [0]
         st.session_state[next_id_key] = 1
 
-    widths = [1.15, 1.15, 0.8, 0.75, 0.75, 0.85, 0.8, 0.35]
+    widths = (
+        [1.3, 1.0, 0.85, 0.8, 0.9, 0.85, 0.35]
+        if combine_brands
+        else [1.15, 1.15, 0.8, 0.75, 0.75, 0.85, 0.8, 0.35]
+    )
     headers = st.columns(widths)
+    labels = (
+        ["材质", "颜色", "尺码", "数量", "单价", "金额", ""]
+        if combine_brands
+        else ["材质", "品牌", "颜色", "尺码", "数量", "单价", "金额", ""]
+    )
     for column, label in zip(
-        headers,
-        ["材质", "品牌", "颜色", "尺码", "数量", "单价", "金额", ""],
+        headers, labels,
     ):
         column.markdown(f"**{label}**")
 
@@ -52,34 +62,46 @@ def render_linked_sku_sales_table(sku_df, key_prefix):
             f"{key_prefix}_{row_id}_material",
         )
         material_options = linked_sku_options(sku_df, material)
-        brand = _linked_selectbox(
-            columns[1], "品牌", material_options["brands"],
-            f"{key_prefix}_{row_id}_brand",
-        )
-        brand_options = linked_sku_options(sku_df, material, brand)
+        if combine_brands:
+            brand = ""
+            color_column, size_column = 1, 2
+            quantity_column, price_column, amount_column, remove_column = (
+                3, 4, 5, 6
+            )
+            brand_options = material_options
+        else:
+            brand = _linked_selectbox(
+                columns[1], "品牌", material_options["brands"],
+                f"{key_prefix}_{row_id}_brand",
+            )
+            color_column, size_column = 2, 3
+            quantity_column, price_column, amount_column, remove_column = (
+                4, 5, 6, 7
+            )
+            brand_options = linked_sku_options(sku_df, material, brand)
         color = _linked_selectbox(
-            columns[2], "颜色", brand_options["colors"],
+            columns[color_column], "颜色", brand_options["colors"],
             f"{key_prefix}_{row_id}_color",
         )
         color_options = linked_sku_options(
-            sku_df, material, brand, color
+            sku_df, material, None if combine_brands else brand, color
         )
         size = _linked_selectbox(
-            columns[3], "尺码", color_options["sizes"],
+            columns[size_column], "尺码", color_options["sizes"],
             f"{key_prefix}_{row_id}_size",
         )
-        quantity = columns[4].number_input(
+        quantity = columns[quantity_column].number_input(
             "数量", min_value=0, step=1, label_visibility="collapsed",
             key=f"{key_prefix}_{row_id}_quantity",
         )
-        unit_price = columns[5].number_input(
+        unit_price = columns[price_column].number_input(
             "单价", min_value=0.0, step=0.01, format="%.2f",
             label_visibility="collapsed",
             key=f"{key_prefix}_{row_id}_unit_price",
         )
         amount = round(int(quantity) * float(unit_price), 2)
-        columns[6].markdown(f"${amount:,.2f}")
-        if columns[7].button(
+        columns[amount_column].markdown(f"${amount:,.2f}")
+        if columns[remove_column].button(
             "×", key=f"{key_prefix}_{row_id}_remove",
             help="删除这一行",
         ):

@@ -19,7 +19,10 @@ from ui.inventory.planning.consumption import (
 )
 from ui.inventory.stock.cost_summary import render_inventory_cost_summary
 from ui.inventory.stock.incoming import render_incoming_inventory_forecast
-from ui.inventory.stock.summary import render_black_white_color_summary
+from ui.inventory.stock.summary import (
+    render_black_white_color_summary,
+    render_colored_brand_merged_summary,
+)
 from ui.inventory.stock.table import (
     render_inventory_metrics,
     render_inventory_table,
@@ -48,6 +51,11 @@ def render_inventory_tabs(
             render_black_white_color_summary(
                 category, inventory_df, visible_sizes, filter_title
             )
+        elif view_mode == "跨品牌合并":
+            render_colored_brand_merged_summary(
+                inventory_df, visible_sizes, filter_title
+            )
+            render_inventory_metrics(inventory_df)
         else:
             if not can_edit:
                 st.info(t("当前账号只有库存查看权限，不能修改库存"))

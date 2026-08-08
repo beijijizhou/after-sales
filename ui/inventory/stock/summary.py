@@ -1,7 +1,11 @@
 import pandas as pd
 import streamlit as st
 
-from db.inventory import SIZE_COLUMNS, build_color_inventory_table
+from db.inventory import (
+    SIZE_COLUMNS,
+    build_color_inventory_table,
+    build_material_color_inventory_table,
+)
 from ui.inventory.i18n import t
 
 
@@ -66,6 +70,39 @@ def render_black_white_color_summary(
             ),
             **{
                 size: st.column_config.NumberColumn(size, format="%d")
+                for size in SIZE_COLUMNS
+            },
+        },
+    )
+
+
+def render_colored_brand_merged_summary(
+    inventory_df, visible_sizes=None, filter_title=None,
+):
+    summary_df = build_material_color_inventory_table(inventory_df)
+    st.subheader(f"{filter_title or '彩色短袖'} 品牌合并库存")
+    st.caption("同一材质、颜色和尺码已合并全部品牌；品牌明细仍保留用于修改和追溯。")
+    if summary_df.empty:
+        st.info("暂无彩色短袖库存数据")
+        return
+    sizes = visible_sizes or SIZE_COLUMNS
+    table_height = min(max((len(summary_df) + 1) * 35 + 8, 220), 900)
+    st.dataframe(
+        summary_df[["材质", "颜色", *sizes, "总库存"]],
+        hide_index=True,
+        width="stretch",
+        height=table_height,
+        row_height=35,
+        column_config={
+            "材质": st.column_config.TextColumn(t("材质"), width="small"),
+            "颜色": st.column_config.TextColumn(t("颜色"), width="small"),
+            "总库存": st.column_config.NumberColumn(
+                t("总库存"), format="%d", width="small"
+            ),
+            **{
+                size: st.column_config.NumberColumn(
+                    size, format="%d", width="small"
+                )
                 for size in SIZE_COLUMNS
             },
         },

@@ -22,6 +22,11 @@
   `1MhAq1n1dDd9P5WD0gdrR2uXH0Veb_MzA`. The daily-order workbook remains the
   default, while replacement workbooks placed in that folder can be selected
   without changing credentials or code.
+- Google Sheets product `Iphone` represents phone-case production and is
+  intentionally excluded from UV inventory statistics and deductions until a
+  model-level phone-case allocation exists. Every batch backfill preview must
+  show its excluded quantity explicitly; it must not be silently absorbed into
+  the displayed source or confirmation total.
 - The UV plate-product category is named `铁板画`; material distinguishes
   `铁牌` and `铝牌`.
 - Phone-case SKU material/model combinations come from the same
@@ -53,6 +58,17 @@
   identity dependency `material -> brand -> color -> size`; each downstream
   option is limited to active combinations that exist under the selections,
   and apparel sizes retain the business order `S` through `5XL`.
+- Colored T-shirt inventory defaults to the manager-facing and customer-facing
+  identity `material -> color -> size`, with all brands combined. The active
+  brand-handling rule must be visible in the UI: users may switch sales to
+  brand-specific outbound and inventory to brand-detail viewing. Under the
+  default combined rule, the system allocates a confirmed deduction across the
+  real brand SKUs underneath and keeps those brands in movement history for
+  audit, correction, and traceability.
+- The default colored T-shirt combined inventory table is a manager screenshot
+  view: it stretches to the available page width, keeps apparel sizes in
+  `S -> 5XL` order, uses compact columns, and expands vertically to show the
+  available rows without routine scrolling.
 - Customer sales prices are entered for the sale and do not modify inventory
   cost. Issued Invoices retain seller/customer address snapshots through their
   linked records and remain downloadable from batch history. Corrections use
@@ -77,6 +93,12 @@
 - Piece quantity is the accounting unit. Box/bag conversions are display and
   warehouse counting aids.
 - Container forecasts should connect arriving SKUs with current stock risk.
+- New container line items must be created through the shared dependent SKU
+  identity order `category -> material -> brand -> color -> size/model`.
+  Changing material immediately limits or resets brand and every downstream
+  field to combinations present in the active SKU catalog. The resulting wide
+  quantity table locks identity fields so invalid combinations cannot be typed
+  back into the batch.
 
 ## Production And QA
 

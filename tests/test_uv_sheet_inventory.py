@@ -7,6 +7,7 @@ from unittest.mock import patch
 from automation.sync.uv_sheet_inventory import (
     load_daily_product_usage,
     load_daily_summary,
+    load_monthly_sku_summary,
 )
 from automation.sync.google_sheets import (
     GoogleSheetsClient,
@@ -185,6 +186,55 @@ class UVSheetInventoryTests(unittest.TestCase):
         self.assertEqual(
             result, {"Tie_2030": 2300, "Lv_2030": 1793}
         )
+
+    def test_loads_monthly_sku_summary_and_marks_missing_days(self):
+        class MonthlySheets:
+            def list_sheets(self, _spreadsheet_id):
+                return [
+                    {"title": "0701"},
+                    {"title": "0702"},
+                    {"title": "说明"},
+                ]
+
+            def batch_get_values(self, _spreadsheet_id, ranges):
+                result = {}
+                for cell_range in ranges:
+                    if "0701" in cell_range and "M17:N35" in cell_range:
+                        result[cell_range] = [
+                            ["材质", "用于“数量(件)”的 SUM"],
+                            ["Tie_2030", 10],
+                            ["总计", 10],
+                        ]
+                    elif "0702" in cell_range and "P17:Q35" in cell_range:
+                        result[cell_range] = [
+                            ["材质", "用于“数量(件)”的 SUM"],
+                            ["Tie_2030", 20],
+                            ["", 3],
+                            ["总计", 23],
+                        ]
+                    else:
+                        result[cell_range] = []
+                return result
+
+        daily_df, sku_df, missing_dates = load_monthly_sku_summary(
+            MonthlySheets(), "spreadsheet", 2026, 7
+        )
+
+        self.assertEqual(
+            daily_df[["sheet_name", "total_quantity"]].to_dict("records"),
+            [
+                {"sheet_name": "0701", "total_quantity": 10},
+                {"sheet_name": "0702", "total_quantity": 23},
+            ],
+        )
+        self.assertEqual(
+            sku_df.to_dict("records"),
+            [
+                {"sku": "Tie_2030", "total_quantity": 30},
+                {"sku": "UNMAPPED", "total_quantity": 3},
+            ],
+        )
+        self.assertEqual(missing_dates[0].date().isoformat(), "2026-07-03")
 
     def test_google_sheets_client_writes_bounded_range(self):
         client = GoogleSheetsClient({
