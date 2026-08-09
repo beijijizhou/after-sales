@@ -11,6 +11,8 @@ def sort_sku_rows(
     size="尺码/型号",
     leading=None,
     leading_ascending=None,
+    material_order=None,
+    size_order=None,
 ):
     """Sort long-form SKU rows in the ERP's human review order."""
     result = pd.DataFrame(rows).copy()
@@ -38,7 +40,14 @@ def sort_sku_rows(
     ]:
         if column not in result:
             continue
-        result[key] = result[column].fillna("").astype(str).str.strip().str.casefold()
+        normalized = result[column].fillna("").astype(str).str.strip()
+        if column == material and material_order:
+            order_key = f"{key}_business"
+            result[order_key] = normalized.map(material_order).fillna(999)
+            sort_columns.append(order_key)
+            ascending.append(True)
+            temporary.append(order_key)
+        result[key] = normalized.str.casefold()
         sort_columns.append(key)
         ascending.append(True)
         temporary.append(key)
@@ -47,8 +56,17 @@ def sort_sku_rows(
         normalized_size = (
             result[size].fillna("").astype(str).str.strip().str.upper()
         )
-        size_order = {value: index for index, value in enumerate(SIZE_COLUMNS)}
-        result["_sku_size_order"] = normalized_size.map(size_order).fillna(999)
+        configured_size_order = size_order or {
+            value: index for index, value in enumerate(SIZE_COLUMNS)
+        }
+        if not isinstance(configured_size_order, dict):
+            configured_size_order = {
+                value: index
+                for index, value in enumerate(configured_size_order)
+            }
+        result["_sku_size_order"] = normalized_size.map(
+            configured_size_order
+        ).fillna(999)
         result["_sku_size_text"] = normalized_size.str.casefold()
         sort_columns.extend(["_sku_size_order", "_sku_size_text"])
         ascending.extend([True, True])

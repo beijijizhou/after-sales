@@ -34,10 +34,10 @@ def render_customer_sales_page(supabase):
         default_category,
     )
     try:
-        raw_df = load_sku_catalog(supabase, department)
+        raw_df = load_sku_catalog(
+            supabase, department, active_only=True
+        )
         raw_df = raw_df[raw_df["category"] == category]
-        if "is_active" in raw_df:
-            raw_df = raw_df[raw_df["is_active"].fillna(True)]
     except Exception:
         st.error("销售库存加载失败，请刷新后重试。")
         return

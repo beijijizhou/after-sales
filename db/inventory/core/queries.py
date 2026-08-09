@@ -8,6 +8,7 @@ def load_inventory_dimensions(supabase):
     response = (
         supabase.table("inventory_items")
         .select("department,category,brand,material,color,size")
+        .eq("is_active", True)
         .execute()
     )
     inventory = pd.DataFrame(response.data)
@@ -67,7 +68,10 @@ def load_inventory_departments(supabase):
     return departments or [DEFAULT_DEPARTMENT]
 
 
-def load_inventory_items(supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY):
+def load_inventory_items(
+    supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY,
+    active_only=True,
+):
     query = (
         supabase
         .table("inventory_items")
@@ -76,6 +80,8 @@ def load_inventory_items(supabase, department=DEFAULT_DEPARTMENT, category=DEFAU
     )
     if category:
         query = query.eq("category", category)
+    if active_only:
+        query = query.eq("is_active", True)
     response = query.execute()
     return pd.DataFrame(response.data)
 

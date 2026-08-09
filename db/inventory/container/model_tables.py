@@ -1,6 +1,7 @@
 import pandas as pd
 
 from db.inventory.core.constants import UV_MODEL_ORDER
+from db.inventory.container.labels import get_container_display_label
 
 
 def uses_model_rows(df):
@@ -86,8 +87,8 @@ def build_model_container_display(df, include_cost=False):
     ).apply(lambda duration: duration.days)
     result["总件数"] = result["数量"]
     result["批次标识"] = result.apply(
-        lambda row: row["货柜号"] or (
-            f"{row['发货日期']}-{row['货柜记录ID']}"
+        lambda row: get_container_display_label(
+            row["货柜记录ID"], row["货柜号"], [row.get("备注", "")]
         ),
         axis=1,
     )

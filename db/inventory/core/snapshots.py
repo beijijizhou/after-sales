@@ -1,6 +1,34 @@
 import pandas as pd
 
 
+INVENTORY_KEY_COLUMNS = [
+    "department", "category", "brand", "material", "color", "size",
+]
+
+
+def filter_snapshot_to_active_skus(snapshot_df, active_inventory_df):
+    """Keep current active SKU identities while preserving snapshot values."""
+    snapshot = pd.DataFrame(snapshot_df).copy()
+    active = pd.DataFrame(active_inventory_df).copy()
+    if snapshot.empty or active.empty:
+        return snapshot.iloc[0:0].copy()
+    keys = [
+        column for column in INVENTORY_KEY_COLUMNS
+        if column in snapshot.columns and column in active.columns
+    ]
+    if not keys:
+        return snapshot.iloc[0:0].copy()
+    for frame in (snapshot, active):
+        for column in keys:
+            frame[column] = frame[column].fillna("").astype(str).str.strip()
+        if "size" in keys:
+            frame["size"] = frame["size"].str.upper()
+    active_keys = active[keys].drop_duplicates()
+    return snapshot.merge(
+        active_keys, on=keys, how="inner", validate="many_to_one"
+    )
+
+
 def load_inventory_snapshot(supabase, department, category, snapshot_date):
     response = (
         supabase

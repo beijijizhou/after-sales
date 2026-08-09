@@ -8,6 +8,8 @@ def linked_sku_options(
     sku_df, material=None, brand=None, color=None,
 ):
     source = pd.DataFrame(sku_df).copy()
+    if "is_active" in source.columns:
+        source = source[source["is_active"].fillna(True).astype(bool)]
     if source.empty:
         return {"materials": [], "brands": [], "colors": [], "sizes": []}
     if material:
@@ -20,7 +22,7 @@ def linked_sku_options(
         source = source[source["color"] == color]
     sizes = _ordered(_values(source, "size"), SIZE_COLUMNS)
     return {
-        "materials": _values(sku_df, "material"),
+        "materials": _values(source, "material"),
         "brands": brands,
         "colors": colors,
         "sizes": sizes,

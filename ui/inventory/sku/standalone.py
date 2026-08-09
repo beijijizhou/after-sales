@@ -72,7 +72,9 @@ def render_sku_management_page(supabase):
         history_data = load_inventory_history_data(
             supabase, department, limit=10000
         )
-        inventory_df = load_inventory_items(supabase, department, "")
+        inventory_df = load_inventory_items(
+            supabase, department, "", active_only=False
+        )
     except Exception as error:
         with import_tab:
             st.error(f"{t('库存数据加载失败')}：{error}")

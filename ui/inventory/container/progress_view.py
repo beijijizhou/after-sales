@@ -8,13 +8,13 @@ def render_arrival_alerts(progress_df):
     ]
     if not delayed.empty:
         labels = "；".join(
-            f"{row['货柜号']}（已延迟{abs(int(row['剩余天数']))}天）"
+            f"{row['货柜备注']}（已延迟{abs(int(row['剩余天数']))}天）"
             for _, row in delayed.iterrows()
         )
         st.error(f"延迟到柜提醒：{labels}")
     if not arriving.empty:
         labels = "；".join(
-            f"{row['货柜号']}（{int(row['剩余天数'])}天）"
+            f"{row['货柜备注']}（{int(row['剩余天数'])}天）"
             for _, row in arriving.iterrows()
         )
         st.warning(f"一周内到柜提醒：{labels}")

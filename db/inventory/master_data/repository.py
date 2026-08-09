@@ -147,19 +147,19 @@ def create_material(supabase, category_id, name, created_by):
     )
 
 
-def load_sku_catalog(supabase, department_code):
+def load_sku_catalog(supabase, department_code, active_only=False):
     columns = (
         "id,sku_code,sku_name,department,category,brand,material,color,"
         "size,model,unit,quantity,is_active,category_id,brand_id"
     )
-    response = (
+    query = (
         supabase.table("inventory_items")
         .select(columns)
         .eq("department", department_code)
-        .order("category")
-        .order("sku_name")
-        .execute()
     )
+    if active_only:
+        query = query.eq("is_active", True)
+    response = query.order("category").order("sku_name").execute()
     return pd.DataFrame(response.data)
 
 

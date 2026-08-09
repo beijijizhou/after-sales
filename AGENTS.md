@@ -63,6 +63,21 @@ rows remain understandable and reversible as one business event. Legacy rows
 without an explicit batch ID should be grouped into a stable, explainable
 business batch where possible rather than exposed as unrelated records.
 
+Container interfaces must use the human business batch or remark name as the
+primary identity, such as `第十四柜` or `龙哥第一柜`. Show a physical container
+number only as secondary supporting information, for example
+`第十四柜｜柜号 TRHU5477320`; never force users to recognize a container by the
+shipping number alone. Keep the stable internal container key hidden from
+ordinary users while continuing to use it for state transitions and audits.
+When incoming cargo is known only at a packaging or category level, preserve it
+as visibly unallocated cargo with its unit and conversion rules. Do not invent
+a SKU split or include the unresolved quantity in SKU-level inventory forecasts
+or posting until a user confirms the allocation.
+Inactive SKUs must be excluded from every operational selector, inventory
+filter, entry table, forecast input, container form, sale, and transfer. Keep
+inactive SKUs visible only in SKU administration and historical/audit views so
+users can reactivate them and old business records remain traceable.
+
 Every UI operation that increases or decreases inventory must show the same
 three-stage SKU-level review before confirmation: current inventory, the
 signed batch change, and resulting inventory. Label positive changes as

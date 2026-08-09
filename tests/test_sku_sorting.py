@@ -37,6 +37,27 @@ class SkuSortingTests(unittest.TestCase):
 
         self.assertEqual(result["尺码/型号"].tolist(), ["M", "1040", "2030"])
 
+    def test_supports_existing_uv_business_material_and_model_order(self):
+        source = pd.DataFrame([
+            {"材质": "铁牌", "颜色": "白", "型号": "1040"},
+            {"材质": "铝牌", "颜色": "白", "型号": "2030"},
+            {"材质": "铁牌", "颜色": "白", "型号": "YUAN"},
+        ])
+
+        result = sort_sku_rows(
+            source,
+            material="材质",
+            color="颜色",
+            size="型号",
+            material_order={"铝牌": 0, "铁牌": 1},
+            size_order=["2030", "3040", "1530", "YUAN", "1040"],
+        )
+
+        self.assertEqual(
+            result[["材质", "型号"]].values.tolist(),
+            [["铝牌", "2030"], ["铁牌", "YUAN"], ["铁牌", "1040"]],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

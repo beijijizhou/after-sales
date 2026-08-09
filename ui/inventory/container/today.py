@@ -4,6 +4,7 @@ import streamlit as st
 from ui.inventory.shared.filters import _reset_invalid_selectbox
 
 from db.inventory.container.repository import load_inventory_containers
+from db.inventory.container.labels import get_container_display_label
 from db.inventory.container.workflow import post_container_inventory
 from ui.inventory.container.posting import render_container_posting_stock_review
 from ui.inventory.container.tables import (
@@ -98,9 +99,13 @@ def render_today_arrival_posting(supabase, raw_df):
     choices = {}
     for row in summary.to_dict("records"):
         container_key = row["container_key"]
-        number = row.get("container_no") or container_key
+        number = row.get("container_no") or ""
+        notes = pending.loc[
+            pending["container_key"] == container_key, "note"
+        ].tolist()
         quantity = int(row["quantity"])
-        choices[f"{number}｜{quantity:,} 件"] = container_key
+        label = get_container_display_label(container_key, number, notes)
+        choices[f"{label}｜{quantity:,} 件"] = container_key
     choice_labels = list(choices)
     _reset_invalid_selectbox("today_arrival_posting_target", choice_labels)
     selected = st.selectbox(

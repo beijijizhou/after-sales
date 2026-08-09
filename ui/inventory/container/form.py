@@ -32,9 +32,9 @@ def render_container_form(supabase, department=None, category=None):
     form_version = st.session_state.get("container_form_version", 0)
     can_view_cost = has_permission("can_view_cost")
     try:
-        sku_catalog = load_sku_catalog(supabase, department)
-        if "is_active" in sku_catalog:
-            sku_catalog = sku_catalog[sku_catalog["is_active"].fillna(True)]
+        sku_catalog = load_sku_catalog(
+            supabase, department, active_only=True
+        )
     except Exception:
         st.error("SKU 资料加载失败，暂时无法新增货柜安排。")
         return

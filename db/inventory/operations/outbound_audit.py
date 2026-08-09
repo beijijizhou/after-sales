@@ -81,6 +81,7 @@ def load_outbound_inventory(supabase, department, category):
         .select("brand,material,color,size,quantity")
         .eq("department", department)
         .eq("category", category)
+        .eq("is_active", True)
         .execute()
         .data
         or []

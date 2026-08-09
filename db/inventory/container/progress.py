@@ -1,5 +1,10 @@
 import pandas as pd
 
+from db.inventory.container.labels import (
+    get_container_business_name,
+    get_container_display_label,
+)
+
 
 def build_container_progress_choices(progress_df):
     if progress_df is None or progress_df.empty:
@@ -9,7 +14,11 @@ def build_container_progress_choices(progress_df):
         container_key = str(row.get("货柜记录ID") or "").strip()
         if not container_key:
             continue
-        container_no = str(row.get("货柜号") or container_key).strip()
+        container_no = str(row.get("货柜号") or "").strip()
+        business_name = str(
+            row.get("货柜备注")
+            or get_container_business_name(container_key, container_no)
+        ).strip()
         expected = row.get("预计到货日期")
         date_label = (
             expected.strftime("%m/%d")
@@ -17,7 +26,10 @@ def build_container_progress_choices(progress_df):
         )
         quantity = int(row.get("总件数") or 0)
         alert = str(row.get("到货提醒") or "").strip()
-        label = f"{container_no}｜到货 {date_label}｜{quantity:,} 件"
+        label = get_container_display_label(
+            container_key, container_no, business_name=business_name
+        )
+        label = f"{label}｜到货 {date_label}｜{quantity:,} 件"
         if alert:
             label += f"｜{alert}"
         choices[container_key] = label
@@ -26,7 +38,7 @@ def build_container_progress_choices(progress_df):
 
 def build_container_progress_summary(df, today):
     columns = [
-        "货柜记录ID", "货柜号", "部门", "品类", "发货日期", "预计到货日期",
+        "货柜记录ID", "货柜备注", "货柜号", "部门", "品类", "发货日期", "预计到货日期",
         "已运输天数", "剩余天数", "到货提醒", "运输进度", "总件数", "状态",
     ]
     if df.empty:
@@ -65,9 +77,14 @@ def build_container_progress_summary(df, today):
             if str(value).strip()
         })
         container_no = group["container_no"].dropna().astype(str).str.strip()
+        physical_no = container_no.iloc[0] if not container_no.empty else ""
+        notes = group.get("note", pd.Series(dtype=str)).tolist()
         rows.append({
             "货柜记录ID": container_key,
-            "货柜号": container_no.iloc[0] if not container_no.empty else container_key,
+            "货柜备注": get_container_business_name(
+                container_key, physical_no, notes
+            ),
+            "货柜号": physical_no,
             "部门": " / ".join(departments),
             "品类": " / ".join(categories),
             "发货日期": shipped_date,

@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+import pandas as pd
 import streamlit as st
 
 from automation.production_reference import load_production_reference
@@ -8,6 +9,10 @@ from automation.sync.dtf_colored_inventory import (
     load_colored_consumption_history,
 )
 from db.inventory.container.repository import load_inventory_containers
+from db.inventory.container.unallocated import (
+    attach_unallocated_cup_cargo,
+    build_unallocated_cup_cargo,
+)
 from db.inventory.core.queries import load_recent_inventory_outbound
 from db.inventory.planning.incoming import (
     LOOKBACK_DAYS,
@@ -27,7 +32,8 @@ def render_incoming_inventory_forecast(
     supabase, department, category, inventory_df, today,
     forecast_usage_df=None,
 ):
-    st.subheader(t("库存与最近到货联动"))
+    department_label = str(department or "").strip()
+    st.subheader(f"{department_label} 部门库存与最近到货联动")
     if department == "UV":
         st.caption(t(
             "UV 货柜联动使用消耗模型中的 Google Sheets 日耗，并自动扣减库存，不做仓库申报对比。"
@@ -79,6 +85,14 @@ def render_incoming_inventory_forecast(
             supabase, department=department, category=category,
             statuses=["在途", "未到货", "延迟", "已到柜", "已到货"],
         )
+        pending_cups = pd.DataFrame()
+        if department == "UV" and category in ("", "保温杯"):
+            all_uv_containers = load_inventory_containers(
+                supabase,
+                department="UV",
+                statuses=["在途", "未到货", "延迟", "已到柜", "已到货"],
+            )
+            pending_cups = build_unallocated_cup_cargo(all_uv_containers)
         outbound = (
             load_recent_inventory_outbound(
                 supabase, department,
@@ -91,18 +105,21 @@ def render_incoming_inventory_forecast(
             inventory_df, containers, system_usage, outbound, today,
             department,
         )
+        forecast = attach_unallocated_cup_cargo(forecast, pending_cups)
     except Exception as error:
         st.error(f"{t('到货联动加载失败')}：{error}")
         return
 
     if forecast.empty:
-        st.info(t("当前筛选范围没有可匹配的在途库存"))
+        st.info(t("当前筛选范围暂无库存或消耗数据"))
         return
-    if (forecast["判断"] == "到货前可能断货").any():
+    if not forecast.empty and (forecast["判断"] == "到货前可能断货").any():
         st.error(t("有 SKU 可能无法支撑到下一柜到货，请提前安排。"))
-    if (forecast["判断"] == "已到柜待入库").any():
+    if not forecast.empty and (forecast["判断"] == "已到柜待入库").any():
         st.warning(t("有货柜已经到柜但尚未入库，请仓库尽快确认入库。"))
-    if (forecast["判断"] == "到货后库存仍偏低").any():
+    if not forecast.empty and (forecast["判断"] == "延期柜按明日估算").any():
+        st.warning(t("延期货柜已临时按明日到货计算，请及时更新实际预计日期。"))
+    if not forecast.empty and (forecast["判断"] == "到货后库存仍偏低").any():
         st.warning(t("部分 SKU 到货后预计仍不足 14 天，请提前安排下一批。"))
     audit_issues = build_inventory_audit_issues(forecast)
     if not audit_issues.empty:
@@ -123,17 +140,18 @@ def render_incoming_inventory_forecast(
         )
     executive_view = build_incoming_executive_view(forecast)
     st.dataframe(
-        executive_view, hide_index=True, width="stretch",
+        executive_view,
+        hide_index=True, width="stretch",
         column_config={
-            "SKU": st.column_config.TextColumn(width="large"),
-            "判断": st.column_config.TextColumn(width="medium"),
+            "SKU": st.column_config.TextColumn(),
+            "判断": st.column_config.TextColumn(),
             "当前库存": st.column_config.NumberColumn(format="%d"),
             "日耗": st.column_config.NumberColumn(format="%.1f"),
             "可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
-            "全部在途货柜": st.column_config.TextColumn(width="medium"),
-            "到货安排": st.column_config.TextColumn(width="large"),
+            "到货计划": st.column_config.TextColumn(),
             "在途总量": st.column_config.NumberColumn(format="%d"),
             "到货前缺口": st.column_config.NumberColumn(format="%d"),
+            "货柜衔接": st.column_config.TextColumn(),
             "到货后可撑": st.column_config.NumberColumn(format="%.1f 天"),
         },
     )

@@ -9,6 +9,7 @@ from db.inventory.container.tables import (
     build_container_inventory_summary,
     get_container_item_columns,
 )
+from db.inventory.container.labels import get_container_display_label
 from ui.table_layout import fit_table_height
 
 
@@ -47,6 +48,8 @@ def render_container_dataframe(display_df):
         table_df = table_df.drop(columns=["总件数"])
     item_columns = get_container_item_columns(display_df)
     column_config = {
+        "批次标识": st.column_config.TextColumn("货柜备注", width="medium"),
+        "货柜号": st.column_config.TextColumn("实体货柜号", width="medium"),
         "发货日期": st.column_config.DateColumn("发货日期"),
         "运输天数": st.column_config.NumberColumn("运输天数", format="%d 天"),
         "预计到货日期": st.column_config.DateColumn("预计到货日期"),
@@ -161,8 +164,10 @@ def render_container_detail(
     detail_df = display_df[display_df["货柜记录ID"] == container_key].copy()
     if detail_df.empty:
         return
-    container_no = detail_df["货柜号"].iloc[0] or detail_df["批次标识"].iloc[0]
-    st.subheader(f"{container_no} 明细")
+    container_no = detail_df["货柜号"].iloc[0]
+    notes = detail_df.get("备注", pd.Series(dtype=str)).tolist()
+    label = get_container_display_label(container_key, container_no, notes)
+    st.subheader(f"{label} 明细")
     total_quantity, total_cost = calculate_container_totals(detail_df)
     if total_cost is None:
         st.metric("总数量", f"{total_quantity:,} 件")

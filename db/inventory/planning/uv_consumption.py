@@ -18,8 +18,8 @@ UV_GOOGLE_DRIVE_FOLDER_URL = (
 UV_CONSUMPTION_LOOKBACK_DAYS = 14
 UV_GOOGLE_SHEETS_REASON_PREFIX = "Google Sheets UV每日消耗"
 UV_CURRENT_MODEL_START_DATES = {
-    ("铁板画", "铁牌", "2030"): date(2026, 7, 29),
-    ("铁板画", "铝牌", "2030"): date(2026, 7, 29),
+    ("铁板画", "铁牌", "2030"): date(2026, 7, 28),
+    ("铁板画", "铝牌", "2030"): date(2026, 7, 28),
 }
 
 
@@ -42,8 +42,36 @@ def load_uv_consumption_history(
         .data
         or []
     )
-    return build_uv_consumption_model(
+    model = build_uv_consumption_model(
         pd.DataFrame(rows), current_date, lookback_days
+    )
+    active = (
+        supabase.table("inventory_items")
+        .select("category,material,color,size")
+        .eq("department", "UV")
+        .eq("is_active", True)
+        .execute().data or []
+    )
+    return filter_uv_model_to_active_skus(model, pd.DataFrame(active))
+
+
+def filter_uv_model_to_active_skus(model_df, active_inventory_df):
+    model = pd.DataFrame(model_df).copy()
+    active = pd.DataFrame(active_inventory_df).copy()
+    if model.empty or active.empty:
+        return model.iloc[0:0].copy()
+    model_keys = ["品类", "材质", "颜色", "型号"]
+    active = active.rename(columns={
+        "category": "品类", "material": "材质",
+        "color": "颜色", "size": "型号",
+    })
+    for frame in (model, active):
+        for column in model_keys:
+            frame[column] = frame[column].fillna("").astype(str).str.strip()
+        frame["型号"] = frame["型号"].str.upper()
+    active_keys = active[model_keys].drop_duplicates()
+    return model.merge(
+        active_keys, on=model_keys, how="inner", validate="many_to_one"
     )
 
 
@@ -77,7 +105,7 @@ def build_uv_consumption_model(
     result["消耗"] = pd.to_numeric(
         result["quantity_change"], errors="coerce"
     ).fillna(0)
-    result = result[(result["消耗"] < 0) & result["日期"].notna()]
+    result = result[result["日期"].notna()]
     if result.empty:
         return pd.DataFrame(columns=columns)
 
@@ -87,6 +115,11 @@ def build_uv_consumption_model(
     result["型号"] = (
         result["size"].fillna("").astype(str).str.strip().str.upper()
     )
+    keys = ["品类", "材质", "颜色", "型号"]
+    result = result.groupby(
+        [*keys, "日期"], as_index=False
+    )["消耗"].sum()
+    result = result[result["消耗"] < 0]
     for (category, material, model), start_date in (
         UV_CURRENT_MODEL_START_DATES.items()
     ):
@@ -100,7 +133,6 @@ def build_uv_consumption_model(
         return pd.DataFrame(columns=columns)
     result["消耗"] = result["消耗"].abs()
     available_dates = sorted(result["日期"].unique())
-    keys = ["品类", "材质", "颜色", "型号"]
     grouped = result.groupby(
         keys, as_index=False
     ).agg(

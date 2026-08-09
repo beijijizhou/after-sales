@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory.container.repository import load_inventory_containers
+from db.inventory.container.labels import get_container_business_name
 from db.inventory.container.tables import build_container_display
 from db.inventory.container.workflow import post_container_inventory
 from db.inventory.core.queries import load_inventory_items
@@ -49,15 +50,24 @@ def render_pending_container_posting(supabase, raw_df):
     render_container_inventory_summary(
         raw_df, "待入库库存汇总"
     )
+    source = raw_df.copy()
+    source["货柜备注"] = source.groupby("container_key")["note"].transform(
+        lambda notes: get_container_business_name(
+            source.loc[notes.index, "container_key"].iloc[0],
+            source.loc[notes.index, "container_no"].iloc[0],
+            notes.tolist(),
+        )
+    )
     summary = (
-        raw_df.groupby(
-            ["container_key", "container_no", "actual_arrival_date"],
+        source.groupby(
+            ["container_key", "货柜备注", "container_no", "actual_arrival_date"],
             dropna=False,
             as_index=False,
         )["quantity"]
         .sum()
         .rename(columns={
             "container_key": "货柜记录ID",
+            "货柜备注": "货柜备注",
             "container_no": "货柜号",
             "actual_arrival_date": "实际到柜日期",
             "quantity": "待入库件数",

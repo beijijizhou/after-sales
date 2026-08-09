@@ -2,7 +2,7 @@ from datetime import date
 
 import streamlit as st
 
-from automation.sync.uv_sheet_inventory import load_monthly_sku_summary
+from automation.sync.uv_monthly_summary import load_monthly_sku_summary
 from ui.inventory.planning.uv_source import (
     google_sheets_client,
     render_uv_spreadsheet_selector,

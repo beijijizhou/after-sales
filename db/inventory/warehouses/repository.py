@@ -12,15 +12,17 @@ def load_warehouses(supabase):
     return pd.DataFrame(rows)
 
 
-def load_warehouse_inventory_items(supabase):
-    rows = (
+def load_warehouse_inventory_items(supabase, active_only=True):
+    query = (
         supabase.table("inventory_items")
         .select(
             "id,department,category,brand,material,color,size,quantity"
         )
-        .order("department")
-        .order("category")
-        .execute().data or []
+    )
+    if active_only:
+        query = query.eq("is_active", True)
+    rows = (
+        query.order("department").order("category").execute().data or []
     )
     return pd.DataFrame(rows)
 
@@ -61,7 +63,7 @@ def load_transfer_lines(supabase, order_id=None):
     lines = pd.DataFrame(query.execute().data or [])
     if lines.empty:
         return lines
-    items = load_warehouse_inventory_items(supabase)
+    items = load_warehouse_inventory_items(supabase, active_only=False)
     return lines.merge(
         items.rename(columns={"id": "inventory_item_id"}),
         on="inventory_item_id", how="left",

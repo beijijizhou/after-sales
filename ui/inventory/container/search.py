@@ -8,6 +8,7 @@ from db.inventory.container.history import (
     load_container_events,
 )
 from db.inventory.container.repository import load_container_search_records
+from db.inventory.container.labels import get_container_display_label
 from db.inventory.container.tables import build_container_display
 from ui.inventory.container.events import render_status_update
 from ui.inventory.container.item_editor import (
@@ -30,7 +31,8 @@ def build_container_search_choices(raw_df):
     for key, rows in raw_df.groupby("container_key", sort=False):
         row = rows.iloc[0].to_dict()
         key = row["container_key"]
-        number = row.get("container_no") or key
+        number = row.get("container_no") or ""
+        notes = rows.get("note", pd.Series(dtype=str)).tolist()
         status = row.get("status") or "状态未知"
         actual = row.get("actual_arrival_date")
         expected = row.get("expected_arrival_date")
@@ -46,7 +48,8 @@ def build_container_search_choices(raw_df):
         business_text = f"｜{business}" if business else ""
         total = int(pd.to_numeric(rows["quantity"], errors="coerce").fillna(0).sum())
         choices[key] = (
-            f"{number}｜{status}{date_text}{business_text}｜{total:,} 件"
+            f"{get_container_display_label(key, number, notes)}｜{status}"
+            f"{date_text}{business_text}｜{total:,} 件"
         )
     return choices
 
@@ -66,7 +69,7 @@ def render_container_search(supabase):
     choices = build_container_search_choices(raw_df)
     search_options = ["", *choices]
     _reset_invalid_selectbox("container_search_dropdown", search_options)
-    st.caption("可以直接浏览，也可以输入货柜号、部门或品类关键词查找。")
+    st.caption("优先显示货柜备注名称；实体货柜号作为辅助，也可以输入柜号、部门或品类查找。")
     container_key = st.selectbox(
         "查找货柜",
         search_options,

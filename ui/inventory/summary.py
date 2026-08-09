@@ -15,6 +15,7 @@ from db.inventory import (
     load_inventory_movements,
     load_inventory_snapshot,
 )
+from db.inventory.core.snapshots import filter_snapshot_to_active_skus
 from db.inventory.sku import load_sku_imports
 from ui.inventory.history.history import (
     filter_inventory_history_data,
@@ -126,6 +127,9 @@ def render_inventory_summary(supabase):
         )
         try:
             snapshot_df = load_inventory_snapshot(supabase, department, category, selected_date)
+            snapshot_df = filter_snapshot_to_active_skus(
+                snapshot_df, complete_category_raw_df
+            )
             snapshot_df = filter_inventory_rows(
                 snapshot_df, category, brands, materials, colors,
                 selected_sizes,
@@ -146,6 +150,9 @@ def render_inventory_summary(supabase):
                 selected_sizes,
             )
             snapshot_df = build_inventory_snapshot(raw_df, movement_df, sku_import_df, selected_date)
+            snapshot_df = filter_snapshot_to_active_skus(
+                snapshot_df, complete_category_raw_df
+            )
 
         can_view_cost = has_permission("can_view_cost")
         inventory_df = build_inventory_table(

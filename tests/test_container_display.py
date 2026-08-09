@@ -123,6 +123,22 @@ class ContainerDisplayTests(unittest.TestCase):
         self.assertNotIn("S", display.columns)
         self.assertNotIn("5XL", display.columns)
 
+    def test_display_uses_business_remark_before_physical_number(self):
+        source = pd.DataFrame([{
+            **container_row("UV", "铁牌", "2030", 65_000),
+            "container_key": "12柜",
+            "container_no": "ZCSU7707166",
+            "note": "货柜汇总核对：表格第十柜；明细一致",
+        }])
+
+        display = build_container_display(source)
+
+        self.assertEqual(
+            display.iloc[0]["批次标识"],
+            "第十柜｜柜号 ZCSU7707166",
+        )
+        self.assertEqual(display.iloc[0]["货柜号"], "ZCSU7707166")
+
     def test_dtf_keeps_size_columns(self):
         source = pd.DataFrame([
             container_row("DTF", "180g", "S", 72),

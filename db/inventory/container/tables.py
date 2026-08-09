@@ -3,6 +3,8 @@ from uuid import uuid4
 
 import pandas as pd
 
+from db.inventory.container.labels import get_container_display_label
+
 from db.inventory import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT, SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
 from db.inventory.container.model_tables import (
@@ -243,7 +245,10 @@ def build_container_display(df, include_cost=False):
         "unit_cost": "成本", "status": "状态", "note": "备注",
     })
     pivot["批次标识"] = pivot.apply(
-        lambda row: row["货柜号"] or f"{row['发货日期']}-{row['总件数']}", axis=1
+        lambda row: get_container_display_label(
+            row["货柜记录ID"], row["货柜号"], [row.get("备注", "")]
+        ),
+        axis=1,
     )
     return pivot[columns]
 
@@ -295,8 +300,11 @@ def build_filtered_container_summary(raw_df):
         "material", "color", "size",
     ]:
         source[column] = source[column].fillna("").astype(str).str.strip()
-    source["涉及货柜"] = source["container_no"].where(
-        source["container_no"] != "", source["container_key"]
+    source["涉及货柜"] = source.apply(
+        lambda row: get_container_display_label(
+            row["container_key"], row["container_no"], [row.get("note", "")]
+        ),
+        axis=1,
     )
     group_keys = [
         "department", "category", "brand", "material", "color",

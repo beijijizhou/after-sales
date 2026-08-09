@@ -96,7 +96,9 @@ def _render_sku_rule_table(
 ):
     text = TEXT[language]
     if sku_df is None:
-        sku_df = load_sku_catalog(supabase, department)
+        sku_df = load_sku_catalog(
+            supabase, department, active_only=True
+        )
     if category and not sku_df.empty:
         sku_df = sku_df[sku_df["category"] == category]
     if "is_active" in sku_df:

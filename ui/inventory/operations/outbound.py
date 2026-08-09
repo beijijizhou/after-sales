@@ -120,7 +120,7 @@ def render_daily_outbound(supabase, department, category):
     )
     outbound_specs = {**container_specs, **sku_specs, **OUTBOUND_SPECS}
     specs_signature = outbound_specs_signature(outbound_specs)
-    sku_df = load_sku_catalog(supabase, department)
+    sku_df = load_sku_catalog(supabase, department, active_only=True)
     if category and not sku_df.empty:
         sku_df = sku_df[sku_df["category"] == category]
     sku_lookup = build_outbound_sku_lookup(sku_df)

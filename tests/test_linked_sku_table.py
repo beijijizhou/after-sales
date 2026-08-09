@@ -25,6 +25,10 @@ class LinkedSkuTableTests(unittest.TestCase):
                 "material": "160g", "brand": "T64",
                 "color": "白", "size": "M",
             },
+            {
+                "material": "CVC", "brand": "停用品牌",
+                "color": "白", "size": "XL", "is_active": False,
+            },
         ])
 
     def test_material_limits_brand_options(self):
@@ -39,6 +43,12 @@ class LinkedSkuTableTests(unittest.TestCase):
         )
 
         self.assertEqual(result["sizes"], ["S", "5XL"])
+
+    def test_inactive_skus_are_excluded_from_linked_options(self):
+        result = linked_sku_options(self.skus)
+
+        self.assertNotIn("CVC", result["materials"])
+        self.assertNotIn("停用品牌", result["brands"])
 
     def test_customer_sales_is_a_standalone_inventory_navigation_page(self):
         customer_sales = [item for item in NAV_ITEMS if item[0] == "customer_sales"]
