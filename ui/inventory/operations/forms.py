@@ -22,6 +22,9 @@ from ui.inventory.operations.adjustment_costs import (
     render_adjustment_totals,
     render_size_cost_editor,
 )
+from ui.inventory.operations.adjustment_batch import (
+    apply_adjustment_batch_fields,
+)
 from ui.inventory.operations.adjustment_preview import (
     render_adjustment_stock_comparison,
 )
@@ -42,8 +45,9 @@ def render_adjust_form(supabase, department, category, inventory_df):
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
     form_version = st.session_state.get("manual_adjustment_editor_version", 0)
     brands, materials, colors = adjustment_dimension_options(inventory_df)
-    default_df = build_wide_adjustment_template()
-    default_df.loc[0, "日期"] = current_date
+    default_df = build_wide_adjustment_template().drop(
+        columns=["日期"], errors="ignore"
+    )
     default_df.loc[0, "材质"] = (
         "180g" if "180g" in materials else materials[0]
     )
@@ -51,6 +55,11 @@ def render_adjust_form(supabase, department, category, inventory_df):
     action = st.radio(
         t("操作"), ["增加", "扣减"], horizontal=True, format_func=t
     )
+    adjustment_date = st.date_input(
+        t("日期"), value=current_date,
+        key=f"manual_adjustment_date_{form_version}",
+    )
+    st.caption("该日期统一应用于本次调整的全部 SKU。")
     source_type = "bulk"
     if action == "增加":
         source_label = st.radio(
@@ -59,7 +68,6 @@ def render_adjust_form(supabase, department, category, inventory_df):
         )
         source_type = "transfer" if source_label == "临时调货" else "bulk"
     adjustment_columns = {
-        "日期": st.column_config.DateColumn(t("日期"), required=True),
         "品牌": st.column_config.SelectboxColumn(t("品牌"), options=brands, required=False),
         "材质": st.column_config.SelectboxColumn(t("材质"), options=materials, required=True),
         "颜色": st.column_config.SelectboxColumn(t("颜色"), options=colors, required=True),
@@ -91,8 +99,9 @@ def render_adjust_form(supabase, department, category, inventory_df):
 
     if st.button(t("保存手动库存调整"), width="stretch"):
         try:
-            quantity_df = edited_df.copy()
-            quantity_df["操作"] = action
+            quantity_df = apply_adjustment_batch_fields(
+                edited_df, adjustment_date, action
+            )
             quantity_df["入库行"] = range(1, len(quantity_df) + 1)
             adjustment_df = normalize_adjustment_rows(quantity_df)
             adjustment_df = apply_size_costs(adjustment_df, cost_df)

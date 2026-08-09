@@ -10,9 +10,13 @@ from db.inventory.container.history import (
 from db.inventory.container.repository import load_container_search_records
 from db.inventory.container.tables import build_container_display
 from ui.inventory.container.events import render_status_update
+from ui.inventory.container.item_editor import (
+    render_posted_container_correction,
+)
 from ui.inventory.container.posting import render_container_posting_action
 from ui.inventory.container.reversal import render_container_undo_action
 from ui.inventory.container.tables import render_container_detail
+from ui.table_layout import fit_table_height
 from utils.auth import has_permission
 
 
@@ -107,9 +111,16 @@ def _render_search_action(supabase, target, container_key):
     action = get_container_search_action(target)
     if action == "completed":
         st.success("这个货柜已经完成入库")
-        render_container_undo_action(
-            supabase, target, container_key, "container_search"
-        )
+        if has_permission("can_edit_container"):
+            with st.expander("入库后更正与撤销", expanded=True):
+                render_posted_container_correction(
+                    supabase, target, container_key
+                )
+                st.divider()
+                render_container_undo_action(
+                    supabase, target, container_key, "container_search",
+                    embedded=True,
+                )
         return
     if action == "inconsistent":
         st.warning("这个货柜的明细状态不一致，请先核对货柜数据。")
@@ -144,6 +155,7 @@ def _render_search_history(supabase, container_key):
         history,
         hide_index=True,
         width="stretch",
+        height=fit_table_height(history),
         column_config={
             "事件日期": st.column_config.DateColumn("事件日期"),
             "备注": st.column_config.TextColumn("备注", width="large"),

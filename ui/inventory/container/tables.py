@@ -9,6 +9,7 @@ from db.inventory.container.tables import (
     build_container_inventory_summary,
     get_container_item_columns,
 )
+from ui.table_layout import fit_table_height
 
 
 def render_container_records(
@@ -73,6 +74,7 @@ def render_container_dataframe(display_df):
     st.dataframe(
         table_df, hide_index=True, width="stretch",
         column_config=column_config,
+        height=fit_table_height(table_df),
     )
 
 
@@ -111,6 +113,7 @@ def render_filtered_container_summary(raw_df):
         summary_df,
         hide_index=True,
         width="stretch",
+        height=fit_table_height(summary_df),
         column_config={
             "涉及货柜": st.column_config.TextColumn(
                 "涉及货柜", width="medium"
@@ -139,6 +142,7 @@ def _render_container_summary_table(raw_df):
         summary_df,
         hide_index=True,
         width="stretch",
+        height=fit_table_height(summary_df),
         column_config={
             "总件数": st.column_config.NumberColumn("总件数", format="%d"),
             **{
@@ -205,6 +209,7 @@ def render_container_detail(
                 detail_df,
                 hide_index=True,
                 width="stretch",
+                height=fit_table_height(detail_df),
                 column_config=config,
                 disabled=[
                     column for column in detail_df.columns
@@ -216,6 +221,7 @@ def render_container_detail(
             st.dataframe(
                 detail_df, hide_index=True, width="stretch",
                 column_config=config,
+                height=fit_table_height(detail_df),
             )
             edited_detail_df = detail_df
     packaging_df = build_container_packaging_summary(display_df, container_key)
@@ -263,6 +269,7 @@ def render_packaging_check(packaging_df, title="箱装核对"):
         packaging_df,
         hide_index=True,
         width="stretch",
+        height=fit_table_height(packaging_df),
         column_config={
             "核对规格": st.column_config.TextColumn("核对规格", width="small"),
             "包装记录": st.column_config.TextColumn("包装记录", width="medium"),

@@ -14,6 +14,7 @@ MONTHLY_SUMMARY_CANDIDATE_RANGES = (
     "M17:N35",
     "P16:Q40",
 )
+UV_DETAIL_RANGE = "A1:K1200"
 
 
 @dataclass(frozen=True)
@@ -110,25 +111,23 @@ def load_daily_summary(
 
 def load_monthly_sku_summary(
     sheets, spreadsheet_id, year, month,
-    candidate_ranges=MONTHLY_SUMMARY_CANDIDATE_RANGES,
+    detail_range=UV_DETAIL_RANGE,
 ):
     daily_rows = []
     sku_totals = {}
     tabs = _list_month_tabs(sheets, spreadsheet_id, year, month)
+    requested = [f"'{tab}'!{detail_range}" for _movement_date, tab in tabs]
+    values_by_range = sheets.batch_get_values(spreadsheet_id, requested)
     for movement_date, tab in tabs:
-        summary, selected_range, note = _load_daily_summary_from_candidates(
-            sheets,
-            spreadsheet_id,
-            movement_date,
-            tab,
-            candidate_ranges,
-        )
+        requested_range = f"'{tab}'!{detail_range}"
+        values = _range_values(values_by_range, tab, requested_range)
+        summary, note = _parse_detail_summary_values(values)
         total_quantity = int(sum(summary.values()))
         daily_rows.append({
             "date": movement_date,
             "sheet_name": tab,
             "total_quantity": total_quantity,
-            "range": selected_range,
+            "range": detail_range,
             "status": "ok" if summary else "no_data",
             "note": note,
         })
@@ -219,6 +218,33 @@ def _summary_range_for_date(
         if movement_date >= effective_date:
             selected = cell_range
     return selected
+
+
+def _parse_detail_summary_values(values):
+    result = {}
+    skipped_rows = 0
+    for row in values:
+        if len(row) < 10:
+            continue
+        material = str(row[4] or "").strip()
+        progress = str(row[9] or "").strip()
+        if not material or progress != "完成":
+            if material or progress:
+                skipped_rows += 1
+            continue
+        try:
+            quantity = int(float(row[8] or 0))
+        except (TypeError, ValueError):
+            skipped_rows += 1
+            continue
+        if quantity <= 0:
+            skipped_rows += 1
+            continue
+        result[material] = result.get(material, 0) + quantity
+    note = "ok"
+    if skipped_rows:
+        note = f"ok;skipped_rows={skipped_rows}"
+    return result, note
 
 
 def _load_daily_summary_from_candidates(

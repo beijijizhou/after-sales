@@ -17,6 +17,7 @@ from db.inventory.container.tables import (
 from utils.auth import get_current_operator_name, has_permission
 from ui.inventory.container.tables import render_packaging_check
 from ui.inventory.shared.linked_sku_table import linked_sku_options
+from ui.table_layout import fit_table_height
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -103,6 +104,7 @@ def render_container_form(supabase, department=None, category=None):
         key=f"inventory_container_editor_{form_version}_{department}_{category or 'all'}",
         column_config=_build_item_column_config(department, can_view_cost),
         disabled=_container_identity_columns(department),
+        height=fit_table_height(items),
     )
     edited_items = keep_container_items(edited_items)
     st.session_state[items_key] = edited_items.reset_index(drop=True)
@@ -122,6 +124,7 @@ def render_container_form(supabase, department=None, category=None):
             schedule_df,
             hide_index=True,
             width="stretch",
+            height=fit_table_height(schedule_df),
             column_config={
                 "发货日期": st.column_config.DateColumn("发货日期"),
                 "预计运输天数": st.column_config.NumberColumn(

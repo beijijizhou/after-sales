@@ -29,6 +29,10 @@ from ui.inventory.operations.outbound_feedback import (
     render_outbound_preview_summary,
     store_outbound_audit_feedback,
 )
+from ui.inventory.operations.adjustment_preview import (
+    build_inventory_change_comparison,
+    render_inventory_change_comparison,
+)
 from ui.inventory.operations.outbound_status import finish_daily_outbound_backfill
 from ui.inventory.operations.packaging_rules import (
     render_packaging_rule_editor,
@@ -348,6 +352,10 @@ def render_daily_outbound(supabase, department, category):
     except Exception as error:
         st.error(f"{text['inventory_check_error']}: {error}")
         return
+    render_inventory_change_comparison(
+        build_inventory_change_comparison(inventory_df, adjustment_df),
+        action="扣减",
+    )
     if not inventory_issues.empty:
         st.error(text["inventory_issue"])
         st.dataframe(

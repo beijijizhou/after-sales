@@ -15,6 +15,8 @@ from db.inventory.container.workflow import (
 )
 from utils.auth import get_current_operator_name
 from ui.inventory.container.reversal import render_container_undo_action
+from ui.inventory.container.posting import render_container_posting_stock_review
+from ui.table_layout import fit_table_height
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -91,6 +93,7 @@ def render_status_update(
             st.error(f"到柜日期保存失败：{error}")
 
     total = int(target["quantity"].sum())
+    render_container_posting_stock_review(supabase, target)
     if post_col.button(
         "到柜并直接入库",
         type="primary",
@@ -132,6 +135,7 @@ def render_container_history(supabase, raw_df):
         display_df,
         hide_index=True,
         width="stretch",
+        height=fit_table_height(display_df),
         column_config={
             "事件日期": st.column_config.DateColumn("事件日期"),
             "实际到货时间（纽约）": st.column_config.TextColumn(

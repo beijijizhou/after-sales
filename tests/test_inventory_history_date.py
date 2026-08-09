@@ -31,6 +31,40 @@ class InventoryHistoryDateTests(unittest.TestCase):
 
         self.assertEqual(len(all_dates), 2)
 
+    def test_history_filter_limits_rows_by_color_and_size(self):
+        common = {
+            "department": "DTF", "quantity_change": -10,
+            "movement_date": "2026-08-08", "reason": "仓库每日出货",
+            "created_at": "2026-08-08T15:00:00Z", "created_by": "Andy",
+            "source_type": "bulk", "reversal_of_batch_id": None,
+        }
+        movements = pd.DataFrame([
+            {
+                **common, "batch_id": "pink-m",
+                "category": "彩色短袖", "brand": "Haloo",
+                "material": "180g", "color": "粉色", "size": "M",
+            },
+            {
+                **common, "batch_id": "pink-l",
+                "category": "彩色短袖", "brand": "Haloo",
+                "material": "180g", "color": "粉色", "size": "L",
+            },
+            {
+                **common, "batch_id": "green-m",
+                "category": "彩色短袖", "brand": "Haloo",
+                "material": "180g", "color": "绿色", "size": "M",
+            },
+        ])
+        history_data = (movements, pd.DataFrame(), pd.DataFrame())
+
+        filtered, _, _ = filter_inventory_history_data(
+            history_data, "彩色短袖", [], [], ["粉色"], ["M"],
+        )
+
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered.iloc[0]["color"], "粉色")
+        self.assertEqual(filtered.iloc[0]["size"], "M")
+
 
 if __name__ == "__main__":
     unittest.main()

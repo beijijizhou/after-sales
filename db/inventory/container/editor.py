@@ -1,6 +1,13 @@
 from datetime import datetime
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+
+from db.inventory.operations.adjustments import (
+    apply_adjustment_rows,
+    reverse_inventory_batch,
+)
 
 EDITABLE_STATUSES = {"未到货", "在途", "延迟", "已到柜"}
 EDITABLE_FIELDS = {
@@ -69,3 +76,136 @@ def _value(value):
     if isinstance(value, float):
         return round(value, 4)
     return str(value).strip()
+
+
+def build_posted_container_correction_plan(rows, quantity_updates, inventory):
+    inventory_map = {
+        _sku_key(row): int(row.get("quantity") or 0)
+        for row in inventory
+    }
+    plan = []
+    for row in rows:
+        item_id = str(row["id"])
+        if item_id not in quantity_updates:
+            continue
+        old_quantity = int(row.get("quantity") or 0)
+        new_quantity = int(quantity_updates[item_id])
+        if new_quantity < 0:
+            raise ValueError("货柜数量不能小于0")
+        delta = new_quantity - old_quantity
+        if delta == 0:
+            continue
+        available = inventory_map.get(_sku_key(row), 0)
+        inventory_change = delta if delta > 0 else -min(abs(delta), available)
+        inventory_map[_sku_key(row)] = available + inventory_change
+        plan.append({
+            **row,
+            "old_quantity": old_quantity,
+            "new_quantity": new_quantity,
+            "delta": delta,
+            "inventory_change": inventory_change,
+            "unresolved_shortage": max(abs(delta) - available, 0)
+            if delta < 0 else 0,
+        })
+    return plan
+
+
+def correct_posted_container_quantities(
+    supabase, container_key, quantity_updates, operated_by,
+):
+    rows = (supabase.table("inventory_container_imports").select(
+        "id,container_no,status,department,category,brand,material,color,size,"
+        "quantity,unit_cost"
+    ).eq("container_key", container_key).execute().data or [])
+    if not rows or any(row.get("status") != "已入库" for row in rows):
+        raise ValueError("只有已入库货柜可以使用入库后更正")
+    departments = list({row["department"] for row in rows})
+    inventory = []
+    for department in departments:
+        inventory.extend(
+            supabase.table("inventory_items").select(
+                "department,category,brand,material,color,size,quantity"
+            ).eq("department", department).execute().data or []
+        )
+    plan = build_posted_container_correction_plan(
+        rows, quantity_updates, inventory
+    )
+    if not plan:
+        return {"rows": 0, "inventory_change": 0, "unresolved_shortage": 0}
+    batch_id = str(uuid4())
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    applied = False
+    try:
+        adjustment_rows = [row for row in plan if row["inventory_change"]]
+        adjustment_frame = pd.DataFrame(adjustment_rows)
+        groups = (
+            adjustment_frame.groupby(
+                ["department", "category"], dropna=False
+            )
+            if not adjustment_frame.empty else []
+        )
+        for (department, category), group in groups:
+            adjustments = pd.DataFrame({
+                "日期": today,
+                "操作": group["inventory_change"].map(
+                    lambda value: "增加" if value > 0 else "扣减"
+                ),
+                "品牌": group["brand"], "材质": group["material"],
+                "颜色": group["color"], "尺码": group["size"],
+                "数量": group["inventory_change"].abs(),
+                "成本": group["unit_cost"].where(
+                    group["inventory_change"] > 0, pd.NA
+                ),
+                "备注": f"货柜入库更正：{container_key}",
+            })
+            apply_adjustment_rows(
+                supabase, department, category, adjustments,
+                created_by=operated_by, source_type="bulk", batch_id=batch_id,
+            )
+            applied = True
+        for row in plan:
+            supabase.table("inventory_container_imports").update({
+                "quantity": row["new_quantity"]
+            }).eq("id", row["id"]).execute()
+        total_before = sum(row["old_quantity"] for row in plan)
+        total_after = sum(row["new_quantity"] for row in plan)
+        unresolved = sum(row["unresolved_shortage"] for row in plan)
+        note = (
+            f"入库后更正 {len(plan)} 行；变动 {total_after-total_before:+d} 件；"
+            f"库存同步 {sum(row['inventory_change'] for row in plan):+d} 件；"
+            f"已消耗历史差额 {unresolved} 件；库存批次：{batch_id}"
+        )
+        supabase.table("inventory_container_events").insert({
+            "container_key": container_key,
+            "container_no": rows[0].get("container_no") or container_key,
+            "event_type": "入库后更正",
+            "effective_date": today.isoformat(),
+            "previous_status": "已入库", "new_status": "已入库",
+            "operated_by": operated_by, "note": note,
+        }).execute()
+    except Exception:
+        for row in plan:
+            supabase.table("inventory_container_imports").update({
+                "quantity": row["old_quantity"]
+            }).eq("id", row["id"]).execute()
+        if applied:
+            try:
+                reverse_inventory_batch(
+                    supabase, batch_id, rows[0]["department"],
+                    rows[0]["category"], operated_by,
+                )
+            except Exception:
+                pass
+        raise
+    return {
+        "rows": len(plan),
+        "inventory_change": sum(row["inventory_change"] for row in plan),
+        "unresolved_shortage": sum(row["unresolved_shortage"] for row in plan),
+        "batch_id": batch_id,
+    }
+
+
+def _sku_key(row):
+    return tuple(str(row.get(column) or "").strip() for column in [
+        "department", "category", "brand", "material", "color", "size",
+    ])

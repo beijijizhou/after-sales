@@ -29,6 +29,10 @@ from ui.inventory.sales.forms import (
 )
 from ui.inventory.sales.history import render_invoice_history
 from ui.inventory.sales.pdf_preview import render_invoice_pdf_preview
+from ui.inventory.operations.adjustment_preview import (
+    build_inventory_change_comparison,
+    render_inventory_change_comparison,
+)
 from ui.inventory.shared.linked_sku_table import (
     render_linked_sku_sales_table,
 )
@@ -170,6 +174,10 @@ def _render_sales_entry(
             lines, invoice_date, invoice_number
         )
         issues = find_outbound_inventory_issues(adjustments, inventory)
+    render_inventory_change_comparison(
+        build_inventory_change_comparison(inventory, adjustments),
+        action="扣减", title="销售出库库存核对",
+    )
     if not issues.empty:
         st.error("销售出库包含无效 SKU 或库存不足，尚不能生成 Invoice。")
         st.dataframe(issues, hide_index=True, width="stretch")

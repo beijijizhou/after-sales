@@ -282,15 +282,22 @@ def render_uv_daily_deduction(supabase, current_date):
     if preview is None or preview_date != current_date:
         return
     st.caption(f"扣减日期：{current_date:%Y-%m-%d}")
+    display_preview = preview.rename(columns={
+        "预计扣减": "本次出库 (-)",
+        "扣减后库存": "调整后库存",
+    }).copy()
+    display_preview["本次出库 (-)"] = -pd.to_numeric(
+        display_preview["本次出库 (-)"], errors="coerce"
+    ).fillna(0).abs().astype(int)
     st.dataframe(
-        preview,
+        display_preview,
         hide_index=True,
         width="stretch",
         column_config={
             "当日消耗": st.column_config.NumberColumn(format="%d"),
             "当前库存": st.column_config.NumberColumn(format="%d"),
-            "预计扣减": st.column_config.NumberColumn(format="%d"),
-            "扣减后库存": st.column_config.NumberColumn(format="%d"),
+            "本次出库 (-)": st.column_config.NumberColumn(format="%d"),
+            "调整后库存": st.column_config.NumberColumn(format="%d"),
         },
     )
     pending = preview[

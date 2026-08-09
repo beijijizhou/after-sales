@@ -12,7 +12,8 @@ from ui.inventory.planning.uv_source import (
 def render_uv_monthly_summary(default_month=None):
     st.subheader("UV Google Sheets 月度按 SKU 汇总")
     st.caption(
-        "按 Google Sheets 每日汇总区读取整月数据，只生成月度生产汇总，不修改库存。"
+        "按 Google Sheets 每日工作表 A:K 明细读取整月数据；"
+        "只统计材质非空、数量有效、进度为“完成”的生产行。"
     )
     spreadsheet = render_uv_spreadsheet_selector(
         key="production_data_uv_monthly_spreadsheet"

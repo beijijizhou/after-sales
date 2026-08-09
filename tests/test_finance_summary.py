@@ -255,7 +255,10 @@ class FinanceSummaryTests(unittest.TestCase):
         )
         self.assertEqual(
             [label for _, label, _ in inventory_section],
-            ["库存总结", "生产库存", "SKU 管理", "耗材库存", "货柜安排"],
+            [
+                "库存总结", "生产库存", "耗材库存", "货柜安排",
+                "仓库调拨", "客户销售出库", "SKU 管理",
+            ],
         )
         independent = [
             label

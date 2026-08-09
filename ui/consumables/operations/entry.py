@@ -98,12 +98,19 @@ def render_movement_entry(
 
     if not preview.empty:
         st.caption("实际库存变动预览")
+        operation_column = (
+            "本次入库 (+)" if movement_label == "入库" else "本次出库 (-)"
+        )
+        display_preview = preview.rename(columns={
+            "本次变动（箱）": operation_column,
+            "操作后库存（箱）": "调整后库存（箱）",
+        })
         st.dataframe(
-            preview, width="stretch", hide_index=True,
+            display_preview, width="stretch", hide_index=True,
             column_config={
                 "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
-                "本次变动（箱）": st.column_config.NumberColumn(format="%+.2f"),
-                "操作后库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+                operation_column: st.column_config.NumberColumn(format="%+.2f"),
+                "调整后库存（箱）": st.column_config.NumberColumn(format="%.2f"),
                 "单位成本": st.column_config.NumberColumn(format="$%.4f"),
             },
         )

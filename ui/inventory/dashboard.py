@@ -414,7 +414,11 @@ def _render_automatic_daily_operation(
                     },
                 )
                 st.markdown("**SKU 库存匹配**")
-            st.dataframe(preview.rows, hide_index=True, width="stretch")
+            st.dataframe(
+                _system_stock_change_display(preview.rows),
+                hide_index=True,
+                width="stretch",
+            )
     if not ready:
         st.info("当前没有需要扣减的系统数据。")
         return
@@ -478,3 +482,15 @@ def _format_applied_result(
     return (
         f"{movement_date:%m/%d} {label} {quantity:,} 件（{status}）"
     )
+
+
+def _system_stock_change_display(rows):
+    display = pd.DataFrame(rows).rename(columns={
+        "预计扣减": "本次出库 (-)",
+        "扣减后库存": "调整后库存",
+    })
+    if "本次出库 (-)" in display:
+        display["本次出库 (-)"] = -pd.to_numeric(
+            display["本次出库 (-)"], errors="coerce"
+        ).fillna(0).abs().astype(int)
+    return display

@@ -58,7 +58,7 @@ def render_daily_issue_table(supabase, department_code, items_df, can_edit):
     normalized["录入方式"] = "整包装"
     try:
         rows, preview = _normalize_entry_rows(
-            normalized, label_to_row, include_cost=False
+            normalized, label_to_row, include_cost=False, direction=-1
         )
     except ValueError as error:
         st.error(str(error))
@@ -220,7 +220,27 @@ def _render_preview(preview, title):
     if preview.empty:
         return
     st.caption(title)
-    st.dataframe(preview, width="stretch", hide_index=True)
+    display = preview.copy()
+    if "本次变动（箱）" in display:
+        values = pd.to_numeric(
+            display["本次变动（箱）"], errors="coerce"
+        ).fillna(0)
+        if values.le(0).all():
+            operation_column = "本次出库 (-)"
+        elif values.ge(0).all():
+            operation_column = "本次入库 (+)"
+        else:
+            operation_column = "本次变动 (+/-)"
+        display = display.rename(columns={
+            "本次变动（箱）": operation_column,
+            "操作后库存（箱）": "调整后库存（箱）",
+        })
+    elif "库存差额（箱）" in display:
+        display = display.rename(columns={
+            "库存差额（箱）": "本次变动 (+/-)",
+            "目标库存（箱）": "调整后库存（箱）",
+        })
+    st.dataframe(display, width="stretch", hide_index=True)
 
 
 def _save_batch(

@@ -5,6 +5,7 @@ from ui.inventory.shared.filters import _reset_invalid_selectbox
 
 from db.inventory.container.repository import load_inventory_containers
 from db.inventory.container.workflow import post_container_inventory
+from ui.inventory.container.posting import render_container_posting_stock_review
 from ui.inventory.container.tables import (
     render_container_inventory_summary,
     render_container_records,
@@ -121,6 +122,8 @@ def render_today_arrival_posting(supabase, raw_df):
         "入库备注",
         key=f"today_arrival_posting_note_{container_key}",
     )
+    target = pending[pending["container_key"] == container_key]
+    render_container_posting_stock_review(supabase, target)
     st.warning(f"确认后库存将增加 {total:,} 件")
     if not st.button(
         "确认入库",

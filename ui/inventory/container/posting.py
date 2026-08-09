@@ -4,6 +4,7 @@ import streamlit as st
 from db.inventory.container.repository import load_inventory_containers
 from db.inventory.container.tables import build_container_display
 from db.inventory.container.workflow import post_container_inventory
+from db.inventory.core.queries import load_inventory_items
 from ui.inventory.container.tables import (
     render_container_detail,
     render_container_inventory_summary,
@@ -12,7 +13,12 @@ from ui.inventory.container.cost_editor import (
     auto_save_container_costs,
     can_edit_container_cost,
 )
+from ui.inventory.operations.adjustment_preview import (
+    build_inventory_change_comparison,
+    render_inventory_change_comparison,
+)
 from utils.auth import get_current_operator_name, has_permission
+from ui.table_layout import fit_table_height
 
 
 def load_pending_containers(
@@ -64,6 +70,7 @@ def render_pending_container_posting(supabase, raw_df):
         summary.drop(columns="货柜记录ID"),
         hide_index=True,
         width="stretch",
+        height=fit_table_height(summary),
         on_select="rerun",
         selection_mode="single-row",
         key="pending_container_posting",
@@ -112,6 +119,7 @@ def render_container_posting_action(
     total = int(
         pd.to_numeric(target["quantity"], errors="coerce").fillna(0).sum()
     )
+    render_container_posting_stock_review(supabase, target)
     st.warning(f"确认后库存将增加 {total:,} 件")
     if not st.button(
         "确认入库",
@@ -132,3 +140,35 @@ def render_container_posting_action(
         st.rerun()
     except Exception as error:
         st.error(f"确认入库失败：{error}")
+
+
+def render_container_posting_stock_review(supabase, target):
+    render_container_inventory_change_review(
+        supabase, target, "增加", "货柜入库库存核对"
+    )
+
+
+def render_container_inventory_change_review(
+    supabase, target, action, title,
+):
+    inventory_frames = []
+    scopes = target[["department", "category"]].drop_duplicates()
+    try:
+        for scope in scopes.to_dict("records"):
+            frame = load_inventory_items(
+                supabase, scope["department"], scope["category"]
+            ).copy()
+            frame["department"] = scope["department"]
+            frame["category"] = scope["category"]
+            inventory_frames.append(frame)
+    except Exception as error:
+        st.error(f"入库前库存核对失败：{error}")
+        return
+    inventory = pd.concat(inventory_frames, ignore_index=True)
+    changes = target.copy()
+    if action is not None:
+        changes["操作"] = action
+    render_inventory_change_comparison(
+        build_inventory_change_comparison(inventory, changes),
+        action=action, title=title,
+    )

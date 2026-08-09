@@ -188,6 +188,9 @@ def render_inventory_summary(supabase):
             complete_history_data,
             category, brands, materials, colors, selected_sizes,
         )
+        history_filter_active = bool(
+            brands or materials or colors or selected_sizes
+        )
         render_inventory_tabs(
             supabase, department, category, inventory_df, raw_df,
             current_cost_df, inventory_date, selected_date, current_date,
@@ -197,6 +200,7 @@ def render_inventory_summary(supabase):
             undo_history_data=complete_history_data,
             operation_inventory_df=operation_inventory_df,
             operation_raw_df=complete_category_raw_df,
+            history_filter_active=history_filter_active,
         )
 
     except Exception as e:

@@ -7,6 +7,12 @@ import streamlit as st
 from db.inventory import apply_adjustment_rows
 from db.inventory.sku import apply_sku_rows
 from ui.inventory.i18n import t
+from ui.inventory.operations.adjustment_preview import (
+    render_adjustment_stock_comparison,
+)
+from ui.inventory.operations.adjustment_batch import (
+    apply_adjustment_batch_fields,
+)
 from utils.auth import get_current_operator_name, has_permission
 
 
@@ -18,6 +24,11 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
         t("操作"), ["增加", "扣减"], horizontal=True,
         format_func=t, key="model_adjustment_action",
     )
+    adjustment_date = st.date_input(
+        t("日期"), value=today,
+        key=f"model_adjustment_date_{version}",
+    )
+    st.caption("该日期统一应用于本次调整的全部 SKU。")
     source_type = "bulk"
     if action == "增加":
         source = st.radio(
@@ -28,7 +39,7 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
 
     options = _model_options(inventory_df)
     template = pd.DataFrame([{
-        "日期": today, "品牌": options["品牌"][0],
+        "品牌": options["品牌"][0],
         "材质": options["材质"][0], "颜色": options["颜色"][0],
         "型号": options["型号"][0], "数量": 0, "备注": "",
     }])
@@ -36,7 +47,6 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
     if show_cost:
         template["成本"] = None
     columns = {
-        "日期": st.column_config.DateColumn(t("日期"), required=True),
         "品牌": st.column_config.SelectboxColumn(t("品牌"), options=options["品牌"]),
         "材质": st.column_config.SelectboxColumn(t("材质"), options=options["材质"], required=True),
         "颜色": st.column_config.SelectboxColumn(t("颜色"), options=options["颜色"], required=True),
@@ -52,12 +62,15 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
         template, hide_index=True, num_rows="dynamic", width="stretch",
         column_config=columns, key=f"model_adjustment_{version}",
     ))
+    render_adjustment_stock_comparison(inventory_df, edited, action)
     total = pd.to_numeric(edited["数量"], errors="coerce").fillna(0).sum()
     st.metric(t("当前编辑总件数"), f"{int(total):,}")
     if not st.button(t("保存手动库存调整"), width="stretch"):
         return
 
-    rows = _normalize_model_rows(edited, action)
+    rows = _normalize_model_rows(
+        apply_adjustment_batch_fields(edited, adjustment_date, action), action
+    )
     if rows.empty:
         st.warning(t("请先填写有效库存调整"))
         return

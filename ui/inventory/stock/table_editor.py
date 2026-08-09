@@ -8,6 +8,10 @@ import streamlit as st
 from db.inventory import SIZE_COLUMNS, apply_adjustment_rows
 from utils.auth import get_current_operator_name
 from ui.inventory.i18n import t
+from ui.inventory.operations.adjustment_preview import (
+    build_inventory_change_comparison,
+    render_inventory_change_comparison,
+)
 
 
 LOCKED_COLUMNS = ["品类", "品牌", "材质", "颜色", "型号", "成本"]
@@ -65,12 +69,25 @@ def render_inventory_table_editor(
         total_label = t("当前显示尺码合计")
     st.caption(f"{total_label}: {int(visible_total):,} {t('件')}")
 
-    if st.button(t("保存库存明细修改"), width="stretch"):
-        adjustment_df = (
-            build_model_inline_adjustments(original_df, edited_df)
+    adjustment_df = (
+        build_model_inline_adjustments(original_df, edited_df)
+        if is_model_inventory
+        else build_inline_adjustments(original_df, edited_df)
+    )
+    if not adjustment_df.empty:
+        comparison_inventory = (
+            original_df
             if is_model_inventory
-            else build_inline_adjustments(original_df, edited_df)
+            else _wide_inventory_to_long(original_df)
         )
+        render_inventory_change_comparison(
+            build_inventory_change_comparison(
+                comparison_inventory, adjustment_df
+            ),
+            title=t("保存前库存核对"),
+        )
+
+    if st.button(t("保存库存明细修改"), width="stretch"):
         if adjustment_df.empty:
             st.info(t("库存数量没有变化"))
             return
@@ -87,6 +104,20 @@ def render_inventory_table_editor(
         )
         st.session_state["inventory_inline_editor_version"] = version + 1
         st.rerun()
+
+
+def _wide_inventory_to_long(inventory_df):
+    identity = [
+        column for column in ["品类", "品牌", "材质", "颜色"]
+        if column in inventory_df
+    ]
+    sizes = [size for size in SIZE_COLUMNS if size in inventory_df]
+    return inventory_df.melt(
+        id_vars=identity,
+        value_vars=sizes,
+        var_name="尺码",
+        value_name="当前库存",
+    )
 
 
 def build_inline_adjustments(original_df, edited_df):

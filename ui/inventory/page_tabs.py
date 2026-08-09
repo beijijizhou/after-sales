@@ -26,6 +26,7 @@ from ui.inventory.stock.summary import (
 from ui.inventory.stock.table import (
     render_inventory_metrics,
     render_inventory_table,
+    render_sku_update_times,
     render_inventory_view_mode,
 )
 
@@ -36,6 +37,7 @@ def render_inventory_tabs(
     can_view_cost, history_data, movement_types, filter_title,
     undo_history_data=None, operation_inventory_df=None,
     operation_raw_df=None,
+    history_filter_active=False,
 ):
     tab_keys = inventory_tab_keys(
         department, can_view_cost=can_view_cost, category=category
@@ -73,6 +75,8 @@ def render_inventory_tabs(
                 is_historical=selected_date < current_date,
             )
             render_inventory_metrics(inventory_df)
+        if selected_date == current_date:
+            render_sku_update_times(raw_df, department, visible_sizes)
 
     with tabs["点货预测"]:
         order_quantity, arrival_date, buffer_days = (
@@ -121,9 +125,11 @@ def render_inventory_tabs(
         )
 
     with tabs["库存流水"]:
+        st.caption(f"{t('当前流水筛选')}：{filter_title}")
         _render_history(
             supabase, department, "all", history_data, visible_sizes,
             movement_types, quantity_search_data=undo_history_data,
+            show_all_filtered=history_filter_active,
         )
 
     with tabs["撤销"]:
@@ -161,13 +167,14 @@ def inventory_tab_keys(department, can_view_cost=False, category=""):
 
 def _render_history(
     supabase, department, mode, history_data, visible_sizes, movement_types,
-    quantity_search_data=None,
+    quantity_search_data=None, show_all_filtered=False,
 ):
     render_inventory_history(
         supabase, department, mode, history_data=history_data,
         visible_sizes=visible_sizes,
         movement_types=movement_types,
         quantity_search_data=quantity_search_data,
+        show_all_filtered=show_all_filtered,
     )
 
 

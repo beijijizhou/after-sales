@@ -28,6 +28,8 @@ from ui.inventory.history.quantity_search import (
     render_outbound_quantity_search,
 )
 from ui.inventory.operations.adjustment_preview import (
+    build_inventory_change_comparison,
+    render_inventory_change_comparison,
     render_adjustment_preview_editor,
 )
 from ui.inventory.history.history_filters import (
@@ -104,6 +106,7 @@ def render_movement_undo(supabase, selected_df, reversed_ids):
         if action == "修改并替换":
             _render_daily_outbound_replacement(supabase, batch_id)
             return
+    _render_reversal_stock_review(supabase, selected_df)
     confirmed = st.checkbox(
         t("我确认撤销这笔库存变动"),
         key=f"confirm_inventory_undo_{batch_id}",
@@ -126,6 +129,43 @@ def render_movement_undo(supabase, selected_df, reversed_ids):
             "库存变动已撤销，库存明细已恢复"
         )
         st.rerun()
+
+
+def _render_reversal_stock_review(supabase, selected_df):
+    row = selected_df.iloc[0]
+    try:
+        inventory = load_outbound_inventory(
+            supabase, row["department"], row["category"]
+        )
+    except Exception as error:
+        st.error(f"撤销前库存核对失败：{error}")
+        return
+    inventory["department"] = row["department"]
+    inventory["category"] = row["category"]
+    reversal = _movement_rows_as_adjustments(selected_df, reverse=True)
+    render_inventory_change_comparison(
+        build_inventory_change_comparison(inventory, reversal),
+        title="撤销后的库存核对",
+    )
+
+
+def _movement_rows_as_adjustments(rows, reverse=False):
+    result = pd.DataFrame(rows).rename(columns={
+        "department": "部门", "category": "品类", "brand": "品牌",
+        "material": "材质", "color": "颜色", "size": "尺码",
+    }).copy()
+    quantity_change = pd.to_numeric(
+        result["quantity_change"], errors="coerce"
+    ).fillna(0).astype(int)
+    if reverse:
+        quantity_change = -quantity_change
+    result["操作"] = quantity_change.map(
+        lambda value: "增加" if value > 0 else "扣减"
+    )
+    result["数量"] = quantity_change.abs()
+    return result[[
+        "部门", "品类", "品牌", "材质", "颜色", "尺码", "操作", "数量",
+    ]]
 
 
 def _is_editable_daily_outbound(selected_df):
@@ -202,6 +242,18 @@ def _render_daily_outbound_replacement(supabase, batch_id):
     except Exception as error:
         st.error(f"修正版库存检查失败：{error}")
         return
+    replacement_inventory["department"] = row["department"]
+    replacement_inventory["category"] = row["category"]
+    net_changes = pd.concat([
+        _movement_rows_as_adjustments(complete_batch_df, reverse=True),
+        corrected.assign(部门=row["department"], 品类=row["category"]),
+    ], ignore_index=True)
+    render_inventory_change_comparison(
+        build_inventory_change_comparison(current_inventory.assign(
+            department=row["department"], category=row["category"]
+        ), net_changes),
+        title="修正后库存核对",
+    )
     if not issues.empty:
         st.error("修正版包含不存在的 SKU 或撤销原批次后仍然库存不足。")
         st.dataframe(issues, hide_index=True, width="stretch")
@@ -268,6 +320,7 @@ def filter_inventory_history_data(
 def render_inventory_history(
     supabase, department, mode, history_data=None, visible_sizes=None,
     movement_types=None, quantity_search_data=None,
+    show_all_filtered=False,
 ):
     history_data = history_data or load_inventory_history_data(
         supabase, department
@@ -337,6 +390,12 @@ def render_inventory_history(
             selected_df, movement_types
         )
 
+    if mode == "all" and show_all_filtered:
+        render_filtered_movement_results(
+            selected_df, movement_df, visible_sizes
+        )
+        return
+
     if mode == "sku":
         st.subheader(t("SKU 导入历史"))
 
@@ -350,6 +409,39 @@ def render_inventory_history(
         visible_sizes=visible_sizes,
         sku_import=mode == "sku",
     )
+
+
+def render_filtered_movement_results(batch_df, movement_df, visible_sizes=None):
+    if batch_df.empty:
+        st.info(t("暂无相关记录"))
+        return
+    st.markdown("#### 筛选结果批次")
+    st.caption("当前已开启 SKU 筛选，以下展示全部匹配批次和全部相关流水。")
+    batch_summary = batch_df.copy()
+    st.dataframe(
+        batch_summary[[
+            "记录时间", "表格日期", "类型", "部门", "品类",
+            "数量", "操作人", "消耗来源", "备注",
+        ]],
+        hide_index=True, width="stretch",
+    )
+    matching_movements = filter_movements_for_batches(
+        movement_df, batch_df
+    )
+    render_movement_table(
+        matching_movements, visible_sizes,
+        key="inventory_filtered_movement_details",
+    )
+
+
+def filter_movements_for_batches(movement_df, batch_df):
+    if movement_df.empty or batch_df.empty:
+        return pd.DataFrame(movement_df).iloc[0:0].copy()
+    keyed_movements = add_movement_batch_key(movement_df)
+    visible_keys = set(batch_df["batch_key"].astype(str))
+    return keyed_movements[
+        keyed_movements["batch_key"].astype(str).isin(visible_keys)
+    ].reset_index(drop=True)
 
 
 def filter_history_department(history_data, department):

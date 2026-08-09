@@ -63,6 +63,16 @@ rows remain understandable and reversible as one business event. Legacy rows
 without an explicit batch ID should be grouped into a stable, explainable
 business batch where possible rather than exposed as unrelated records.
 
+Every UI operation that increases or decreases inventory must show the same
+three-stage SKU-level review before confirmation: current inventory, the
+signed batch change, and resulting inventory. Label positive changes as
+`本次入库 (+)` and negative changes as `本次出库 (-)`; use
+`本次变动 (+/-)` only for a genuinely mixed adjustment. Keep this review in
+long-table form, show only affected SKUs, use the shared SKU order, and expose
+negative results before the user saves. The rule applies equally to manual
+adjustments, daily outbound, system deductions, sales, consumables, container
+posting, direct inventory editing, and future inventory-writing workflows.
+
 Use one human review order for SKU data throughout the ERP. Any long-form
 table or editor containing material, color, and apparel size must group rows
 as material, then color, then the fixed size order S, M, L, XL, 2XL, 3XL,

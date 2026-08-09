@@ -199,18 +199,18 @@ class UVSheetInventoryTests(unittest.TestCase):
             def batch_get_values(self, _spreadsheet_id, ranges):
                 result = {}
                 for cell_range in ranges:
-                    if "0701" in cell_range and "M17:N35" in cell_range:
+                    if "0701" in cell_range and "A1:K1200" in cell_range:
                         result[cell_range] = [
-                            ["材质", "用于“数量(件)”的 SUM"],
-                            ["Tie_2030", 10],
-                            ["总计", 10],
+                            ["平台", "批次号", "序列号", "操作人", "材质", "手机型号", "型号", "材质", "数量(件)", "进度", "备注"],
+                            ["SDS1", "1", "1", "E", "Tie_2030", "", "", "", "10", "完成", ""],
+                            ["SDS1", "2", "2", "E", "", "", "", "", "99", "完成", ""],
                         ]
-                    elif "0702" in cell_range and "P17:Q35" in cell_range:
+                    elif "0702" in cell_range and "A1:K1200" in cell_range:
                         result[cell_range] = [
-                            ["材质", "用于“数量(件)”的 SUM"],
-                            ["Tie_2030", 20],
-                            ["", 3],
-                            ["总计", 23],
+                            ["平台", "批次号", "序列号", "操作人", "材质", "手机型号", "型号", "材质", "数量(件)", "进度", "备注"],
+                            ["SDS1", "3", "1", "E", "Tie_2030", "", "", "", "20", "完成", ""],
+                            ["SDS1", "4", "2", "E", "Tie_1040", "", "", "", "3", "完成", ""],
+                            ["SDS1", "5", "3", "E", "Tie_1040", "", "", "", "8", "暂停", ""],
                         ]
                     else:
                         result[cell_range] = []
@@ -230,11 +230,37 @@ class UVSheetInventoryTests(unittest.TestCase):
         self.assertEqual(
             sku_df.to_dict("records"),
             [
+                {"sku": "Tie_1040", "total_quantity": 3},
                 {"sku": "Tie_2030", "total_quantity": 30},
-                {"sku": "UNMAPPED", "total_quantity": 3},
             ],
         )
         self.assertEqual(missing_dates[0].date().isoformat(), "2026-07-03")
+
+    def test_monthly_summary_skips_non_completed_or_invalid_rows(self):
+        class MonthlySheets:
+            def list_sheets(self, _spreadsheet_id):
+                return [{"title": "0701"}]
+
+            def batch_get_values(self, _spreadsheet_id, ranges):
+                return {
+                    ranges[0]: [
+                        ["平台", "批次号", "序列号", "操作人", "材质", "手机型号", "型号", "材质", "数量(件)", "进度", "备注"],
+                        ["SDS1", "1", "1", "E", "Tie_2030", "", "", "", "10", "完成", ""],
+                        ["SDS1", "2", "2", "E", "Tie_2030", "", "", "", "8", "作废", ""],
+                        ["SDS1", "3", "3", "E", "Tie_1040", "", "", "", "", "完成", ""],
+                    ]
+                }
+
+        daily_df, sku_df, missing_dates = load_monthly_sku_summary(
+            MonthlySheets(), "spreadsheet", 2026, 7
+        )
+
+        self.assertEqual(int(daily_df.iloc[0]["total_quantity"]), 10)
+        self.assertEqual(
+            sku_df.to_dict("records"),
+            [{"sku": "Tie_2030", "total_quantity": 10}],
+        )
+        self.assertEqual(len(missing_dates), 30)
 
     def test_google_sheets_client_writes_bounded_range(self):
         client = GoogleSheetsClient({

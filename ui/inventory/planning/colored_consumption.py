@@ -173,7 +173,9 @@ def _render_colored_reconciliation(supabase, current_date):
         or st.session_state.get(preview_date_key) != selected_date
     ):
         return
-    st.dataframe(preview, hide_index=True, width="stretch")
+    st.dataframe(
+        _stock_change_display(preview), hide_index=True, width="stretch"
+    )
     quantity = int(pd.to_numeric(
         preview.get("预计扣减", pd.Series(dtype="float64")),
         errors="coerce",
@@ -248,7 +250,9 @@ def _render_colored_daily_deduction_form(supabase, current_date):
     if preview.empty:
         st.info(f"{current_date:%m/%d} 暂无完整的彩色短袖生产数据")
         return
-    st.dataframe(preview, hide_index=True, width="stretch")
+    st.dataframe(
+        _stock_change_display(preview), hide_index=True, width="stretch"
+    )
     deferred = preview[preview["状态"] != "可扣减"]
     if not deferred.empty:
         st.warning(
@@ -280,6 +284,18 @@ def _render_colored_daily_deduction_form(supabase, current_date):
             st.rerun()
         except Exception as error:
             st.error(f"扣减失败：{error}")
+
+
+def _stock_change_display(preview):
+    display = pd.DataFrame(preview).rename(columns={
+        "预计扣减": "本次出库 (-)",
+        "扣减后库存": "调整后库存",
+    })
+    if "本次出库 (-)" in display:
+        display["本次出库 (-)"] = -pd.to_numeric(
+            display["本次出库 (-)"], errors="coerce"
+        ).fillna(0).abs().astype(int)
+    return display
 
 
 def _stock_summary(inventory_df):

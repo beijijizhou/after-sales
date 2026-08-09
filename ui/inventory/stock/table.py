@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
@@ -85,6 +86,66 @@ def render_inventory_table(
             display_df, hide_index=True, width="stretch",
             column_config=column_config, height=table_height,
         )
+
+
+def render_sku_update_times(raw_df, department, visible_sizes=None):
+    update_table = build_sku_update_time_table(
+        raw_df, department, visible_sizes
+    )
+    if update_table.empty:
+        return
+    with st.expander(t("SKU 上次库存更新时间（纽约）"), expanded=False):
+        st.caption(t("只记录成功写入库存的时间；失败提交不会更新时间。"))
+        st.dataframe(
+            update_table, hide_index=True, width="stretch",
+            height=min(max((len(update_table) + 1) * 35 + 8, 180), 700),
+        )
+
+
+def build_sku_update_time_table(raw_df, department, visible_sizes=None):
+    source = pd.DataFrame(raw_df).copy()
+    identity = ["category", "brand", "material", "color"]
+    required = {*identity, "size", "updated_at"}
+    if source.empty or not required.issubset(source.columns):
+        return pd.DataFrame()
+    updated = pd.to_datetime(source["updated_at"], errors="coerce", utc=True)
+    source["更新时间"] = updated.dt.tz_convert(
+        ZoneInfo("America/New_York")
+    ).dt.strftime("%Y-%m-%d %H:%M").fillna("—")
+    source["size"] = source["size"].fillna("").astype(str)
+    if str(department or "").strip().upper() != "DTF":
+        return (
+            source.groupby([*identity, "size"], dropna=False, as_index=False)
+            .agg(更新时间=("更新时间", "max"))
+            .rename(columns={
+                "category": "品类", "brand": "品牌", "material": "材质",
+                "color": "颜色", "size": "型号",
+            })
+        )
+    table = source.pivot_table(
+        index=identity, columns="size", values="更新时间",
+        aggfunc="max", fill_value="—",
+    ).reset_index().rename(columns={
+        "category": "品类", "brand": "品牌", "material": "材质",
+        "color": "颜色",
+    })
+    sizes = [
+        size for size in (visible_sizes or SIZE_COLUMNS)
+        if size in table.columns
+    ]
+    table["_material_order"] = table["材质"].map({
+        "160g": 0, "180g": 1, "CVC": 2,
+    }).fillna(99)
+    table["_color_order"] = table["颜色"].map({
+        "黑": 0, "白": 1,
+    }).fillna(99)
+    table = table.sort_values(
+        ["_material_order", "材质", "品牌", "_color_order", "颜色"],
+        kind="stable",
+    )
+    return table[["品类", "品牌", "材质", "颜色", *sizes]].reset_index(
+        drop=True
+    )
 
 
 def build_inventory_date_context(

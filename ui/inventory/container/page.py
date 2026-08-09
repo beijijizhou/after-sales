@@ -25,6 +25,7 @@ from ui.inventory.container.history_view import (
     render_arrival_date_range,
     render_arrival_history_table,
 )
+from ui.table_layout import fit_table_height
 from ui.inventory.container.item_editor import render_container_item_editor
 from ui.inventory.container.posting import (
     load_pending_containers,
@@ -113,6 +114,7 @@ def render_in_transit_table(
             selection_df,
             hide_index=True,
             width="stretch",
+            height=fit_table_height(selection_df),
             on_select="rerun",
             selection_mode="single-row",
             key="transit_container_list_selection",
@@ -190,6 +192,9 @@ def _render_transit_container_operation(supabase, raw_df, container_key):
 
 def render_inventory_container_page(supabase):
     st.title("货柜安排")
+    saved_message = st.session_state.pop("container_saved_message", None)
+    if saved_message:
+        st.success(saved_message)
     render_container_search(supabase)
     st.divider()
     try:

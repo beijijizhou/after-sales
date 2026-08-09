@@ -100,6 +100,34 @@
   quantity table locks identity fields so invalid combinations cannot be typed
   back into the batch.
 
+## Warehouses And Transfers
+
+- The active warehouses are `25`, `60`, and `70`. Warehouse `25` is the
+  default operational warehouse for garment outbound and may also store stock;
+  warehouses `60` and `70` primarily store reserve inventory.
+- `inventory_items` remains the authoritative company-wide SKU total and cost
+  record. Warehouse balances describe physical distribution underneath that
+  total. Moving stock between warehouses never changes company-wide quantity
+  or cost.
+- Existing inventory is assigned to warehouse `25` when warehouse distribution
+  is first initialized. Normal inventory movements default to warehouse `25`
+  and synchronize that distribution balance. The distribution table must show
+  25/60/70, in-transit or unresolved quantities, and any difference from the
+  company total so drift is visible rather than hidden.
+- Locations are optional reference notes, not strict inventory identity and
+  never block inbound, outbound, or transfer. Examples include `A区`, `靠门`,
+  or `第二托`.
+- A shortage-restock request selects the target SKUs but does not require a
+  requested quantity. Actual quantities are recorded only after warehouse
+  staff find and dispatch stock. The lightweight states are `待配货 -> 运输中
+  -> 已收到`; an immediate physical move may use `直接完成调拨` while retaining
+  the same atomic batch record.
+- Dispatch subtracts the actual quantity from the source warehouse and exposes
+  it as in transit. Receipt adds the actual received quantity to the target
+  warehouse. Differences remain visible as `在途/待核对`. Every transfer keeps
+  its source and target warehouses, SKU targets, actual sent and received
+  quantities, optional locations, operators, timestamps, and status.
+
 ## Production And QA
 
 - Prefer Supabase summary functions over downloading daily detail rows.
