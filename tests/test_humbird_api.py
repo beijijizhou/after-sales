@@ -1,16 +1,101 @@
 from datetime import date, datetime
+import hashlib
+import hmac
 import unittest
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
+
+import pandas as pd
 
 from automation.api.humbird import build_production_item_payload
 from automation.api.humbird.client import (
     _deduplicate_rows,
     _normalize_api_result,
 )
+from automation.api.humbird.http_client import (
+    HumbirdAuthenticationError,
+    _response_data,
+    _signed_headers,
+    fetch_humbird_production_records_http,
+)
+from automation.production import load_production_data
 from utils.erp.humbird_parser import parse_humbird_records
 
 
 class HumbirdApiTests(unittest.TestCase):
+    def test_direct_api_signature_uses_token_without_browser(self):
+        with (
+            patch("automation.api.humbird.http_client.time.time", return_value=1.5),
+            patch(
+                "automation.api.humbird.http_client.random.randint",
+                return_value=12,
+            ),
+        ):
+            headers = _signed_headers("POST", '{"page":1}', "secret")
+
+        source = "".join(sorted(["1500", "12", "", '{"page":1}']))
+        expected = hmac.new(
+            b"secret", source.encode(), hashlib.sha256
+        ).hexdigest()
+        self.assertEqual(headers["Authorization"], "Bearer secret")
+        self.assertEqual(headers["sign"], expected)
+
+    def test_direct_api_reports_expired_token_without_opening_browser(self):
+        response = type("Response", (), {"status_code": 401})()
+
+        with self.assertRaises(HumbirdAuthenticationError):
+            _response_data(response, "Haloo")
+
+    @patch("automation.api.humbird.http_client.requests.Session")
+    def test_direct_api_sends_json_body_with_requests_data(self, session_type):
+        response = session_type.return_value.post.return_value
+        response.status_code = 200
+        response.json.return_value = {
+            "result_code": "200",
+            "data": {"list": [], "total": 0},
+        }
+        refresh = session_type.return_value.put.return_value
+        refresh.status_code = 200
+        refresh.json.return_value = {"result_code": "200", "data": True}
+
+        rows = fetch_humbird_production_records_http(
+            "Haloo",
+            date(2026, 8, 8),
+            date(2026, 8, 8),
+            {"token": "secret"},
+        )
+
+        self.assertEqual(rows, [])
+        call = session_type.return_value.post.call_args
+        self.assertIn('"page":1', call.kwargs["data"])
+        self.assertNotIn("content", call.kwargs)
+
+    @patch("automation.production.fetch_humbird_production_records_http")
+    def test_humbird_platform_uses_direct_http_api(self, fetch):
+        fetch.return_value = [{
+            "code": "item-1",
+            "production_order_id": "order-1",
+            "style_name": "多色短袖T恤",
+            "blank_product_name": "成人短袖T恤",
+            "color": "绿色",
+            "size": "L",
+            "qty": 1,
+            "status_name": "已生产",
+            "process_route_name": "180g",
+            "begin_production_time": 1786334400000,
+        }]
+
+        result = load_production_data(
+            "Haloo",
+            date(2026, 8, 10),
+            date(2026, 8, 10),
+            credentials={"token": "saved-token"},
+        )
+
+        fetch.assert_called_once()
+        self.assertIn("直接 API", result.source)
+        self.assertIsInstance(result.data, pd.DataFrame)
+
     def test_payload_uses_new_york_production_time(self):
         payload = build_production_item_payload(
             date(2026, 7, 25),

@@ -24,6 +24,21 @@ Never commit real values to GitHub. Streamlit Cloud injects these values only
 on the server. Browser users can run authorized operations but cannot read the
 secret values from the UI.
 
+## Shared Humbird ERP authorization
+
+Run `sql/production/erp_api_credentials.sql` once in Supabase before enabling
+Haloo, 莆田, or 隆丰 production synchronization. Their bearer tokens are stored
+encrypted in `erp_api_credentials`; the application derives the encryption key
+from the server-side `SUPABASE_KEY`, so local and Cloud deployments using the
+same service key can share the authorization without copying tokens into every
+user's browser or Streamlit Secrets.
+
+Every production API request first calls Humbird's refresh endpoint. If the
+platform rotates the token, the replacement is encrypted and written back to
+the database automatically. A fully invalidated login that can no longer be
+refreshed is marked expired and requires one administrator login; ordinary
+users never receive or edit the raw token.
+
 ## User access
 
 Users whose Supabase application role is `supervisor`, `after_sales`, or

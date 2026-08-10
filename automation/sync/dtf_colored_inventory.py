@@ -17,7 +17,7 @@ from utils.erp.inventory_mapping import normalize_size
 CATEGORY = "彩色短袖"
 SOURCE_TYPE = "production_sync"
 AGGREGATE_PLATFORM = "全部衣服平台"
-COLORED_MAPPING_RULE_VERSION = "colored-v1"
+COLORED_MAPPING_RULE_VERSION = "colored-v2-l-to-green"
 
 
 def colored_daily_reason(movement_date):
@@ -453,6 +453,9 @@ def _cap_allocation_at_zero(source, allocation):
             "预计扣减": int(item["生产数量"]), "扣减后库存": 0,
             "未扣数量": int(item["生产数量"]),
             "状态": f"{item['映射状态']}（待核对）",
+            "生产平台": item.get("生产平台", ""),
+            "原始生产颜色": item.get("原始生产颜色", ""),
+            "原始生产尺码": item.get("原始生产尺码", ""),
         })
     result = pd.DataFrame(rows)
     if "未扣数量" not in result:

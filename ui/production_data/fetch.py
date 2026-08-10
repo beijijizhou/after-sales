@@ -5,10 +5,12 @@ from automation.logistics.config import load_s2b_account
 from automation.api.diy19 import DIY19_BASE_URLS, load_diy19_credentials
 from automation.api.fangguo import load_fangguo_credentials
 from automation.api.hansen import load_hansen_credentials
+from automation.api.humbird.config import load_humbird_credentials
 from automation.api.sds import load_sds_credentials
 from automation.production import (
     DIAGNOSTIC_PATH,
     DTF_PRODUCTION_PLATFORMS,
+    ERP_PLATFORM_NAMES,
     ProductionLoginRequired,
     SDS_PLATFORM_PROFILES,
     load_production_data,
@@ -227,6 +229,8 @@ def _fetch_all(
 
 
 def _credentials_for(platform, department="DTF"):
+    if platform in ERP_PLATFORM_NAMES:
+        return load_humbird_credentials(st.secrets, platform, supabase)
     if platform == "S2B":
         account = department if department in {"DTF", "UV", "3D"} else "DTF"
         return load_s2b_account(st.secrets, account)

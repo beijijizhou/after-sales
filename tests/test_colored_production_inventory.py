@@ -16,9 +16,62 @@ from automation.sync.dtf_colored_inventory import (
     load_colored_consumption_history,
     _cap_allocation_at_zero,
 )
+from ui.inventory.planning.colored_consumption import (
+    _reconciliation_action,
+    _stock_change_display,
+)
 
 
 class ColoredProductionInventoryTests(unittest.TestCase):
+    def test_reconciliation_action_routes_each_problem(self):
+        self.assertIn(
+            "临时库存调整",
+            _reconciliation_action("库存为 0（待清点）"),
+        )
+        self.assertIn(
+            "原始字段",
+            _reconciliation_action("颜色未映射（待核对）"),
+        )
+        self.assertIn("直接补扣", _reconciliation_action("可扣减"))
+
+    def test_pending_detail_does_not_present_unresolved_as_outbound(self):
+        preview = pd.DataFrame([
+            {
+                "品牌": "Caribbean", "材质": "180g", "颜色": "粉色",
+                "尺码": "S", "预计扣减": 12, "未扣数量": 0,
+                "扣减后库存": 88, "状态": "可扣减",
+            },
+            {
+                "品牌": "", "材质": "180g", "颜色": "绿色",
+                "尺码": "5XL", "预计扣减": 9, "未扣数量": 9,
+                "扣减后库存": 0, "状态": "库存为 0（待清点）",
+            },
+        ])
+
+        result = _stock_change_display(preview)
+
+        self.assertEqual(result["本次出库 (-)"].tolist(), [-12, 0])
+        self.assertEqual(result["待处理数量"].tolist(), [0, 9])
+
+    def test_pending_detail_preserves_original_source_fields(self):
+        source = pd.DataFrame([{
+            "生产平台": "SDS2", "生产材质": "180g",
+            "原始生产颜色": "L", "原始生产尺码": "M",
+            "生产颜色": "L", "生产尺码": "M", "生产数量": 2,
+            "库存颜色": "L", "库存尺码": "M",
+            "映射状态": "颜色未映射",
+        }])
+        preview = _cap_allocation_at_zero(source, pd.DataFrame(
+            columns=[
+                "品牌", "材质", "颜色", "尺码", "当前库存",
+                "预计扣减", "扣减后库存", "状态",
+            ]
+        ))
+
+        self.assertEqual(preview.iloc[0]["生产平台"], "SDS2")
+        self.assertEqual(preview.iloc[0]["原始生产颜色"], "L")
+        self.assertEqual(preview.iloc[0]["原始生产尺码"], "M")
+
     def test_source_mapping_combines_sizes_into_wide_columns(self):
         production = pd.DataFrame([
             {
@@ -43,7 +96,7 @@ class ColoredProductionInventoryTests(unittest.TestCase):
         self.assertNotIn("当前库存", wide.columns)
         self.assertNotIn("品牌", wide.columns)
 
-    def test_source_mapping_exposes_invalid_color_without_inventory(self):
+    def test_source_mapping_maps_sds2_l_color_to_green(self):
         production = pd.DataFrame([{
             "部门": "DTF", "品类": "彩色短袖", "材质": "180g",
             "颜色": "L", "尺码": "M", "数量": 2,
@@ -52,7 +105,10 @@ class ColoredProductionInventoryTests(unittest.TestCase):
 
         source = build_colored_tshirt_source_mapping(production)
 
-        self.assertEqual(source.iloc[0]["转换状态"], "颜色异常")
+        self.assertEqual(source.iloc[0]["原始生产颜色"], "L")
+        self.assertEqual(source.iloc[0]["标准颜色"], "绿色")
+        self.assertEqual(source.iloc[0]["库存颜色口径"], "绿色")
+        self.assertEqual(source.iloc[0]["转换状态"], "已标准化")
 
     def test_mapping_audit_keeps_raw_and_normalized_color(self):
         production = pd.DataFrame([{

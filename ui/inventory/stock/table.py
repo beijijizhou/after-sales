@@ -43,12 +43,14 @@ def render_inventory_table(
     visible_sizes, filter_title, is_historical=False,
 ):
     st.subheader(f"{filter_title} {t('库存明细')}")
-    current_date = datetime.now(ZoneInfo("America/New_York")).date()
+    current_time = datetime.now(ZoneInfo("America/New_York"))
+    current_date = current_time.date()
 
     col1, col2 = st.columns(2)
     col1.metric(t("当前日期"), current_date.isoformat())
     date_context = build_inventory_date_context(
-        current_date, inventory_date, is_historical
+        current_date, inventory_date, is_historical,
+        current_hour=current_time.hour,
     )
     col2.metric(t(date_context["label"]), inventory_date.isoformat())
     if date_context["message"]:
@@ -149,7 +151,7 @@ def build_sku_update_time_table(raw_df, department, visible_sizes=None):
 
 
 def build_inventory_date_context(
-    current_date, inventory_date, is_historical=False,
+    current_date, inventory_date, is_historical=False, current_hour=None,
 ):
     if is_historical:
         return {
@@ -160,7 +162,12 @@ def build_inventory_date_context(
     stale_days = 0
     if inventory_date < current_date:
         days = (current_date - inventory_date).days
-        stale_days = days
+        is_today_grace_period = (
+            days == 1
+            and current_hour is not None
+            and current_hour < 19
+        )
+        stale_days = 0 if is_today_grace_period else days
     return {
         "label": "库存账最后变动",
         "message": "",

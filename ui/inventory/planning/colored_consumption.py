@@ -16,6 +16,7 @@ from automation.sync.dtf_colored_inventory import (
 )
 from utils.auth.session import get_current_operator_name, has_permission
 from ui.inventory.shared.filters import _reset_invalid_selectbox
+from utils.sku_sorting import sort_sku_rows
 
 
 def render_colored_consumption(supabase, current_date, inventory_df):
@@ -143,24 +144,40 @@ def _render_colored_reconciliation(supabase, current_date):
             "状态": st.column_config.TextColumn(width="medium"),
         },
     )
-    selectable = backlog[backlog["当前可补扣"] > 0]
-    if selectable.empty:
-        st.info("当前没有可继续扣减的差额；请先补库存、修正 SKU 或补齐平台数据。")
-        return
-    reconciliation_dates = selectable["日期"].tolist()
+    reconciliation_dates = backlog["日期"].tolist()
+    backlog_by_date = backlog.set_index("日期").to_dict("index")
     _reset_invalid_selectbox(
         "colored_reconciliation_date", reconciliation_dates
     )
     selected_date = st.selectbox(
         "选择要处理的差异日期",
         reconciliation_dates,
-        format_func=lambda value: value.strftime("%Y-%m-%d"),
+        format_func=lambda value: (
+            f"{value:%Y-%m-%d}｜{backlog_by_date[value]['状态']}｜"
+            f"待核对 {int(backlog_by_date[value]['库存/SKU待核对']):,} 件"
+        ),
         key="colored_reconciliation_date",
     )
+    selected_summary = backlog_by_date[selected_date]
+    st.info(
+        f"该日生产 {int(selected_summary['生产数据']):,} 件，"
+        f"已扣库存 {int(selected_summary['已扣库存']):,} 件，"
+        f"当前可补扣 {int(selected_summary['当前可补扣']):,} 件，"
+        f"仍待核对 {int(selected_summary['库存/SKU待核对']):,} 件。"
+    )
+    if selected_summary["尚未读取平台"] != "无":
+        st.warning(
+            f"尚未读取平台：{selected_summary['尚未读取平台']}。"
+            "平台数据补齐后，生产总数和待处理数量可能继续变化。"
+        )
+        st.page_link(
+            "pages/7_生产数据.py",
+            label="打开生产数据，补齐缺失平台 →",
+        )
     preview_key = "colored_reconciliation_preview"
     preview_date_key = "colored_reconciliation_preview_date"
     if st.button(
-        "预览所选日期差额",
+        "查看所选日期待处理明细",
         key="colored_reconciliation_preview_button",
     ):
         st.session_state[preview_key] = build_colored_daily_preview(
@@ -173,16 +190,54 @@ def _render_colored_reconciliation(supabase, current_date):
         or st.session_state.get(preview_date_key) != selected_date
     ):
         return
+    detail = sort_sku_rows(
+        _stock_change_display(preview),
+        material="材质", color="颜色", size="尺码",
+        leading=["状态", "品牌"],
+    )
+    detail["核对方式"] = detail["状态"].map(_reconciliation_action)
+    display_columns = [
+        column for column in [
+            "状态", "核对方式", "生产平台", "原始生产颜色",
+            "原始生产尺码", "材质", "品牌", "颜色", "尺码",
+            "当前库存", "本次出库 (-)", "调整后库存", "待处理数量",
+        ]
+        if column in detail.columns
+    ]
     st.dataframe(
-        _stock_change_display(preview), hide_index=True, width="stretch"
+        detail[display_columns], hide_index=True, width="stretch",
+        column_config={
+            "核对方式": st.column_config.TextColumn(width="large"),
+            "本次出库 (-)": st.column_config.NumberColumn(format="%d 件"),
+            "待处理数量": st.column_config.NumberColumn(format="%d 件"),
+        },
     )
-    quantity = int(pd.to_numeric(
-        preview.get("预计扣减", pd.Series(dtype="float64")),
-        errors="coerce",
-    ).fillna(0).sum())
-    st.info(
-        f"当前可继续扣减 {quantity:,} 件。该操作只处理差额，不会重复扣除已出库数量。"
+    reason_summary = (
+        detail.groupby("状态", dropna=False, as_index=False)
+        .agg(
+            当前可补扣=("本次出库 (-)", lambda values: int(values.abs().sum())),
+            待处理数量=("待处理数量", "sum"),
+        )
     )
+    st.markdown("#### 待处理原因汇总")
+    st.dataframe(reason_summary, hide_index=True, width="stretch")
+    _render_reconciliation_steps(
+        detail, selected_summary["尚未读取平台"]
+    )
+    quantity = int(
+        detail["本次出库 (-)"].abs().sum()
+        if "本次出库 (-)" in detail else 0
+    )
+    if quantity:
+        st.info(
+            f"当前可继续扣减 {quantity:,} 件。"
+            "该操作只处理差额，不会重复扣除已出库数量。"
+        )
+    else:
+        st.info(
+            "该日期目前没有可继续扣减的库存；明细仍可复查，"
+            "请按上方核对步骤处理后，再回来补扣。"
+        )
     if not has_permission("can_edit_inventory"):
         st.info("当前账号只有查看权限，不能处理库存差额。")
         return
@@ -259,7 +314,10 @@ def _render_colored_daily_deduction_form(supabase, current_date):
             f"有 {int(deferred['未扣数量'].sum()):,} 件因库存为 0 或字段异常暂不扣减；"
             "生产消耗仍会进入模型，待清点后再处理库存差异。"
         )
-    total = int(preview["预计扣减"].sum())
+    total = int(pd.to_numeric(
+        preview.loc[preview["状态"] == "可扣减", "预计扣减"],
+        errors="coerce",
+    ).fillna(0).sum())
     st.caption(f"本次实际可扣减：{total:,} 件；库存最低扣到 0。")
     if not has_permission("can_edit_inventory"):
         st.info("当前账号只有查看权限，不能确认扣减库存。")
@@ -290,12 +348,85 @@ def _stock_change_display(preview):
     display = pd.DataFrame(preview).rename(columns={
         "预计扣减": "本次出库 (-)",
         "扣减后库存": "调整后库存",
+        "未扣数量": "待处理数量",
     })
     if "本次出库 (-)" in display:
-        display["本次出库 (-)"] = -pd.to_numeric(
+        deductible = display.get(
+            "状态", pd.Series("可扣减", index=display.index)
+        ).eq("可扣减")
+        quantities = pd.to_numeric(
             display["本次出库 (-)"], errors="coerce"
         ).fillna(0).abs().astype(int)
+        display["本次出库 (-)"] = -quantities.where(deductible, 0)
+    if "待处理数量" not in display:
+        display["待处理数量"] = 0
+    display["待处理数量"] = pd.to_numeric(
+        display["待处理数量"], errors="coerce"
+    ).fillna(0).astype(int)
     return display
+
+
+def _reconciliation_action(status):
+    status = str(status or "").strip()
+    if status == "可扣减":
+        return "核对三段式库存后，可直接补扣"
+    if "库存为 0" in status:
+        return "清点实物；有货先做临时库存调整，无货则保留待处理"
+    if "映射" in status or "异常" in status:
+        return "核对生产原始字段；确认颜色/尺码后修正规则或 SKU"
+    return "查看生产原始字段与库存 SKU 后处理"
+
+
+def _render_reconciliation_steps(detail, missing_platforms):
+    st.markdown("#### 怎么核对")
+    pending = pd.to_numeric(
+        detail.get("待处理数量", 0), errors="coerce"
+    ).fillna(0)
+    statuses = detail.get(
+        "状态", pd.Series("", index=detail.index)
+    ).fillna("").astype(str)
+    zero_stock = int(pending[statuses.str.contains("库存为 0")].sum())
+    mapping = int(
+        pending[statuses.str.contains("映射|异常", regex=True)].sum()
+    )
+    steps = []
+    if zero_stock:
+        steps.append({
+            "问题": "账面库存为 0",
+            "数量": zero_stock,
+            "处理": (
+                "清点对应颜色和尺码；有实货就在“临时库存调整”入库补到账，"
+                "再返回本页补扣；确实无货则保留待处理。"
+            ),
+        })
+    if mapping:
+        steps.append({
+            "问题": "生产字段未映射",
+            "数量": mapping,
+            "处理": (
+                "按表内生产平台、原始颜色和原始尺码核对；"
+                "到“系统库存扣减 → 生产字段映射”查看完整来源。"
+            ),
+        })
+    if str(missing_platforms) != "无":
+        steps.append({
+            "问题": "生产平台尚未读取",
+            "数量": None,
+            "处理": f"到生产数据页补齐：{missing_platforms}。",
+        })
+    if not steps:
+        steps.append({
+            "问题": "可直接补扣",
+            "数量": 0,
+            "处理": "核对当前库存、本次出库和调整后库存，然后确认补扣。",
+        })
+    st.dataframe(
+        pd.DataFrame(steps), hide_index=True, width="stretch",
+        column_config={
+            "数量": st.column_config.NumberColumn(format="%d 件"),
+            "处理": st.column_config.TextColumn(width="large"),
+        },
+    )
 
 
 def _stock_summary(inventory_df):

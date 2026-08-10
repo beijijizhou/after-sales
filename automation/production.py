@@ -4,7 +4,9 @@ import pandas as pd
 
 from automation.api.fangguo import fetch_fangguo_production_records
 from automation.api.hansen import fetch_hansen_production_records
-from automation.api.humbird import fetch_humbird_production_records
+from automation.api.humbird.http_client import (
+    fetch_humbird_production_records_http,
+)
 from automation.api.diy19 import DIY19_BASE_URLS, fetch_diy19_production_summary
 from automation.api.sds import fetch_sds_production_records
 from automation.api.s2b import (
@@ -73,10 +75,15 @@ def load_production_data(
     account_name=None,
 ):
     if platform in ERP_PLATFORM_NAMES:
-        records = fetch_humbird_production_records(
+        if not credentials:
+            raise ValueError(
+                f"未配置 {platform} API token；不会启动浏览器读取"
+            )
+        records = fetch_humbird_production_records_http(
             platform,
             start_date,
             end_date,
+            credentials,
             report_progress,
         )
         data = filter_production_time(
@@ -88,7 +95,7 @@ def load_production_data(
         )
         return ProductionDataResult(
             data=data,
-            source=f"{platform} ERP API / {len(records):,} 条",
+            source=f"{platform} 直接 API / {len(records):,} 条",
         )
 
     if platform in SDS_PLATFORM_PROFILES:

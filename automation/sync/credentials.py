@@ -4,13 +4,17 @@ from automation.api.diy19 import (
 )
 from automation.api.fangguo import load_fangguo_credentials
 from automation.api.hansen import load_hansen_credentials
+from automation.api.humbird.config import load_humbird_credentials
 from automation.api.sds import load_sds_credentials
 from automation.production import SDS_PLATFORM_PROFILES
+from automation.playwright.haloo import ERP_PLATFORM_NAMES
 from automation.logistics.config import load_s2b_account
 
 
 def load_platform_credentials(platform, secrets=None):
     configured_secrets = secrets or {}
+    if platform in ERP_PLATFORM_NAMES:
+        return load_humbird_credentials(configured_secrets, platform)
     if platform == "S2B":
         return load_s2b_account(configured_secrets, "DTF")
     if platform in SDS_PLATFORM_PROFILES:

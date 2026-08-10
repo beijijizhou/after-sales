@@ -1,9 +1,13 @@
-from datetime import datetime, time
-from zoneinfo import ZoneInfo
-
 from playwright.sync_api import sync_playwright
 
-from automation.playwright.chrome_session import connect_debug_chrome
+from automation.api.humbird.payload import (
+    PAGE_SIZE,
+    build_production_item_payload,
+)
+from automation.playwright.chrome_session import (
+    connect_debug_chrome,
+    find_erp_page,
+)
 from automation.playwright.errors import ProductionLoginRequired
 from automation.playwright.haloo.platforms import get_erp_platform
 
@@ -11,40 +15,8 @@ from automation.playwright.haloo.platforms import get_erp_platform
 API_FRAME_NAME = "fnsz-sale"
 MODULE_PREFIX = "productItemManage-"
 LIST_API_PATH = "/production/v1/production/order/item/page"
-NY_TIMEZONE = ZoneInfo("America/New_York")
-PAGE_SIZE = 5000
 REQUEST_ATTEMPTS = 3
 SNAPSHOT_ATTEMPTS = 2
-
-
-def build_production_item_payload(
-    start_date,
-    end_date,
-    page=1,
-    page_size=PAGE_SIZE,
-):
-    start_at = datetime.combine(start_date, time.min, NY_TIMEZONE)
-    end_at = datetime.combine(end_date, time.max, NY_TIMEZONE)
-    return {
-        "page": page,
-        "page_size": page_size,
-        "sum_total_qty": True,
-        "status": [],
-        "order_compositions": [],
-        "process_route_ids": [],
-        "order_third_status_list": [],
-        "performance_status_list": [],
-        "system_performance_status_list": [],
-        "shipping_status_list": [],
-        "order_source_list": [],
-        "logistics_sorting_code_list": [],
-        "begin_production_time": {
-            "from": str(int(start_at.timestamp() * 1000)),
-            "to": str(int(end_at.timestamp() * 1000)),
-        },
-        "styles": {"style_sku_ids": []},
-        "sort": [{"sort_by": "created", "sort_type": 2}],
-    }
 
 
 def fetch_humbird_production_records(
@@ -154,15 +126,9 @@ def _list_with_retry(page, payload, module_url, platform, page_number):
 
 
 def _authenticated_production_page(browser, erp):
-    pages = [
-        page
-        for context in browser.contexts
-        for page in context.pages
-        if erp.host in page.url
-        and "/produceManage/produceItemsManage" in page.url
-        and "/login" not in page.url
-    ]
-    page = pages[-1] if pages else _open_production_page(browser, erp)
+    page = find_erp_page(
+        browser, erp.host, erp.name, erp.production_items_url
+    )
     for _ in range(60):
         if "/login" in page.url:
             raise ProductionLoginRequired(
@@ -172,22 +138,6 @@ def _authenticated_production_page(browser, erp):
             return page
         page.wait_for_timeout(500)
     raise RuntimeError(f"{erp.name} 生产模块加载超过 30 秒")
-
-
-def _open_production_page(browser, erp):
-    if not browser.contexts:
-        raise RuntimeError("专用 Chrome 没有可用的浏览器窗口")
-    page = browser.contexts[0].new_page()
-    page.goto(
-        erp.production_items_url,
-        wait_until="domcontentloaded",
-        timeout=30_000,
-    )
-    if "/login" in page.url:
-        raise ProductionLoginRequired(
-            f"已为你打开 {erp.name} 登录页；完成登录后请重新读取"
-        )
-    return page
 
 
 def _discover_production_module(page):

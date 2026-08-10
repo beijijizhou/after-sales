@@ -6,6 +6,7 @@ import pandas as pd
 from automation.api.diy19 import DIY19_BASE_URLS
 from automation.production import (
     DTF_PRODUCTION_PLATFORMS,
+    ERP_PLATFORM_NAMES,
     SDS_PLATFORM_PROFILES,
     ProductionDataResult,
     load_production_data,
@@ -15,6 +16,7 @@ from automation.production import (
 ALL_CLOTHING_PLATFORMS = "全部衣服平台"
 CLOTHING_CATEGORIES = {"黑白短袖", "彩色短袖", "卫衣"}
 API_PLATFORMS = {
+    *ERP_PLATFORM_NAMES,
     "S2B", "汉森", "方果", *DIY19_BASE_URLS, *SDS_PLATFORM_PROFILES,
 }
 

@@ -23,6 +23,30 @@ class InventoryDateContextTests(unittest.TestCase):
         self.assertEqual(result["stale_days"], 5)
         self.assertEqual(result["message"], "")
 
+    def test_yesterday_is_not_stale_before_new_york_7pm(self):
+        result = build_inventory_date_context(
+            date(2026, 8, 10), date(2026, 8, 9),
+            is_historical=False, current_hour=18,
+        )
+
+        self.assertEqual(result["stale_days"], 0)
+
+    def test_yesterday_becomes_stale_at_new_york_7pm(self):
+        result = build_inventory_date_context(
+            date(2026, 8, 10), date(2026, 8, 9),
+            is_historical=False, current_hour=19,
+        )
+
+        self.assertEqual(result["stale_days"], 1)
+
+    def test_older_ledger_is_stale_even_before_7pm(self):
+        result = build_inventory_date_context(
+            date(2026, 8, 10), date(2026, 8, 8),
+            is_historical=False, current_hour=10,
+        )
+
+        self.assertEqual(result["stale_days"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,7 @@ from automation.sync.daily_inventory_consumption import (
     _load_flow_preview,
 )
 from automation.sync.dtf_colored_inventory import (
+    COLORED_MAPPING_RULE_VERSION,
     apply_colored_daily_deduction,
     colored_partial_reason,
 )
@@ -532,7 +533,9 @@ class InventoryDashboardTests(unittest.TestCase):
         reason = adjustment.iloc[0]["备注"]
         self.assertTrue(reason.startswith(colored_partial_reason(movement_date)))
         self.assertIn("来源 汉森、S2B、SDS1、SDS2", reason)
-        self.assertIn("映射规则 colored-v1", reason)
+        self.assertIn(
+            f"映射规则 {COLORED_MAPPING_RULE_VERSION}", reason
+        )
 
     def test_partial_colored_reason_marks_daily_run_complete(self):
         movements = pd.DataFrame([{

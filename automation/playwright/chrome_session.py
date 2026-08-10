@@ -144,13 +144,36 @@ def find_haloo_page(browser):
 
 
 def find_erp_page(browser, host, platform_name=None, start_url=None):
-    pages = [page for context in browser.contexts for page in context.pages]
+    pages = [
+        page for context in browser.contexts for page in context.pages
+        if not page.is_closed()
+    ]
     platform_pages = [page for page in pages if host in page.url]
-    if not platform_pages:
-        if start_url and browser.contexts:
-            page = browser.contexts[0].new_page()
-            page.goto(start_url, wait_until="domcontentloaded")
-            return page
-        name = platform_name or host
-        raise RuntimeError(f"当前 Chrome 中没有找到{name}页面，请先打开并登录")
-    return platform_pages[-1]
+    exact_pages = [
+        page for page in platform_pages
+        if start_url and page.url.startswith(start_url)
+    ]
+    if exact_pages:
+        selected = exact_pages[-1]
+        _close_duplicate_pages(exact_pages[:-1])
+        return selected
+    if platform_pages:
+        selected = platform_pages[-1]
+        if start_url:
+            selected.goto(start_url, wait_until="domcontentloaded")
+        return selected
+    if start_url and browser.contexts:
+        page = browser.contexts[0].new_page()
+        page.goto(start_url, wait_until="domcontentloaded")
+        return page
+    name = platform_name or host
+    raise RuntimeError(f"当前 Chrome 中没有找到{name}页面，请先打开并登录")
+
+
+def _close_duplicate_pages(pages):
+    for page in pages:
+        try:
+            page.close()
+        except Exception:
+            # A stale duplicate must not block the active ERP session.
+            continue
