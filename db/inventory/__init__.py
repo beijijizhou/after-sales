@@ -1,5 +1,6 @@
 from db.inventory.operations.adjustments import (
     apply_adjustment_rows,
+    apply_stocktake_rows,
     build_adjustment_template,
     build_wide_adjustment_template,
     normalize_adjustment_rows,
@@ -46,6 +47,7 @@ __all__ = [
     "INVENTORY_CATEGORIES",
     "SIZE_COLUMNS",
     "apply_adjustment_rows",
+    "apply_stocktake_rows",
     "build_adjustment_template",
     "build_color_inventory_table",
     "build_inventory_snapshot",

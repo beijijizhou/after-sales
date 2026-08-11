@@ -3,7 +3,6 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
-from ui.consumables import render_consumable_department_workspace
 from db.inventory import (
     SIZE_COLUMNS,
     build_inventory_snapshot,
@@ -22,7 +21,7 @@ from ui.inventory.history.history import (
     load_inventory_history_data,
 )
 from ui.inventory.i18n import get_language, render_language_selector, t
-from ui.inventory.category_routing import is_consumable_category
+from ui.inventory.category_routing import exclude_consumable_dimensions
 from ui.inventory.operations.outbound_feedback import (
     render_saved_outbound_audit_feedback,
 )
@@ -61,19 +60,13 @@ def render_inventory_summary(supabase):
     except Exception as error:
         st.error(f"{t('库存数据加载失败')}: {error}")
         return
+    dimensions_df = exclude_consumable_dimensions(dimensions_df)
     (
         department, category, brands, materials, colors, selected_sizes,
         movement_types, selected_date, _use_snapshot_date,
     ) = (
         render_inventory_global_filters(dimensions_df)
     )
-    if is_consumable_category(category):
-        st.info(
-            "当前显示 DTF 耗材工作区；库存、出入库流水和撤销均读取"
-            "耗材账，不读取服装库存流水。"
-        )
-        render_consumable_department_workspace(supabase, department)
-        return
     visible_sizes = selected_sizes or (
         SIZE_COLUMNS if department == "DTF" else None
     )

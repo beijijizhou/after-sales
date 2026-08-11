@@ -11,11 +11,13 @@ from db.finance.summary import (
     build_inventory_value_overview,
 )
 from db.finance.repository import (
+    _exclude_stocktake_batches,
     _normalize_cost_rows,
     normalize_consumable_finance_rows,
 )
 from ui.finance.cost_editor import build_cost_batch_summary, find_cost_changes
 from ui.finance.inbound_batches import build_inbound_batch_summary
+from ui.finance.pending_costs import build_pending_cost_batch_summary
 from ui.finance.page import _build_two_week_daily_amounts
 from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
 
@@ -46,6 +48,50 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result["outbound_quantity"], 45)
         self.assertEqual(result["outbound_amount"], 52)
         self.assertEqual(result["missing_outbound_quantity"], 5)
+
+    def test_stocktake_batches_are_not_reported_as_purchase_inbound(self):
+        rows = pd.DataFrame([
+            {"batch_id": "stocktake-a", "quantity": 18563},
+            {"batch_id": "purchase-a", "quantity": 10800},
+        ])
+
+        class Query:
+            data = [{"batch_id": "stocktake-a"}]
+
+            def select(self, *_args): return self
+            def in_(self, *_args): return self
+            def execute(self): return self
+
+        class Supabase:
+            def table(self, name):
+                self.table_name = name
+                return Query()
+
+        result = _exclude_stocktake_batches(Supabase(), rows)
+        self.assertEqual(result["batch_id"].tolist(), ["purchase-a"])
+
+    def test_pending_cost_batch_is_one_wide_row_in_size_order(self):
+        rows = pd.DataFrame([
+            {
+                "id": f"row-{size}", "business_date": "2026-08-12",
+                "department": "DTF", "category": "彩色短袖",
+                "brand": "Daisy", "material": "180g", "color": "黄色",
+                "size": size, "quantity": quantity, "unit_cost": cost,
+                "inventory_effect": "not_posted", "status": "ready_to_allocate",
+                "note": "发票 26081001", "created_by": "Andy",
+            }
+            for size, quantity, cost in [
+                ("S", 490, 1.6), ("M", 490, 1.6), ("L", 490, 1.6),
+                ("XL", 350, 1.6), ("2XL", 235, 2.1), ("3XL", 117, 2.1),
+            ]
+        ])
+        result = build_pending_cost_batch_summary(rows)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["总件数"], 2172)
+        self.assertEqual(result.iloc[0]["总金额"], 3651.2)
+        self.assertEqual(result.iloc[0]["S"], "490 × $1.6000")
+        self.assertEqual(result.iloc[0]["3XL"], "117 × $2.1000")
+        self.assertEqual(result.iloc[0]["4XL"], "")
 
     def test_inventory_value_overview_uses_current_remaining_value(self):
         snapshot = pd.DataFrame([

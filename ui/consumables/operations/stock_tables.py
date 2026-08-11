@@ -104,8 +104,10 @@ def build_daily_issue_template(label_to_row):
 def render_inventory_initialization(
     supabase, department_code, items_df, can_edit, show_cost
 ):
-    st.subheader("耗材库存初始化")
-    st.caption("填写目标库存；系统只记录目标库存与当前库存之间的差额。")
+    st.subheader("耗材库存设置")
+    st.caption(
+        "按盘点结果填写目标库存；系统保留设置前库存、目标库存和实际差额。"
+    )
     active = _active_items(items_df, can_edit)
     if active is None:
         return
@@ -149,7 +151,7 @@ def render_inventory_initialization(
     rows, preview = _normalize_initialization(
         edited, label_to_row, show_cost
     )
-    _render_preview(preview, "初始化变动预览")
+    _render_preview(preview, "库存设置预览")
     movement_date = st.date_input(
         "盘点日期",
         value=datetime.now(NY_TIMEZONE).date(),
@@ -160,14 +162,14 @@ def render_inventory_initialization(
         key="confirm_consumable_initialization",
     )
     if st.button(
-        "保存初始化库存",
+        "保存库存设置",
         type="primary",
         width="stretch",
         disabled=not rows or not confirmed,
     ):
         _save_batch(
             supabase, department_code, "adjustment", movement_date, rows,
-            "耗材库存初始化", None,
+            "耗材库存设置", None,
         )
 
 

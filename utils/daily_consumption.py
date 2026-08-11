@@ -70,5 +70,14 @@ def daily_consumption_source(reason):
     return ""
 
 
+def daily_consumption_business_type(reason):
+    source = daily_consumption_source(reason)
+    if source == ENTRY_MANUAL:
+        return "仓库每日出库"
+    if source == ENTRY_SYSTEM:
+        return "系统库存扣减"
+    return ""
+
+
 def is_daily_consumption_reason(reason):
     return bool(daily_consumption_source(reason))

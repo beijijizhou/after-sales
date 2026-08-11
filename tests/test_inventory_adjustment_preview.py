@@ -143,6 +143,30 @@ class InventoryAdjustmentPreviewTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["本次变动"], -2000)
         self.assertEqual(result.iloc[0]["调整后库存"], 3000)
 
+    def test_stocktake_set_uses_target_and_calculates_signed_difference(self):
+        inventory = pd.DataFrame([{
+            "品牌": "Men's", "材质": "160g", "颜色": "白",
+            **{size: 0 for size in SIZE_COLUMNS},
+            "S": 1890, "M": 120,
+        }])
+        edited = pd.DataFrame([{
+            "品牌": "Men's", "材质": "160g", "颜色": "白",
+            **{size: 0 for size in SIZE_COLUMNS},
+            "S": 4320, "M": 0,
+        }])
+
+        result = build_adjustment_stock_comparison(inventory, edited, "设置")
+
+        self.assertEqual(result["尺码"].tolist(), list(SIZE_COLUMNS))
+        s_row = result[result["尺码"] == "S"].iloc[0]
+        m_row = result[result["尺码"] == "M"].iloc[0]
+        self.assertEqual(s_row["设置为"], 4320)
+        self.assertEqual(s_row["本次变动"], 2430)
+        self.assertEqual(s_row["调整后库存"], 4320)
+        self.assertEqual(m_row["设置为"], 0)
+        self.assertEqual(m_row["本次变动"], -120)
+        self.assertEqual(m_row["调整后库存"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

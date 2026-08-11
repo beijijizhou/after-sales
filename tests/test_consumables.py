@@ -5,10 +5,18 @@ import pandas as pd
 from ui.consumables.operations.entry import _normalize_entry_rows
 from ui.consumables.operations.stock_tables import _normalize_initialization
 from ui.consumables.stock import build_latest_costs, filter_items
+from ui.consumables.page import CONSUMABLE_TABS
+from ui.consumables.sku import _copy_defaults
 from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class ConsumableInventoryTests(unittest.TestCase):
+    def test_page_exposes_inbound_and_audit_as_primary_tabs(self):
+        self.assertEqual(CONSUMABLE_TABS, [
+            "当前库存", "每日耗材出库", "耗材入库", "库存设置",
+            "库存流水", "撤销", "SKU 管理",
+        ])
+
     def test_package_entry_converts_to_base_quantity(self):
         edited = pd.DataFrame([{
             "耗材 SKU": "DTF｜白墨｜瓶",
@@ -30,6 +38,24 @@ class ConsumableInventoryTests(unittest.TestCase):
         self.assertEqual(rows[0]["quantity"], 24)
         self.assertEqual(preview.iloc[0]["本次变动（箱）"], 2)
         self.assertEqual(preview.iloc[0]["换算数量"], 24)
+
+    def test_similar_sku_copy_keeps_consumable_identity_and_packaging(self):
+        items = pd.DataFrame([{
+            "id": "film-100", "category": "膜", "name": "DTF转印膜",
+            "specification": "100米/卷", "brand": "奥德利",
+            "base_unit": "卷", "package_unit": "箱",
+            "units_per_package": 2, "minimum_quantity": 20,
+        }])
+
+        defaults = _copy_defaults(items, "film-100")
+
+        self.assertEqual(defaults["category"], "膜")
+        self.assertEqual(defaults["name"], "DTF转印膜")
+        self.assertEqual(defaults["specification"], "100米/卷")
+        self.assertEqual(defaults["brand"], "奥德利")
+        self.assertEqual(defaults["base_unit"], "卷")
+        self.assertEqual(defaults["units_per_package"], 2)
+        self.assertEqual(defaults["minimum_boxes"], 10)
 
     def test_issue_preview_shows_current_change_and_resulting_boxes(self):
         edited = pd.DataFrame([{

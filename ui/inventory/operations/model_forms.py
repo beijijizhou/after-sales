@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from db.inventory import apply_adjustment_rows
+from db.inventory import apply_adjustment_rows, apply_stocktake_rows
 from db.inventory.sku import apply_sku_rows
 from ui.inventory.i18n import t
 from ui.inventory.operations.adjustment_preview import (
@@ -21,7 +21,7 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
     version = st.session_state.get("model_adjustment_version", 0)
     today = datetime.now(ZoneInfo("America/New_York")).date()
     action = st.radio(
-        t("操作"), ["增加", "扣减"], horizontal=True,
+        t("操作"), ["增加", "减少", "设置"], horizontal=True,
         format_func=t, key="model_adjustment_action",
     )
     adjustment_date = st.date_input(
@@ -43,6 +43,8 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
         "材质": options["材质"][0], "颜色": options["颜色"][0],
         "型号": options["型号"][0], "数量": 0, "备注": "",
     }])
+    if action == "设置":
+        template.insert(0, "设置此 SKU", False)
     show_cost = has_permission("can_manage_cost") and action == "增加"
     if show_cost:
         template["成本"] = None
@@ -54,6 +56,10 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
         "数量": st.column_config.NumberColumn(t("数量"), min_value=0, step=1, required=True),
         "备注": st.column_config.TextColumn(t("备注")),
     }
+    if action == "设置":
+        columns["设置此 SKU"] = st.column_config.CheckboxColumn(
+            "设置此 SKU", help="目标库存为 0 时，请勾选此项。"
+        )
     if show_cost:
         columns["成本"] = st.column_config.NumberColumn(
             t("成本"), min_value=0.0, step=0.0001, format="%.4f"
@@ -74,10 +80,16 @@ def render_model_adjust_form(supabase, department, category, inventory_df):
     if rows.empty:
         st.warning(t("请先填写有效库存调整"))
         return
-    apply_adjustment_rows(
-        supabase, department, category, rows,
-        get_current_operator_name(), source_type,
-    )
+    if action == "设置":
+        apply_stocktake_rows(
+            supabase, department, category, rows,
+            get_current_operator_name(),
+        )
+    else:
+        apply_adjustment_rows(
+            supabase, department, category, rows,
+            get_current_operator_name(), source_type,
+        )
     st.session_state["inventory_saved_message"] = t(
         "已保存库存调整"
     ).format(count=len(rows))
@@ -146,11 +158,17 @@ def _normalize_model_rows(df, action):
     result["数量"] = pd.to_numeric(result["数量"], errors="coerce").fillna(0).astype(int)
     if "成本" not in result.columns:
         result["成本"] = pd.NA
+    if action == "设置":
+        selected = result.get(
+            "设置此 SKU", pd.Series(False, index=result.index)
+        ).fillna(False).astype(bool) | (result["数量"] > 0)
+    else:
+        selected = result["数量"] > 0
     return result[
         (result["材质"].fillna("").str.strip() != "")
         & (result["颜色"].fillna("").str.strip() != "")
         & (result["尺码"].fillna("").str.strip() != "")
-        & (result["数量"] > 0)
+        & selected
     ][["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "成本", "备注"]]
 
 

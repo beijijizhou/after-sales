@@ -43,7 +43,9 @@ def build_inventory_change_comparison(inventory_df, adjustment_df):
         changes.get("数量", pd.Series(0, index=changes.index)), errors="coerce"
     ).fillna(0).astype(int)
     if "操作" in changes:
-        direction = changes["操作"].map({"增加": 1, "扣减": -1}).fillna(0)
+        direction = changes["操作"].map(
+            {"增加": 1, "减少": -1, "扣减": -1}
+        ).fillna(0)
         changes["本次变动"] = changes["数量"] * direction.astype(int)
     elif "quantity_change" in changes:
         changes["本次变动"] = pd.to_numeric(
@@ -101,7 +103,8 @@ def render_inventory_change_comparison(
         )
         action = directions.pop() if len(directions) == 1 else "变动"
     operation_column = {
-        "增加": "本次入库 (+)", "扣减": "本次出库 (-)",
+        "增加": "本次入库 (+)", "减少": "本次出库 (-)",
+        "扣减": "本次出库 (-)",
     }.get(action, "本次变动 (+/-)")
     st.markdown(f"#### {title}")
     st.caption("每行代表一个 SKU；当前库存 + 本次变动 = 调整后库存。")
@@ -143,10 +146,13 @@ def build_adjustment_stock_comparison(inventory_df, edited_df, action):
                 frame[size], errors="coerce"
             ).fillna(0).astype(int)
 
+    selected_for_setting = edited.get(
+        "设置此行", pd.Series(False, index=edited.index)
+    ).fillna(False).astype(bool)
     edited = edited[
         (edited["材质"] != "")
         & (edited["颜色"] != "")
-        & (edited[SIZE_COLUMNS].sum(axis=1) > 0)
+        & ((edited[SIZE_COLUMNS].sum(axis=1) > 0) | selected_for_setting)
     ]
     if edited.empty:
         return pd.DataFrame(columns=COMPARISON_COLUMNS)
@@ -167,12 +173,16 @@ def build_adjustment_stock_comparison(inventory_df, edited_df, action):
     for item in identities.to_dict("records"):
         key = tuple(item[column] for column in identity)
         current_values = _wide_values(current_by_key, key)
-        change_values = _wide_values(changes_by_key, key) * direction
+        entered_values = _wide_values(changes_by_key, key)
         for size in SIZE_COLUMNS:
-            change = int(change_values[size])
-            if change == 0:
+            entered = int(entered_values[size])
+            if entered == 0 and action != "设置":
                 continue
             current_quantity = int(current_values[size])
+            change = (
+                entered - current_quantity
+                if action == "设置" else entered * direction
+            )
             rows.append({
                 "材质": item["材质"],
                 "品牌": item["品牌"],
@@ -181,9 +191,13 @@ def build_adjustment_stock_comparison(inventory_df, edited_df, action):
                 "当前库存": current_quantity,
                 "本次变动": change,
                 "调整后库存": current_quantity + change,
+                "设置为": entered if action == "设置" else pd.NA,
             })
+    result_columns = [*COMPARISON_COLUMNS]
+    if action == "设置":
+        result_columns.append("设置为")
     return sort_sku_rows(
-        pd.DataFrame(rows, columns=COMPARISON_COLUMNS),
+        pd.DataFrame(rows, columns=result_columns),
         material="材质", color="颜色", size="尺码",
         leading=["材质", "品牌"],
     )
@@ -194,6 +208,21 @@ def render_adjustment_stock_comparison(inventory_df, edited_df, action):
         inventory_df, edited_df, action
     )
     if comparison.empty:
+        return comparison
+    if action == "设置":
+        st.markdown("#### 保存前库存核对")
+        st.caption("设置会将 SKU 库存直接改为盘点数；实际差额仍保留在审计流水中。")
+        display = comparison.copy().rename(columns={
+            "设置为": "本次设置为", "本次变动": "实际变动 (+/-)",
+        })
+        display["实际变动 (+/-)"] = display["实际变动 (+/-)"].map(_format_signed)
+        st.dataframe(
+            display[[
+                "材质", "品牌", "颜色", "尺码", "当前库存",
+                "本次设置为", "实际变动 (+/-)", "调整后库存",
+            ]],
+            hide_index=True, width="stretch", height=fit_table_height(display),
+        )
         return comparison
     return render_inventory_change_comparison(comparison, action=action)
 
@@ -208,7 +237,10 @@ def _build_model_stock_comparison(inventory, edited, action):
     edited["数量"] = pd.to_numeric(
         edited["数量"], errors="coerce"
     ).fillna(0).astype(int)
-    edited = edited[edited["数量"] > 0]
+    selected_for_setting = edited.get(
+        "设置此 SKU", pd.Series(False, index=edited.index)
+    ).fillna(False).astype(bool)
+    edited = edited[(edited["数量"] > 0) | selected_for_setting]
     if edited.empty:
         return pd.DataFrame(columns=COMPARISON_COLUMNS)
 
@@ -229,15 +261,22 @@ def _build_model_stock_comparison(inventory, edited, action):
     for key, quantity in changes.items():
         key = key if isinstance(key, tuple) else (key,)
         current_quantity = int(current.get(key, 0))
-        change = int(quantity) * direction
+        change = (
+            int(quantity) - current_quantity
+            if action == "设置" else int(quantity) * direction
+        )
         rows.append({
             "材质": key[0], "品牌": key[1], "颜色": key[2],
             "尺码": key[3], "当前库存": current_quantity,
             "本次变动": change,
             "调整后库存": current_quantity + change,
+            "设置为": int(quantity) if action == "设置" else pd.NA,
         })
+    result_columns = [*COMPARISON_COLUMNS]
+    if action == "设置":
+        result_columns.append("设置为")
     return sort_sku_rows(
-        pd.DataFrame(rows, columns=COMPARISON_COLUMNS),
+        pd.DataFrame(rows, columns=result_columns),
         material="材质", color="颜色", size="尺码",
         leading=["材质", "品牌"],
     )
@@ -308,7 +347,7 @@ def render_adjustment_preview_editor(
         preview_df = preview_df.drop(columns=["日期"])
     column_config = {
         "操作": st.column_config.SelectboxColumn(
-            "操作", options=["增加", "扣减"], required=True
+            "操作", options=["增加", "减少", "设置"], required=True
         ),
         "品牌": st.column_config.TextColumn(t("品牌")),
         "材质": st.column_config.TextColumn(t("材质"), required=True),

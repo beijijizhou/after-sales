@@ -59,6 +59,25 @@ def load_daily_outbound_dates(supabase, department, start_date, end_date):
         movement_date = parsed.date()
         if is_confirmed_outbound_row(movement_date, row.get("reason")):
             recorded_dates.add(movement_date)
+    try:
+        versioned = (
+            supabase.table("inventory_daily_outbound_batches")
+            .select("movement_date")
+            .eq("department", department)
+            .eq("status", "active")
+            .gte("movement_date", start_date.isoformat())
+            .lte("movement_date", end_date.isoformat())
+            .execute()
+            .data
+            or []
+        )
+        recorded_dates.update(
+            pd.to_datetime(row["movement_date"]).date()
+            for row in versioned
+            if row.get("movement_date")
+        )
+    except Exception:
+        pass
     return recorded_dates
 
 

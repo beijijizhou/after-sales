@@ -13,6 +13,18 @@
 
 ## Inventory
 
+- Consumables are an independent inventory domain. Production inventory and
+  production SKU management must not expose consumable categories or embed
+  consumable operations. The consumables page owns current stock, daily issue,
+  inbound, inventory setting, ledger, reversal, and consumable SKU management,
+  while preserving the same review and audit concepts used by production
+  inventory.
+- A consumable name represents the reusable product identity, while brand and
+  specification/model may vary by SKU. Creating a similar consumable SKU may
+  copy category, consumable name, base unit, and package unit from an existing
+  SKU, then require the user to review specification, brand, units per box, and
+  minimum stock before saving.
+
 - UV daily consumption source is the private Google Sheet
   `https://docs.google.com/spreadsheets/d/1kbbexU-zePCPw5Rg5R2fJlcbnRLVFPYZQcL5U_Qoy7Y/edit`.
   The UV consumption model uses the latest 14 calendar days of synchronized
@@ -39,6 +51,11 @@
 - A batch must reconcile its displayed total with its saved database total.
 - Missing or insufficient SKUs stop the entire batch and are shown to users.
 - Direct table edits are temporary adjustments, not warehouse daily outbound.
+- Manual inventory adjustment has three explicit actions: increase, decrease,
+  and set. `Set` is a physical-count operation: the entered number is the
+  target balance, while the system preserves the prior balance, target,
+  calculated signed difference, operator, business date, and resulting balance
+  in a batch-first audit record.
 - Opening inventory must create an auditable inbound movement.
 - A SKU is "待初始化" when its quantity is zero and it has never had a positive
   inbound movement. A depleted SKU is not uninitialized.

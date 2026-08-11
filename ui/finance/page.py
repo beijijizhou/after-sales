@@ -14,9 +14,11 @@ from db.finance import (
     load_inventory_finance_month,
     load_inventory_value_snapshot,
     load_missing_inventory_cost_lots,
+    load_pending_cost_batches,
 )
 from ui.finance.cost_editor import render_inbound_cost_editor
 from ui.finance.inbound_batches import render_inbound_batch_browser
+from ui.finance.pending_costs import render_pending_cost_batches
 from ui.production_data.uv_monthly_summary import (
     render_uv_monthly_summary,
 )
@@ -52,6 +54,7 @@ def render_finance_page(supabase):
             ].reset_index(drop=True)
         inventory_value_df = load_inventory_value_snapshot(supabase)
         missing_cost_df = load_missing_inventory_cost_lots(supabase)
+        pending_cost_df = load_pending_cost_batches(supabase)
         container_df = load_container_finance_month(
             supabase, start_date, end_date
         )
@@ -81,9 +84,11 @@ def render_finance_page(supabase):
     with summary_tab:
         _render_department_summary(finance_df)
     with batch_tab:
-        _render_inbound_batches(finance_df)
+        _render_inbound_batches(supabase, finance_df, pending_cost_df)
     with edit_tab:
-        _render_cost_maintenance(supabase, finance_df, missing_cost_df)
+        _render_cost_maintenance(
+            supabase, finance_df, missing_cost_df, pending_cost_df
+        )
     with detail_tab:
         _render_cost_detail(finance_df)
     with container_tab:
@@ -215,14 +220,18 @@ def _render_department_summary(finance_df):
     )
 
 
-def _render_inbound_batches(finance_df):
+def _render_inbound_batches(supabase, finance_df, pending_cost_df):
+    render_pending_cost_batches(supabase, pending_cost_df)
     batch_rows = _render_inventory_filters(
         finance_df, key="finance_batch_filters"
     )
     render_inbound_batch_browser(batch_rows)
 
 
-def _render_cost_maintenance(supabase, finance_df, missing_cost_df):
+def _render_cost_maintenance(
+    supabase, finance_df, missing_cost_df, pending_cost_df,
+):
+    render_pending_cost_batches(supabase, pending_cost_df)
     editor_source = pd.concat(
         [missing_cost_df, finance_df], ignore_index=True
     ).drop_duplicates(subset=["record_id"], keep="first")

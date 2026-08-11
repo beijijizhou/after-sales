@@ -5,8 +5,12 @@ from db.inventory import SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
 from utils.auth import has_permission
 from ui.inventory.i18n import t
-from utils.daily_consumption import daily_consumption_source
+from utils.daily_consumption import (
+    daily_consumption_business_type,
+    daily_consumption_source,
+)
 from utils.sku_sorting import sort_sku_rows
+from utils.inventory_movements import is_stocktake_reason, movement_business_type
 
 
 def format_date_columns(df, date_columns):
@@ -29,11 +33,26 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
         movement_df["quantity_change"], errors="coerce"
     ).fillna(0).astype(int)
     movement_df["display_quantity"] = movement_df["quantity_change"]
-    movement_df["operation"] = movement_df[
-        "quantity_change"
-    ].map(lambda value: "🟢 入库" if value > 0 else "🔴 出库")
     movement_df["reason"] = movement_df.get("reason", "").fillna("").astype(str)
+    movement_df["operation"] = movement_df.apply(
+        lambda row: (
+            "🟠 库存设置" if is_stocktake_reason(row["reason"])
+            else "🟢 入库" if row["quantity_change"] > 0
+            else "🔴 出库"
+        ),
+        axis=1,
+    )
     movement_df["consumption_source"] = movement_df["reason"].map(
+        daily_consumption_business_type
+    )
+    movement_df["consumption_source"] = movement_df.apply(
+        lambda row: (
+            movement_business_type(row["reason"])
+            or row["consumption_source"]
+        ),
+        axis=1,
+    ).map(lambda value: t(value) if value else "")
+    movement_df["entry_method"] = movement_df["reason"].map(
         daily_consumption_source
     ).map(lambda value: t(value) if value else "")
     if "created_by" not in movement_df.columns:
@@ -46,7 +65,11 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
             "bulk": t("大货"),
             "transfer": t("临时调货"),
             "opening": t("期初库存"),
+            "daily_outbound": t("仓库每日出库"),
         }).fillna("")
+    )
+    movement_df["source_type"] = movement_df["entry_method"].where(
+        movement_df["entry_method"].ne(""), movement_df["source_type"]
     )
     index_columns = [
         "movement_date", "operation", "department", "category", "brand", "material",
@@ -71,7 +94,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
             "material": "材质",
             "color": "颜色",
             "consumption_source": "消耗来源",
-            "source_type": "库存来源",
+            "source_type": "录入方式",
             "created_by": "操作人",
             "reason": "备注",
         })
@@ -89,7 +112,7 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
         leading_ascending=[False, True],
     )
     return display_df[[
-        "日期", "流水记录类型", "消耗来源", "部门", "品类", "品牌", "材质", "颜色", "库存来源",
+        "日期", "流水记录类型", "消耗来源", "部门", "品类", "品牌", "材质", "颜色", "录入方式",
         "操作人",
         *sizes, "合计", "备注",
     ]]
@@ -124,7 +147,7 @@ def render_movement_table(movement_df, visible_sizes=None, key=None):
             "品牌": st.column_config.TextColumn(t("品牌")),
             "材质": st.column_config.TextColumn(t("材质")),
             "颜色": st.column_config.TextColumn(t("颜色")),
-            "库存来源": st.column_config.TextColumn(t("库存来源")),
+            "录入方式": st.column_config.TextColumn(t("录入方式")),
             "操作人": st.column_config.TextColumn(t("操作人")),
             "备注": st.column_config.TextColumn(t("备注")),
         },

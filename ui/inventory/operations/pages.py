@@ -1,8 +1,5 @@
 import streamlit as st
 
-from db.consumables import load_consumable_items, load_departments
-from ui.consumables.operations import render_movement_entry
-from ui.inventory.category_routing import is_consumable_category
 from ui.inventory.i18n import t
 from ui.inventory.shared.filters import _reset_invalid_selectbox
 from ui.inventory.operations.forms import (
@@ -10,7 +7,6 @@ from ui.inventory.operations.forms import (
     render_inventory_unit_calculator,
 )
 from ui.inventory.operations.outbound import render_daily_outbound
-from utils.auth import has_permission, is_admin
 
 
 def render_daily_outbound_operation(
@@ -38,11 +34,6 @@ def render_temporary_movement_operation(
         category, raw_df, "temporary_movement_category"
     )
     if operation_category:
-        if is_consumable_category(operation_category):
-            _render_consumable_movement_operation(
-                supabase, department, can_edit
-            )
-            return
         operation_inventory_df = inventory_df[
             inventory_df["品类"] == operation_category
         ].reset_index(drop=True)
@@ -51,41 +42,6 @@ def render_temporary_movement_operation(
             supabase, department, operation_category,
             operation_inventory_df,
         )
-
-
-def _render_consumable_movement_operation(
-    supabase, department_code, can_edit,
-):
-    st.caption(
-        "当前品类是 DTF 耗材；下方直接使用耗材库存和箱数口径，"
-        "不会写入服装生产库存。"
-    )
-    try:
-        departments = load_departments(supabase)
-        department_rows = departments[
-            departments["code"] == department_code
-        ]
-        if department_rows.empty:
-            st.warning("当前部门尚未建立耗材库存资料。")
-            return
-        department_id = department_rows.iloc[0]["id"]
-        items = load_consumable_items(
-            supabase, department_id, active_only=True
-        )
-    except Exception as error:
-        st.error(f"耗材数据加载失败：{error}")
-        return
-    render_movement_entry(
-        supabase,
-        department_code,
-        items,
-        can_edit and has_permission("can_edit_consumables"),
-        is_admin(),
-        movement_options=["入库", "领用"],
-        title="DTF 耗材库存调整",
-    )
-
-
 def _select_operation_category(category, raw_df, key):
     if category:
         return category

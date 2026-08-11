@@ -59,6 +59,7 @@ def load_inventory_finance_month(supabase, start_date, end_date):
         "入库",
         date_column="movement_date",
     )
+    inbound = _exclude_stocktake_batches(supabase, inbound)
     outbound = _normalize_cost_rows(
         outbound_rows,
         "inventory_movements",
@@ -352,8 +353,37 @@ def load_missing_inventory_cost_lots(supabase):
         "入库",
         date_column="movement_date",
     )
+    inventory = _exclude_stocktake_batches(supabase, inventory)
     consumables = load_missing_consumable_cost_movements(supabase)
     return pd.concat([inventory, consumables], ignore_index=True)
+
+
+def _exclude_stocktake_batches(supabase, rows):
+    """Inventory settings are corrections, not purchasing/inbound finance."""
+    if rows.empty or "batch_id" not in rows:
+        return rows
+    batch_ids = [
+        value for value in rows["batch_id"].dropna().astype(str).unique()
+        if value
+    ]
+    if not batch_ids:
+        return rows
+    try:
+        stocktakes = (
+            supabase.table("inventory_stocktake_batches")
+            .select("batch_id")
+            .in_("batch_id", batch_ids)
+            .execute()
+            .data
+        )
+    except Exception as exc:
+        if "inventory_stocktake_batches" in str(exc) and "PGRST205" in str(exc):
+            return rows
+        raise
+    excluded = {str(row["batch_id"]) for row in stocktakes}
+    if not excluded:
+        return rows
+    return rows[~rows["batch_id"].fillna("").astype(str).isin(excluded)].reset_index(drop=True)
 
 
 def load_missing_consumable_cost_movements(supabase):

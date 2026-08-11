@@ -20,37 +20,66 @@ def render_sku_management(
 ):
     create_tab, catalog_tab = st.tabs(["新增 SKU", "现有 SKU"])
     with create_tab:
-        _render_create_form(supabase, department_id, can_manage)
+        _render_create_form(
+            supabase, department_id, items_df, can_manage
+        )
     with catalog_tab:
         _render_catalog(supabase, items_df, can_manage)
 
 
-def _render_create_form(supabase, department_id, can_manage):
+def _render_create_form(supabase, department_id, items_df, can_manage):
     st.subheader("新增耗材 SKU")
     if not can_manage:
         st.info("当前账号只有查看权限，不能新增耗材 SKU。")
         return
 
-    with st.form("create_consumable_sku"):
+    copy_options, copy_labels = _copy_options(items_df)
+    copy_source_id = st.selectbox(
+        "复制现有耗材 SKU（可选）",
+        copy_options,
+        format_func=lambda value: copy_labels.get(value, "不复制，从空白新增"),
+        key="consumable_sku_copy_source",
+        help="复制后保留耗材名称和计数单位，只需修改规格、品牌和每箱数量。",
+    )
+    defaults = _copy_defaults(items_df, copy_source_id)
+    if copy_source_id:
+        st.caption(
+            "已固定分类、耗材名称、基础单位和包装单位；"
+            "请修改规格/型号、品牌及每箱数量。"
+        )
+    form_scope = str(copy_source_id or "blank")
+
+    with st.form(f"create_consumable_sku_{form_scope}"):
         col1, col2 = st.columns(2)
-        category = col1.text_input("分类 *", placeholder="例如：墨水")
-        name = col2.text_input("耗材名称 *", placeholder="例如：白墨")
+        category = col1.text_input(
+            "分类 *", value=defaults["category"], placeholder="例如：膜",
+            disabled=bool(copy_source_id),
+        )
+        name = col2.text_input(
+            "耗材名称 *", value=defaults["name"],
+            placeholder="例如：DTF转印膜", disabled=bool(copy_source_id),
+        )
         col1, col2 = st.columns(2)
         specification = col1.text_input(
-            "规格/型号（可选）", placeholder="例如：1L"
+            "规格/型号（可选）", value=defaults["specification"],
+            placeholder="例如：200米/卷"
         )
-        brand = col2.text_input("品牌（可选）")
+        brand = col2.text_input("品牌（可选）", value=defaults["brand"])
         col1, col2 = st.columns(2)
-        base_unit = col1.text_input("基础单位 *", placeholder="瓶、卷、米")
+        base_unit = col1.text_input(
+            "基础单位 *", value=defaults["base_unit"],
+            placeholder="瓶、卷、米", disabled=bool(copy_source_id),
+        )
         minimum_boxes = col2.number_input(
-            "最低库存（箱，可选）", min_value=0.0, value=None,
+            "最低库存（箱，可选）", min_value=0.0,
+            value=defaults["minimum_boxes"],
             step=1.0, format="%.2f",
         )
         col1, col2 = st.columns(2)
         col1.text_input("计数单位", value="箱", disabled=True)
         units_per_package = col2.number_input(
             "每箱数量 *", min_value=0.0001,
-            value=1.0, step=0.1, format="%.4f",
+            value=defaults["units_per_package"], step=0.1, format="%.4f",
         )
         submitted = st.form_submit_button(
             "新增耗材 SKU", type="primary", width="stretch"
@@ -89,6 +118,47 @@ def _render_create_form(supabase, department_id, can_manage):
         f"已新增耗材 SKU：{name.strip()}"
     )
     st.rerun()
+
+
+def _copy_options(items_df):
+    if items_df is None or items_df.empty:
+        return [""], {"": "不复制，从空白新增"}
+    labels = {"": "不复制，从空白新增"}
+    for row in items_df.to_dict("records"):
+        item_id = str(row["id"])
+        parts = [
+            row.get("category"), row.get("name"),
+            row.get("specification"), row.get("brand"),
+        ]
+        labels[item_id] = "｜".join(
+            str(value).strip() for value in parts
+            if pd.notna(value) and str(value).strip()
+        )
+    return ["", *[key for key in labels if key]], labels
+
+
+def _copy_defaults(items_df, source_id):
+    defaults = {
+        "category": "", "name": "", "specification": "", "brand": "",
+        "base_unit": "", "units_per_package": 1.0,
+        "minimum_boxes": None,
+    }
+    if not source_id or items_df is None or items_df.empty:
+        return defaults
+    matches = items_df[items_df["id"].astype(str) == str(source_id)]
+    if matches.empty:
+        return defaults
+    row = matches.iloc[0]
+    defaults.update({
+        "category": _text(row.get("category")),
+        "name": _text(row.get("name")),
+        "specification": _text(row.get("specification")),
+        "brand": _text(row.get("brand")),
+        "base_unit": _text(row.get("base_unit")),
+        "units_per_package": float(row.get("units_per_package") or 1),
+        "minimum_boxes": to_boxes(row.get("minimum_quantity"), row),
+    })
+    return defaults
 
 
 def _render_catalog(supabase, items_df, can_manage):

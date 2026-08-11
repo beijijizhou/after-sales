@@ -5,8 +5,9 @@ from ui.inventory.history.history_tables import format_date_columns
 from ui.inventory.i18n import t
 from utils.daily_consumption import (
     UV_REASON_PREFIX,
-    daily_consumption_source,
+    daily_consumption_business_type,
 )
+from utils.inventory_movements import is_stocktake_reason, movement_business_type
 
 
 NY_TIMEZONE = "America/New_York"
@@ -43,6 +44,8 @@ def add_movement_batch_key(movement_df):
     )
     movement_df["recorded_key"] = movement_df["recorded_at"].dt.strftime("%Y-%m-%d %H:%M")
     movement_df["direction"] = movement_df["quantity_change"].apply(lambda value: "入库" if value > 0 else "出库")
+    stocktake = movement_df["reason"].map(is_stocktake_reason)
+    movement_df.loc[stocktake, "direction"] = "库存设置"
     movement_df["batch_key"] = (
         "movement|"
         + movement_df["recorded_key"].fillna("")
@@ -151,7 +154,10 @@ def build_movement_batch_rows(movement_df):
             "品类": row["category"],
             "数量": row["quantity"],
             "操作人": row["created_by"],
-            "消耗来源": daily_consumption_source(row["reason"]),
+            "消耗来源": (
+                movement_business_type(row["reason"])
+                or daily_consumption_business_type(row["reason"])
+            ),
             "备注": row["reason"],
         }
         for row in grouped_df.to_dict("records")

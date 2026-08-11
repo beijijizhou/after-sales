@@ -13,5 +13,3 @@ __all__ = [
     "render_movement_entry",
     "render_reversals",
 ]
-
-__all__ = ["render_history", "render_movement_entry", "render_reversals"]

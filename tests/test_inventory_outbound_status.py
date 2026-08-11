@@ -15,6 +15,7 @@ from ui.inventory.history.history_tables import (
     build_movement_detail_table,
 )
 from ui.inventory.history.history_batches import build_movement_batch_rows
+from ui.inventory.history.history_filters import filter_history_batches
 from ui.inventory.history.history_filters import (
     filter_batches_by_outbound_kind,
     filter_history_batches,
@@ -397,7 +398,8 @@ class OutboundStatusTests(unittest.TestCase):
         self.assertEqual(int(result.iloc[0]["S"]), -900)
         self.assertEqual(int(result.iloc[0]["M"]), 0)
         self.assertEqual(int(result.iloc[0]["合计"]), -900)
-        self.assertEqual(result.iloc[0]["消耗来源"], "人工登记")
+        self.assertEqual(result.iloc[0]["消耗来源"], "仓库每日出库")
+        self.assertEqual(result.iloc[0]["录入方式"], "人工登记")
 
     def test_system_outbound_history_shows_automatic_source(self):
         movements = pd.DataFrame([{
@@ -412,7 +414,50 @@ class OutboundStatusTests(unittest.TestCase):
 
         result = build_movement_detail_table(movements, ["2030"])
 
-        self.assertEqual(result.iloc[0]["消耗来源"], "系统读取")
+        self.assertEqual(result.iloc[0]["消耗来源"], "系统库存扣减")
+        self.assertEqual(result.iloc[0]["录入方式"], "系统读取")
+
+    def test_stocktake_difference_is_labeled_as_inventory_set(self):
+        movements = pd.DataFrame([{
+            "movement_date": "2026-08-10",
+            "created_at": "2026-08-11T03:25:00+00:00",
+            "department": "DTF", "category": "黑白短袖",
+            "brand": "Caribbean", "material": "160g", "color": "白",
+            "size": "L", "quantity_change": 2136,
+            "reason": "08/10 白色160g库存盘点设置｜ANSON映射Caribbean",
+            "created_by": "Andy", "source_type": "bulk",
+            "batch_id": "stocktake-batch", "reversal_of_batch_id": None,
+        }])
+
+        details = build_movement_detail_table(movements, ["L"])
+        batches = build_movement_batch_rows(movements)
+
+        self.assertEqual(details.iloc[0]["流水记录类型"], "🟠 库存设置")
+        self.assertEqual(details.iloc[0]["消耗来源"], "库存设置")
+        self.assertEqual(batches[0]["类型"], "库存设置")
+        self.assertEqual(batches[0]["消耗来源"], "库存设置")
+
+    def test_daily_shortage_artifacts_are_only_in_edit_history(self):
+        batches = pd.DataFrame([
+            {
+                "记录类别": "库存表格记录", "类型": "入库",
+                "备注": "临时库存调整｜每日出库缺口补足",
+            },
+            {
+                "记录类别": "库存表格记录", "类型": "出库",
+                "备注": "仓库每日出货",
+            },
+            {
+                "记录类别": "撤销记录", "类型": "已撤销出库",
+                "备注": "仓库每日出货",
+            },
+        ])
+
+        normal = filter_history_batches(batches, "all")
+        edits = filter_history_batches(batches, "daily_edit")
+
+        self.assertEqual(normal["备注"].tolist(), ["仓库每日出货"])
+        self.assertEqual(len(edits), 2)
 
     def test_uv_daily_sheet_is_one_ledger_batch_across_skus(self):
         movements = pd.DataFrame([

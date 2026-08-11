@@ -6,6 +6,9 @@ from db.inventory.core.constants import SIZE_COLUMNS
 from db.inventory.planning.warehouse_usage import (
     build_warehouse_usage_intervals,
 )
+from db.inventory.operations.daily_outbound_versions import (
+    load_daily_outbound_revisions,
+)
 
 
 DAILY_OUTBOUND_PATTERN = "仓库每日出货|每日正常出货|每日出货|黑白短袖出库"
@@ -30,7 +33,51 @@ def load_daily_outbound_history(
         .limit(5000)
         .execute()
     )
-    return normalize_daily_outbound_history(pd.DataFrame(response.data))
+    legacy = normalize_daily_outbound_history(pd.DataFrame(response.data))
+    try:
+        versioned = _versioned_daily_outbound_history(
+            supabase, department, category, start_date, current_date
+        )
+    except Exception:
+        return legacy
+    if versioned.empty:
+        return legacy
+    covered_dates = set(versioned["日期"])
+    legacy = legacy[~legacy["日期"].isin(covered_dates)]
+    return pd.concat([legacy, versioned], ignore_index=True).sort_values(
+        ["日期", "颜色", "尺码"]
+    ).reset_index(drop=True)
+
+
+def _versioned_daily_outbound_history(
+    supabase, department, category, start_date, end_date,
+):
+    batches = load_daily_outbound_revisions(
+        supabase, department, category, start_date, end_date
+    )
+    rows = []
+    for batch in batches:
+        current_revision = int(batch.get("current_revision") or 0)
+        revision = next((
+            row for row in batch.get("inventory_daily_outbound_revisions", [])
+            if int(row.get("revision_number") or 0) == current_revision
+        ), None)
+        if revision is None:
+            continue
+        for line in revision.get("inventory_daily_outbound_lines", []):
+            rows.append({
+                "日期": pd.to_datetime(batch.get("movement_date")).date(),
+                "颜色": str(line.get("color") or "").strip(),
+                "尺码": str(line.get("size") or "").strip().upper(),
+                "实际出库": int(line.get("requested_quantity") or 0),
+            })
+    if not rows:
+        return pd.DataFrame(columns=["日期", "颜色", "尺码", "实际出库"])
+    return (
+        pd.DataFrame(rows)
+        .groupby(["日期", "颜色", "尺码"], as_index=False)["实际出库"]
+        .sum()
+    )
 
 
 def normalize_daily_outbound_history(movement_df):

@@ -4,12 +4,14 @@ from datetime import datetime
 from hashlib import sha1
 from zoneinfo import ZoneInfo
 
-from db.inventory import SIZE_COLUMNS, apply_adjustment_rows, normalize_adjustment_rows
+from db.inventory import SIZE_COLUMNS, normalize_adjustment_rows
+from db.inventory.operations.daily_outbound_versions import (
+    save_daily_outbound_revision,
+)
 from db.inventory.operations.outbound import (
     OUTBOUND_SPECS,
     apply_outbound_batch_date,
     build_outbound_sku_lookup,
-    build_temporary_shortage_adjustments,
     build_outbound_package_template,
     convert_packages_to_adjustments,
     convert_sku_package_entries,
@@ -19,15 +21,12 @@ from db.inventory.operations.outbound import (
 )
 from db.inventory.master_data.repository import load_sku_catalog
 from db.inventory.operations.outbound_audit import (
-    audit_outbound_batch,
     find_outbound_inventory_issues,
     load_outbound_inventory,
 )
 from ui.inventory.i18n import get_language
 from ui.inventory.operations.outbound_feedback import (
-    render_outbound_audit,
     render_outbound_preview_summary,
-    store_outbound_audit_feedback,
 )
 from ui.inventory.operations.adjustment_preview import (
     build_inventory_change_comparison,
@@ -357,7 +356,10 @@ def render_daily_outbound(supabase, department, category):
         action="扣减",
     )
     if not inventory_issues.empty:
-        st.error(text["inventory_issue"])
+        st.warning(
+            "当前出库存在库存不足。系统会完整保存仓库申报数量，"
+            "库存只扣到 0，并单独记录未扣差额；不会生成临时入库。"
+        )
         st.dataframe(
             inventory_issues,
             hide_index=True,
@@ -374,58 +376,14 @@ def render_daily_outbound(supabase, department, category):
                 ),
             },
         )
-        st.info(text["inventory_issue_help"])
-        temporary_rows = build_temporary_shortage_adjustments(
-            inventory_issues, movement_date
-        )
         missing_sku_count = int(
             (inventory_issues["问题"] == "SKU 不存在").sum()
         )
         if missing_sku_count:
             st.warning(
-                text["missing_sku_help"].format(count=missing_sku_count)
+                f"其中 {missing_sku_count} 个 SKU 不存在：申报数据会保留，"
+                "但该 SKU 本次实际库存扣减为 0。"
             )
-        if not temporary_rows.empty:
-            with st.expander(text["temporary_title"], expanded=True):
-                st.caption(text["temporary_help"])
-                st.dataframe(
-                    temporary_rows[
-                        ["品牌", "材质", "颜色", "尺码", "数量"]
-                    ],
-                    hide_index=True,
-                    width="stretch",
-                    column_config={
-                        "数量": st.column_config.NumberColumn(
-                            text["temporary_quantity"], format="%d"
-                        ),
-                    },
-                )
-                if st.button(
-                    text["temporary_confirm"],
-                    width="stretch",
-                    type="primary",
-                    key="daily_outbound_fill_shortage",
-                ):
-                    try:
-                        apply_adjustment_rows(
-                            supabase,
-                            department,
-                            category,
-                            temporary_rows,
-                            get_current_operator_name(),
-                            source_type="transfer",
-                        )
-                    except Exception as error:
-                        st.error(f"{text['temporary_failed']}: {error}")
-                        return
-                    st.session_state[
-                        "daily_outbound_temporary_saved_message"
-                    ] = text["temporary_saved"].format(
-                        count=len(temporary_rows),
-                        quantity=int(temporary_rows["数量"].sum()),
-                    )
-                    st.rerun()
-        return
     st.warning(text["unsaved"])
     if not st.button(
         text["confirm"], width="stretch", type="primary"
@@ -434,31 +392,25 @@ def render_daily_outbound(supabase, department, category):
 
     username = get_current_operator_name()
     try:
-        batch_id = apply_adjustment_rows(
+        saved = save_daily_outbound_revision(
             supabase,
             department,
             category,
+            movement_date,
             adjustment_df,
             username,
-            source_type="daily_outbound",
+            note="仓库每日出货",
         )
     except Exception as error:
         st.error(f"{text['save_error']}: {error}")
         return
-
-    try:
-        audit, mismatches = audit_outbound_batch(
-            supabase, batch_id, adjustment_df
+    shortage_total = int(saved.get("shortage_total") or 0)
+    if shortage_total:
+        st.warning(
+            f"仓库申报 {int(saved.get('requested_total') or total):,} 件已保存；"
+            f"实际库存扣减 {int(saved.get('applied_total') or 0):,} 件；"
+            f"未扣差额 {shortage_total:,} 件已进入批次核对。"
         )
-    except Exception as error:
-        st.error(f"{text['audit_failed']}: {error}")
-        return
-
-    render_outbound_audit(audit, mismatches, text)
-    if not audit["passed"]:
-        return
-
-    store_outbound_audit_feedback(audit)
     st.session_state["inventory_saved_message"] = (
         f"{total:,} {text['saved']}"
     )

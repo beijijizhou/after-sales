@@ -4,10 +4,24 @@ from utils.daily_consumption import (
     daily_consumption_source,
     is_daily_consumption_reason,
 )
+from utils.inventory_movements import is_stocktake_reason
 
 
 def filter_history_batches(batch_df, mode):
-    normal_df = batch_df[batch_df["记录类别"] == "库存表格记录"]
+    reasons = batch_df["备注"].fillna("").astype(str)
+    shortage_artifacts = reasons.str.contains(
+        "临时库存调整｜每日出库缺口补足", regex=False
+    )
+    daily_revision_artifacts = (
+        batch_df["记录类别"].ne("库存表格记录")
+        & reasons.str.contains("仓库每日出货", regex=False)
+    )
+    if mode == "daily_edit":
+        return batch_df[shortage_artifacts | daily_revision_artifacts]
+    normal_df = batch_df[
+        batch_df["记录类别"].eq("库存表格记录")
+        & ~shortage_artifacts
+    ]
     daily_mask = normal_df["备注"].fillna("").map(
         is_daily_consumption_reason
     )
@@ -32,6 +46,7 @@ def filter_batches_by_outbound_kind(batch_df, outbound_kind):
     is_temporary_adjustment = reasons.str.contains(
         "临时库存调整", regex=False
     )
+    is_stocktake = reasons.map(is_stocktake_reason)
     is_legacy = (
         reasons.str.contains(
             "每日正常出货|每日出货|黑白短袖出库", regex=True
@@ -45,6 +60,7 @@ def filter_batches_by_outbound_kind(batch_df, outbound_kind):
         "每日库存扣减": is_outbound & is_daily,
         "每日消耗出库": is_outbound & is_daily,
         "临时库存调整": is_temporary_adjustment,
+        "库存设置": is_stocktake,
     }
     mask = masks.get(outbound_kind)
     return batch_df if mask is None else batch_df[mask]
@@ -74,9 +90,10 @@ def filter_reversal_scope(batch_df, scope):
         "临时库存调整": reasons.str.contains(
             "临时库存调整", regex=False
         ),
+        "库存设置": reasons.map(is_stocktake_reason),
         "其他出入库": sources.eq("") & ~reasons.str.contains(
             "临时库存调整", regex=False
-        ),
+        ) & ~reasons.map(is_stocktake_reason),
     }
     mask = masks.get(scope)
     return batch_df if mask is None else batch_df[mask]

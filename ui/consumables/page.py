@@ -23,6 +23,12 @@ from ui.consumables.stock import (
 from utils.auth import has_permission, is_admin
 
 
+CONSUMABLE_TABS = [
+    "当前库存", "每日耗材出库", "耗材入库", "库存设置",
+    "库存流水", "撤销", "SKU 管理",
+]
+
+
 def render_consumables_page(supabase):
     st.title("耗材库存")
     saved_message = st.session_state.pop("consumable_saved_message", None)
@@ -94,39 +100,34 @@ def _render_department_workspace(
     can_manage_sku = has_permission("can_manage_consumable_sku")
     latest_costs = build_latest_costs(movements)
 
-    stock_tab, issue_tab, operation_tab, history_tab, sku_tab = st.tabs([
-        "当前库存", "每日耗材出库", "库存操作", "历史记录", "SKU 管理",
-    ])
+    (
+        stock_tab, issue_tab, inbound_tab, setting_tab,
+        ledger_tab, reversal_tab, sku_tab,
+    ) = st.tabs(CONSUMABLE_TABS)
     with stock_tab:
         render_stock(filtered_items, latest_costs, show_cost)
     with issue_tab:
         render_daily_issue_table(
             supabase, department_code, filtered_items, can_report
         )
-    with operation_tab:
-        inbound_tab, initialization_tab = st.tabs([
-            "耗材入库", "库存初始化",
-        ])
-        with inbound_tab:
-            render_movement_entry(
-                supabase, department_code, filtered_items, can_edit,
-                show_cost, movement_options=["入库"], title="耗材入库",
-            )
-        with initialization_tab:
-            render_inventory_initialization(
-                supabase, department_code, filtered_items, can_edit, show_cost
-            )
-    with history_tab:
-        movement_tab, reversal_tab = st.tabs(["出入库历史", "撤销"])
-        with movement_tab:
-            render_history(
-                filtered_batches, filtered_movements, items, show_cost
-            )
-        with reversal_tab:
-            render_reversals(
-                supabase, filtered_batches, filtered_movements, items,
-                can_edit, show_cost,
-            )
+    with inbound_tab:
+        render_movement_entry(
+            supabase, department_code, filtered_items, can_edit,
+            show_cost, movement_options=["入库"], title="耗材入库",
+        )
+    with setting_tab:
+        render_inventory_initialization(
+            supabase, department_code, filtered_items, can_edit, show_cost
+        )
+    with ledger_tab:
+        render_history(
+            filtered_batches, filtered_movements, items, show_cost
+        )
+    with reversal_tab:
+        render_reversals(
+            supabase, filtered_batches, filtered_movements, items,
+            can_edit, show_cost,
+        )
     with sku_tab:
         render_sku_management(
             supabase, department_id, filtered_items, can_manage_sku

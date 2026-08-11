@@ -7,6 +7,7 @@ import streamlit as st
 from db.inventory import (
     SIZE_COLUMNS,
     apply_adjustment_rows,
+    apply_stocktake_rows,
     build_wide_adjustment_template,
     normalize_adjustment_rows,
 )
@@ -53,8 +54,10 @@ def render_adjust_form(supabase, department, category, inventory_df):
     )
     show_cost = has_permission("can_manage_cost")
     action = st.radio(
-        t("操作"), ["增加", "扣减"], horizontal=True, format_func=t
+        t("操作"), ["增加", "减少", "设置"], horizontal=True, format_func=t
     )
+    if action == "设置":
+        default_df.insert(0, "设置此行", False)
     adjustment_date = st.date_input(
         t("日期"), value=current_date,
         key=f"manual_adjustment_date_{form_version}",
@@ -72,6 +75,10 @@ def render_adjust_form(supabase, department, category, inventory_df):
         "材质": st.column_config.SelectboxColumn(t("材质"), options=materials, required=True),
         "颜色": st.column_config.SelectboxColumn(t("颜色"), options=colors, required=True),
     }
+    if action == "设置":
+        adjustment_columns["设置此行"] = st.column_config.CheckboxColumn(
+            "设置此行", help="目标库存全部为 0 时，请勾选此项。"
+        )
     for size in SIZE_COLUMNS:
         adjustment_columns[size] = st.column_config.NumberColumn(size, min_value=0, step=1)
     adjustment_columns["备注"] = st.column_config.TextColumn(t("备注"))
@@ -111,10 +118,15 @@ def render_adjust_form(supabase, department, category, inventory_df):
             if not show_cost and "成本" in adjustment_df.columns:
                 adjustment_df = adjustment_df.drop(columns=["成本"])
             username = get_current_operator_name()
-            apply_adjustment_rows(
-                supabase, department, category, adjustment_df, username,
-                source_type,
-            )
+            if action == "设置":
+                apply_stocktake_rows(
+                    supabase, department, category, adjustment_df, username,
+                )
+            else:
+                apply_adjustment_rows(
+                    supabase, department, category, adjustment_df, username,
+                    source_type,
+                )
             st.session_state["inventory_saved_message"] = (
                 t("已保存库存调整").format(count=len(adjustment_df))
             )

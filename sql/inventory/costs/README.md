@@ -14,6 +14,10 @@ no rows.
 Run `06_four_decimal_costs.sql` to upgrade every active inventory unit-cost
 column from two decimal places to four decimal places.
 
+Run `07_pending_cost_batches.sql` to support cost batches whose total quantity
+is known but whose SKU allocation or price still needs review. Pending batches
+do not change inventory and are excluded from inventory value until allocated.
+
 The migration keeps `inventory_items.unit_cost` for compatibility. Cost history
 is stored in `inventory_cost_lots`, while outbound deductions are stored in
 `inventory_cost_allocations`.

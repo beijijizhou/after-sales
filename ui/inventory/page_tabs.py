@@ -3,6 +3,9 @@ import streamlit as st
 from ui.inventory.history.history import (
     render_inventory_history,
 )
+from ui.inventory.history.daily_outbound_revisions import (
+    render_daily_outbound_revision_history,
+)
 from ui.inventory.i18n import t
 from ui.inventory.operations.pages import (
     render_daily_outbound_operation,
@@ -106,6 +109,18 @@ def render_inventory_tabs(
                     supabase, department, "黑白短袖", raw_df, can_edit,
                 )
 
+    if "每日出库编辑历史" in tabs:
+        with tabs["每日出库编辑历史"]:
+            render_daily_outbound_revision_history(
+                supabase, department, "黑白短袖"
+            )
+            with st.expander("查看旧版编辑与补偿记录", expanded=False):
+                _render_history(
+                    supabase, department, "daily_edit",
+                    undo_history_data or history_data, visible_sizes,
+                    movement_types,
+                )
+
     if "系统库存扣减" in tabs:
         with tabs["系统库存扣减"]:
             if not can_edit:
@@ -152,6 +167,7 @@ def inventory_tab_keys(department, can_view_cost=False, category=""):
     category = str(category or "").strip()
     if department == "DTF" and category in {"", "黑白短袖"}:
         keys.append("仓库每日出库")
+        keys.append("每日出库编辑历史")
     if (
         department == "UV"
         or (department == "DTF" and category in {"", "彩色短袖"})

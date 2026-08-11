@@ -3,6 +3,11 @@ import streamlit as st
 
 from db.inventory import load_inventory_movements, normalize_adjustment_rows
 from db.inventory.operations.adjustments import reverse_inventory_batch
+from db.inventory.operations.daily_outbound_versions import (
+    build_daily_outbound_edit_rows as build_versioned_outbound_edit_rows,
+    load_daily_outbound_revision_by_inventory_batch,
+    save_daily_outbound_revision,
+)
 from db.inventory.operations.outbound_audit import (
     DAILY_OUTBOUND_REASONS,
     audit_outbound_batch,
@@ -197,7 +202,16 @@ def _render_daily_outbound_replacement(supabase, batch_id):
         st.error("完整批次不是可修改的每日出库记录，请刷新后重试。")
         return
 
-    original = build_daily_outbound_edit_rows(complete_batch_df)
+    try:
+        versioned_revision = load_daily_outbound_revision_by_inventory_batch(
+            supabase, batch_id
+        )
+    except Exception:
+        versioned_revision = None
+    original = (
+        build_versioned_outbound_edit_rows(versioned_revision)
+        if versioned_revision else build_daily_outbound_edit_rows(complete_batch_df)
+    )
     edited_wide = render_adjustment_preview_editor(
         original,
         key=f"daily_outbound_replacement_{batch_id}",
@@ -255,9 +269,11 @@ def _render_daily_outbound_replacement(supabase, batch_id):
         title="修正后库存核对",
     )
     if not issues.empty:
-        st.error("修正版包含不存在的 SKU 或撤销原批次后仍然库存不足。")
+        st.warning(
+            "修正版存在库存不足：申报数量会完整保存，库存只扣到 0，"
+            "缺口进入版本记录；不会生成临时入库。"
+        )
         st.dataframe(issues, hide_index=True, width="stretch")
-        return
     confirmed = st.checkbox(
         "我已核对修正版，并确认撤销原批次后生成新批次",
         key=f"confirm_daily_outbound_replacement_{batch_id}",
@@ -272,13 +288,29 @@ def _render_daily_outbound_replacement(supabase, batch_id):
         return
     username = get_current_operator_name()
     try:
-        replacement_batch_id = replace_daily_outbound_batch(
-            supabase, batch_id, row["department"], row["category"],
-            complete_batch_df, corrected, username,
-        )
-        audit, mismatches = audit_outbound_batch(
-            supabase, replacement_batch_id, corrected
-        )
+        if versioned_revision:
+            saved = save_daily_outbound_revision(
+                supabase,
+                row["department"],
+                row["category"],
+                original_dates[0],
+                corrected,
+                username,
+                daily_outbound_batch_id=(
+                    versioned_revision["daily_outbound_batch_id"]
+                ),
+                note=f"修改每日出库：{original_total} → {corrected_total}",
+            )
+            audit = {"passed": True}
+            mismatches = pd.DataFrame()
+        else:
+            replacement_batch_id = replace_daily_outbound_batch(
+                supabase, batch_id, row["department"], row["category"],
+                complete_batch_df, corrected, username,
+            )
+            audit, mismatches = audit_outbound_batch(
+                supabase, replacement_batch_id, corrected
+            )
     except Exception as error:
         st.error(f"修改每日出库失败：{error}")
         return
@@ -335,12 +367,17 @@ def render_inventory_history(
     selected_df = filter_history_batches(batch_df, mode)
     department_key = str(department or "all").strip().lower()
     history_key = f"inventory_{department_key}_{mode}_history_batch"
+    if mode == "daily_edit":
+        st.caption(
+            "这里只显示每日出库的原版本、撤销和历史补偿记录；"
+            "这些记录不会混入普通库存流水。"
+        )
     if mode == "all":
         outbound_kind = st.selectbox(
             t("流水记录类型"),
             [
                 "全部流水", "货柜入库", "每日库存扣减",
-                "临时库存调整",
+                "临时库存调整", "库存设置",
             ],
             format_func=t,
             key=f"inventory_{department_key}_ledger_outbound_kind",
@@ -370,7 +407,7 @@ def render_inventory_history(
             "撤销记录类型",
             [
                 "全部可撤销记录", "仓库每日出库", "系统库存扣减",
-                "临时库存调整", "其他出入库",
+                "临时库存调整", "库存设置", "其他出入库",
             ],
             default="全部可撤销记录",
             key=f"inventory_{department_key}_reversal_scope",
@@ -385,7 +422,7 @@ def render_inventory_history(
             "inventory_undo_history_batch_"
             + reversal_scope
         )
-    elif mode != "sku":
+    elif mode not in {"sku", "daily_edit"}:
         selected_df = filter_batches_by_movement_type(
             selected_df, movement_types
         )

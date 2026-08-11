@@ -39,19 +39,26 @@ def normalize_wide_adjustment_rows(df):
     row_columns = ["入库行"] if "入库行" in df.columns else []
     for size in SIZE_COLUMNS:
         df[size] = pd.to_numeric(df[size], errors="coerce").fillna(0).astype(int)
+    if "设置此行" in df.columns:
+        selected_for_setting = df["设置此行"].fillna(False).astype(bool)
+    else:
+        selected_for_setting = pd.Series(False, index=df.index)
+    df["_设置行"] = selected_for_setting | (df[SIZE_COLUMNS].sum(axis=1) > 0)
 
     df = df.dropna(subset=["日期"])
-    df = df[(df["材质"] != "") & (df["颜色"] != "") & (df["操作"].isin(["增加", "扣减"]))]
+    df["操作"] = df["操作"].replace({"减少": "扣减"})
+    df = df[(df["材质"] != "") & (df["颜色"] != "") & (df["操作"].isin(["增加", "扣减", "设置"]))]
     adjustment_df = df.melt(
         id_vars=[
             "日期", "操作", "品牌", "材质", "颜色", "成本", "备注",
-            *row_columns,
+            *row_columns, "_设置行",
         ],
         value_vars=SIZE_COLUMNS,
         var_name="尺码",
         value_name="数量",
     )
-    adjustment_df = adjustment_df[adjustment_df["数量"] > 0]
+    setting_rows = adjustment_df["操作"].eq("设置") & adjustment_df["_设置行"]
+    adjustment_df = adjustment_df[setting_rows | (adjustment_df["数量"] > 0)]
     columns = [
         "日期", "操作", "品牌", "材质", "颜色", "尺码", "数量",
         "成本", "备注", *row_columns,
@@ -87,7 +94,8 @@ def normalize_adjustment_rows(df):
 
     df = df.dropna(subset=["日期"])
     df = df[df["数量"] > 0]
-    df = df[df["操作"].isin(["增加", "扣减"])]
+    df["操作"] = df["操作"].replace({"减少": "扣减"})
+    df = df[df["操作"].isin(["增加", "扣减", "设置"])]
     df = df[df["材质"] != ""]
     df = df[df["尺码"].isin(SIZE_COLUMNS)]
     columns = ["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "成本", "备注"]
@@ -155,6 +163,69 @@ def apply_adjustment_rows(
     for movement_date in sorted(df["日期"].dropna().unique()):
         create_inventory_snapshot(supabase, department, category, movement_date)
     return batch_id
+
+
+def apply_stocktake_rows(
+    supabase, department, category, df, created_by="system", batch_id=None,
+):
+    """Set selected SKU balances to audited physical-count targets."""
+    batch_id = str(batch_id or uuid4())
+    existing_rows = (
+        supabase.table("inventory_items")
+        .select("brand,material,color,size")
+        .eq("department", department)
+        .eq("category", category)
+        .execute()
+        .data
+        or []
+    )
+    existing = {
+        (
+            str(row.get("brand") or "").strip(),
+            str(row.get("material") or "").strip(),
+            str(row.get("color") or "").strip(),
+            str(row.get("size") or "").strip().upper(),
+        )
+        for row in existing_rows
+    }
+    records = []
+    for row in df.to_dict("records"):
+        identity = (
+            str(row["品牌"] or "").strip(),
+            str(row["材质"] or "").strip(),
+            str(row["颜色"] or "").strip(),
+            str(row["尺码"] or "").strip().upper(),
+        )
+        target_quantity = int(row["数量"])
+        if target_quantity == 0 and identity not in existing:
+            continue
+        note = str(row.get("备注") or "").strip()
+        reason = (
+            note if "库存盘点设置" in note
+            else f"库存盘点设置｜{note}" if note
+            else "库存盘点设置"
+        )
+        records.append({
+            "brand": identity[0],
+            "material": identity[1],
+            "color": identity[2],
+            "size": identity[3],
+            "target_quantity": target_quantity,
+            "reason": reason,
+            "movement_date": row["日期"].isoformat(),
+        })
+    if not records:
+        raise ValueError("没有需要设置的现有 SKU")
+    response = supabase.rpc("apply_inventory_stocktake_batch", {
+        "p_department": department,
+        "p_category": category,
+        "p_rows": records,
+        "p_batch_id": batch_id,
+        "p_created_by": created_by,
+    }).execute()
+    for movement_date in sorted(df["日期"].dropna().unique()):
+        create_inventory_snapshot(supabase, department, category, movement_date)
+    return response.data or batch_id
 
 
 def reverse_inventory_batch(
