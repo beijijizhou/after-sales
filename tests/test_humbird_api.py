@@ -11,6 +11,7 @@ from automation.api.humbird import build_production_item_payload
 from automation.api.humbird.client import (
     _deduplicate_rows,
     _normalize_api_result,
+    fetch_humbird_production_records,
 )
 from automation.api.humbird.http_client import (
     HumbirdAuthenticationError,
@@ -23,6 +24,26 @@ from utils.erp.humbird_parser import parse_humbird_records
 
 
 class HumbirdApiTests(unittest.TestCase):
+    @patch("automation.api.humbird.client.fetch_humbird_production_records_http")
+    def test_legacy_humbird_entrypoint_is_api_only(self, fetch):
+        fetch.return_value = [{"code": "item-1"}]
+        result = fetch_humbird_production_records(
+            "Haloo",
+            date(2026, 8, 10),
+            date(2026, 8, 10),
+            credentials={"token": "shared-token"},
+        )
+        self.assertEqual(result, [{"code": "item-1"}])
+        fetch.assert_called_once()
+
+    def test_legacy_humbird_entrypoint_never_falls_back_to_chrome(self):
+        with self.assertRaisesRegex(ValueError, "服务器不会启动 Chrome"):
+            fetch_humbird_production_records(
+                "Haloo",
+                date(2026, 8, 10),
+                date(2026, 8, 10),
+            )
+
     def test_direct_api_signature_uses_token_without_browser(self):
         with (
             patch("automation.api.humbird.http_client.time.time", return_value=1.5),

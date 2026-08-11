@@ -11,8 +11,9 @@ AUTH_COOKIE_CACHE = "auth_cookie_cached_value"
 
 
 def read_auth_cookie():
-    if AUTH_COOKIE_CACHE in st.session_state:
-        return st.session_state[AUTH_COOKIE_CACHE]
+    cached = st.session_state.get(AUTH_COOKIE_CACHE)
+    if cached:
+        return cached
     manager = stx.CookieManager(key="auth_cookie_reader")
     value = None
     try:
@@ -20,6 +21,7 @@ def read_auth_cookie():
     except Exception:
         value = None
     if value:
+        st.session_state[AUTH_COOKIE_CACHE] = value
         return value
     try:
         cookies = manager.get_all() or {}
@@ -28,7 +30,12 @@ def read_auth_cookie():
     value = cookies.get(AUTH_COOKIE_NAME) or st.context.cookies.get(
         AUTH_COOKIE_NAME
     )
-    st.session_state[AUTH_COOKIE_CACHE] = value
+    # CookieManager is a frontend component. On a fresh Cloud session its
+    # first render can return before browser cookies arrive, then trigger a
+    # rerun. Never cache that temporary empty result or the rerun cannot
+    # restore the login.
+    if value:
+        st.session_state[AUTH_COOKIE_CACHE] = value
     return value
 
 

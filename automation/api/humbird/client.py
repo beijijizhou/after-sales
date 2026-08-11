@@ -1,22 +1,13 @@
-from playwright.sync_api import sync_playwright
+"""Backward-compatible Humbird entrypoint that never starts a browser.
 
-from automation.api.humbird.payload import (
-    PAGE_SIZE,
-    build_production_item_payload,
+Production reads must work in server environments such as Streamlit Cloud.
+The browser login flow is intentionally isolated in ``local_auth.py`` and is
+only used by an administrator to refresh a fully expired authorization.
+"""
+
+from automation.api.humbird.http_client import (
+    fetch_humbird_production_records_http,
 )
-from automation.playwright.chrome_session import (
-    connect_debug_chrome,
-    find_erp_page,
-)
-from automation.playwright.errors import ProductionLoginRequired
-from automation.playwright.haloo.platforms import get_erp_platform
-
-
-API_FRAME_NAME = "fnsz-sale"
-MODULE_PREFIX = "productItemManage-"
-LIST_API_PATH = "/production/v1/production/order/item/page"
-REQUEST_ATTEMPTS = 3
-SNAPSHOT_ATTEMPTS = 2
 
 
 def fetch_humbird_production_records(
@@ -24,174 +15,20 @@ def fetch_humbird_production_records(
     start_date,
     end_date,
     report_progress=None,
+    credentials=None,
 ):
-    erp = get_erp_platform(platform)
-    report = report_progress or (lambda _message: None)
-    report(f"正在连接已登录的 {platform} ERP 会话")
-
-    with sync_playwright() as playwright:
-        browser = connect_debug_chrome(
-            playwright, erp.production_items_url
+    if not credentials or not str(credentials.get("token") or "").strip():
+        raise ValueError(
+            f"{platform} 未提供共享 API token；"
+            "服务器不会启动 Chrome，请检查数据库 ERP 授权"
         )
-        page = _authenticated_production_page(browser, erp)
-        report(f"{platform} 登录状态有效，正在识别页面生产数据接口")
-        module_url = _discover_production_module(page)
-        report(f"{platform} 已识别页面真实接口，正在读取生产数据")
-
-        last_error = None
-        for snapshot_attempt in range(1, SNAPSHOT_ATTEMPTS + 1):
-            try:
-                rows, total = _collect_snapshot(
-                    page,
-                    start_date,
-                    end_date,
-                    platform,
-                    report,
-                    module_url,
-                )
-                if len(rows) == total:
-                    return rows
-                last_error = RuntimeError(
-                    f"{platform} 接口返回 {len(rows):,} 条，但总数为 "
-                    f"{total:,}"
-                )
-            except Exception as error:
-                last_error = error
-
-            if snapshot_attempt < SNAPSHOT_ATTEMPTS:
-                report(
-                    f"{platform} 第一次读取未通过完整性校验："
-                    f"{last_error}；正在重新核对"
-                )
-
-    raise RuntimeError(
-        f"{platform} 数据完整性校验失败：{last_error}；"
-        "已停止使用不完整数据"
-    )
-
-
-def _collect_snapshot(
-    page,
-    start_date,
-    end_date,
-    platform,
-    report,
-    module_url,
-):
-    first = _list_with_retry(
-        page,
-        build_production_item_payload(start_date, end_date),
-        module_url,
+    return fetch_humbird_production_records_http(
         platform,
-        1,
+        start_date,
+        end_date,
+        credentials,
+        report_progress,
     )
-    total = int(first.get("total") or 0)
-    rows = list(first.get("list") or [])
-    report(f"{platform} 共 {total:,} 条，正在读取分页数据")
-
-    page_number = 1
-    while len(rows) < total:
-        page_number += 1
-        result = _list_with_retry(
-            page,
-            build_production_item_payload(
-                start_date, end_date, page=page_number
-            ),
-            module_url,
-            platform,
-            page_number,
-        )
-        page_rows = list(result.get("list") or [])
-        if not page_rows:
-            break
-        rows.extend(page_rows)
-        rows = _deduplicate_rows(rows)
-        report(f"{platform} 已读取 {len(rows):,} / {total:,} 条")
-    return rows, total
-
-
-def _list_with_retry(page, payload, module_url, platform, page_number):
-    last_error = None
-    for attempt in range(1, REQUEST_ATTEMPTS + 1):
-        try:
-            return _list_production_items(page, payload, module_url)
-        except Exception as error:
-            last_error = error
-            if attempt < REQUEST_ATTEMPTS:
-                page.wait_for_timeout(400 * attempt)
-    raise RuntimeError(
-        f"第 {page_number} 页连续 {REQUEST_ATTEMPTS} 次读取失败："
-        f"{last_error}"
-    )
-
-
-def _authenticated_production_page(browser, erp):
-    page = find_erp_page(
-        browser, erp.host, erp.name, erp.production_items_url
-    )
-    for _ in range(60):
-        if "/login" in page.url:
-            raise ProductionLoginRequired(
-                f"请在已打开的专用 Chrome 中完成 {erp.name} 登录后重试"
-            )
-        if _api_frame(page) is not None:
-            return page
-        page.wait_for_timeout(500)
-    raise RuntimeError(f"{erp.name} 生产模块加载超过 30 秒")
-
-
-def _discover_production_module(page):
-    for attempt in range(2):
-        frame = _api_frame(page)
-        if frame is not None:
-            module_url = _module_url(frame)
-            if module_url and _module_has_list_api(frame, module_url):
-                return module_url
-        if attempt == 0:
-            page.reload(wait_until="domcontentloaded", timeout=30_000)
-            for _ in range(60):
-                if _api_frame(page) is not None:
-                    break
-                page.wait_for_timeout(500)
-    raise RuntimeError("未找到蜂鸟当前版本的生产列表接口模块")
-
-
-def _module_has_list_api(frame, module_url):
-    return frame.evaluate(
-        """async ({url, path}) => {
-            const api = await import(url);
-            return Object.values(api).some(
-                value => typeof value === "function"
-                    && String(value).includes(path)
-            );
-        }""",
-        {"url": module_url, "path": LIST_API_PATH},
-    )
-
-
-def _list_production_items(page, payload, module_url):
-    frame = _api_frame(page)
-    if frame is None:
-        raise RuntimeError("生产模块 iframe 不存在或仍在加载")
-    response = frame.evaluate(
-        """async ({url, path, payload}) => {
-            const api = await import(url);
-            const entry = Object.entries(api).find(
-                ([, value]) => typeof value === "function"
-                    && String(value).includes(path)
-            );
-            if (!entry) {
-                throw new Error("ERP production list API export not found");
-            }
-            return await entry[1](payload);
-        }""",
-        {
-            "url": module_url,
-            "path": LIST_API_PATH,
-            "payload": payload,
-        },
-    )
-    return _normalize_api_result(response)
 
 
 def _normalize_api_result(response):
@@ -227,23 +64,3 @@ def _deduplicate_rows(rows):
             seen_codes.add(marker)
         result.append(row)
     return result
-
-
-def _api_frame(page):
-    return next(
-        (frame for frame in page.frames if frame.name == API_FRAME_NAME),
-        None,
-    )
-
-
-def _module_url(frame):
-    resources = frame.evaluate(
-        "() => performance.getEntriesByType('resource').map(x => x.name)"
-    )
-    matches = [
-        url
-        for url in resources
-        if "/static/js/chunk/" in url
-        and url.rsplit("/", 1)[-1].startswith(MODULE_PREFIX)
-    ]
-    return matches[-1] if matches else None
