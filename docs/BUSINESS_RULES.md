@@ -51,6 +51,14 @@
 - A batch must reconcile its displayed total with its saved database total.
 - Missing or insufficient SKUs stop the entire batch and are shown to users.
 - Direct table edits are temporary adjustments, not warehouse daily outbound.
+- A one-time inventory brand reclassification is not a SKU master-data merge.
+  It moves a confirmed quantity from existing source-brand SKUs to matching
+  target-brand SKUs as one auditable, inventory-neutral batch. Source SKUs
+  remain active for future inbound and outbound, historical movements retain
+  their original brands, and the batch records source, target, quantity,
+  operator, business date, and before/after balances. Do not turn a single
+  reclassification into a permanent cross-brand aggregation rule or rewrite
+  all historical SKU identities.
 - Manual inventory adjustment has three explicit actions: increase, decrease,
   and set. `Set` is a physical-count operation: the entered number is the
   target balance, while the system preserves the prior balance, target,
