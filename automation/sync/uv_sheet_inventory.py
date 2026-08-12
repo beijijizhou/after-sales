@@ -7,6 +7,7 @@ import pandas as pd
 
 from automation.sync.uv_monthly_summary import load_monthly_sku_summary
 from db.inventory.operations.adjustments import apply_adjustment_rows
+from utils.google_sheets import values_for_range
 
 
 DATE_TAB_PATTERN = re.compile(r"^\d{4}$")
@@ -75,7 +76,7 @@ def load_daily_product_usage(
     values_by_range = sheets.batch_get_values(spreadsheet_id, requested)
     result = {}
     for tab, cell_range in zip(tabs, requested):
-        values = _range_values(values_by_range, tab, cell_range)
+        values = values_for_range(values_by_range, tab, cell_range)
         quantity = _find_product_quantity(values, product_code)
         if quantity > 0:
             result[_tab_date(tab, start_date.year)] = quantity
@@ -91,7 +92,7 @@ def load_daily_summary(
     )
     tab = movement_date.strftime("%m%d")
     requested = f"'{tab}'!{cell_range}"
-    values = _range_values(
+    values = values_for_range(
         sheets.batch_get_values(spreadsheet_id, [requested]),
         tab,
         requested,
@@ -194,7 +195,7 @@ def _load_daily_summary_from_candidates(
     best_score = -1
     for cell_range in candidate_ranges:
         requested_range = f"'{tab}'!{cell_range}"
-        values = _range_values(values_by_range, tab, requested_range)
+        values = values_for_range(values_by_range, tab, requested_range)
         summary, note = _parse_summary_values(values)
         score = len(summary)
         if summary and score > best_score:
@@ -234,18 +235,6 @@ def _parse_summary_values(values):
         result["UNMAPPED"] = result.get("UNMAPPED", 0) + unmatched_quantity
         note = f"{note};unmapped={unmatched_quantity}"
     return result, note
-
-
-def _range_values(values_by_range, tab, requested_range):
-    if requested_range in values_by_range:
-        return values_by_range[requested_range]
-    suffix = requested_range.split("!", 1)[1]
-    for returned_range, values in values_by_range.items():
-        if returned_range.strip("'").startswith(f"{tab}'!") or (
-            returned_range.endswith(suffix) and tab in returned_range
-        ):
-            return values
-    return []
 
 
 def _existing_usage(supabase, sku, movement_date, reason_prefix):

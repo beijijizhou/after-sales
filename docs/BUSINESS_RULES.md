@@ -180,6 +180,18 @@ data-entry sources differ:
 | Colored T-shirts | System reads synchronized production data | Colored-shirt production data |
 | UV production inventory | System reads the configured Google Sheets source | Latest 14 days of valid Google Sheets data |
 
+DTF consumables now follow the same manager-facing planning pattern as
+production inventory: the consumables page exposes both a `点货预测` view and a
+`消耗模型` view. The consumable consumption model is built only from effective
+`issue` batches in the consumable ledger for the recent lookback window, using
+New York business dates and excluding reversed batches or reversed movement
+rows. The first reorder forecast uses that recent average daily issue quantity
+as the system daily usage and combines it with each SKU's current stock and
+`minimum_quantity` safety threshold to show coverage days, earliest depletion
+date, and suggested reorder quantity. Until procurement lead time or target
+coverage is stored in master data, the forecast uses the operator-selected
+target coverage days from the UI instead of an implicit hard-coded SKU rule.
+
 All four flows use the same user-facing operational concepts: New York
 business date, daily preview, explicit confirmation, duplicate prevention,
 auditable batch, operator and source attribution, current-stock result,
@@ -196,6 +208,18 @@ or UV automation is `系统库存扣减`. The combined ledger filter is
 correction behavior still follow the shared contract. A source-specific
 adapter may decide how rows are matched to SKUs and how the consumption model
 is calculated; it must not create a second history or audit model.
+
+Every daily-consumption flow also uses one shared forecasting shape. The core
+daily-usage engine must not diverge by category or SKU. Source adapters may
+only normalize upstream facts into daily usage events and define which dates
+count as observable business dates; they must not introduce a separate
+averaging formula, a separate reorder contract, or a second forecasting math
+path for one department. The shared output therefore keeps the same concepts
+across DTF consumables, black/white T-shirts, colored T-shirts, and UV
+production inventory: window total usage, effective data days, natural window
+days, effective-day average usage, and natural-window average usage. A page
+may choose which shared metric is its active planning basis, but that choice
+must stay explicit in the UI and must reuse the same core engine.
 
 One source and one business date must appear as one auditable ledger batch,
 even when the source contains multiple categories or SKUs. The detail table

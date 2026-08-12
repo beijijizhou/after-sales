@@ -3,6 +3,7 @@ import hashlib
 import pandas as pd
 import streamlit as st
 
+from db.inventory.core.constants import SIZE_COLUMNS
 from db.inventory.sku_updates import (
     IDENTITY_COLUMNS,
     build_sku_identity_changes,
@@ -105,5 +106,4 @@ def _item_label(inventory_df):
         str(value).strip() for value in inventory_df.get("size", [])
         if pd.notna(value) and str(value).strip()
     }
-    apparel_sizes = {"S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"}
-    return "包含尺码" if not sizes or sizes.issubset(apparel_sizes) else "包含型号"
+    return "包含尺码" if not sizes or sizes.issubset(set(SIZE_COLUMNS)) else "包含型号"

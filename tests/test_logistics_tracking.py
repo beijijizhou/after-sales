@@ -33,7 +33,10 @@ from automation.logistics.s2b_workbook import parse_s2b_logistics_frame
 from automation.logistics.usps import USPSClient, classify_usps_response
 from automation.logistics.label_ocr import parse_usps_label_lines, _weight_ounces
 from automation.logistics.label_ocr import extract_label_content_fields
-from automation.logistics.label_cache import clear_label_cache
+from automation.logistics.label_cache import (
+    cached_label_content as _cached_label_content,
+    clear_label_cache,
+)
 from automation.logistics.label_downloads import build_label_archive
 from automation.logistics.sds import _qa_token
 from automation.logistics.sds import _parcel_rows as _sds_parcel_rows
@@ -48,40 +51,50 @@ from automation.logistics.diy19 import (
 )
 from db.logistics.repository import _merge_shipment_rows
 from db.logistics.usps_usage import record_usps_usage
-from ui.logistics.page import (
-    _cached_label_content,
-    _carrier_filter_name,
-    _classify_carrier_rows,
-    _default_logistics_platforms,
-    _is_target_usps_review,
-    _label_ocr_candidates,
-    _label_documents,
-    _order_tracking_pairs,
-    _ocr_address,
-    _ocr_summary_text,
-    _format_duration,
-    _ocr_progress_text,
-    _resolve_ocr_workers,
-    _review_selection_defaults,
-    _store_review_ocr_results,
-    render_logistics_page,
+from ui.logistics.page import render_logistics_page
+from ui.logistics.review.model import (
+    carrier_filter_name as _carrier_filter_name,
+    classify_carrier_rows as _classify_carrier_rows,
+    default_logistics_platforms,
+    is_target_usps_review as _is_target_usps_review,
+    label_documents as _label_documents,
+    label_ocr_candidates as _label_ocr_candidates,
+    ocr_address as _ocr_address,
+    order_tracking_pairs as _order_tracking_pairs,
+    review_selection_defaults as _review_selection_defaults,
 )
-from ui.logistics.tracking_lookup import (
-    _extract_live_label_details,
-    _merge_label_details,
-    _missing_label_row,
-    _apply_usps_origin_fallback,
-    _extract_usps_origin,
-    _live_label_row,
-    _raw_response_rows,
-    _tracking_event_rows,
-    parse_tracking_numbers,
-    parse_order_tracking_table,
-    parse_tracking_table,
+from ui.logistics.review.ocr_format import (
+    format_duration as _format_duration,
+    ocr_progress_text as _ocr_progress_text,
+    ocr_summary_text as _ocr_summary_text,
+    resolve_ocr_workers as _resolve_ocr_workers,
+)
+from ui.logistics.review.state import (
+    store_review_ocr_results as _store_review_ocr_results,
+)
+from ui.logistics.sync_view import CONNECTED_PLATFORMS
+from ui.logistics.tracking.input import (
     normalize_suggested_rows,
+    parse_order_tracking_table,
+    parse_tracking_numbers,
+    parse_tracking_table,
+)
+from ui.logistics.tracking.labels import (
+    extract_live_label_details as _extract_live_label_details,
+    live_label_row as _live_label_row,
+    merge_label_details as _merge_label_details,
+    missing_label_row as _missing_label_row,
+)
+from ui.logistics.tracking.origin_view import (
+    apply_usps_origin_fallback as _apply_usps_origin_fallback,
+    extract_usps_origin as _extract_usps_origin,
+    raw_response_rows as _raw_response_rows,
+    tracking_event_rows as _tracking_event_rows,
+)
+from ui.logistics.tracking.query import (
+    query_usps as _query_usps,
     split_tracking_cache,
-    _query_usps,
-    _tracking_query_plan,
+    tracking_query_plan as _tracking_query_plan,
 )
 from ui.logistics.usps_usage import summarize_usps_usage
 from utils.auth.constants import ROLE_PERMISSIONS
@@ -229,11 +242,11 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(summary["request_count"], 4)
         self.assertEqual(daily.iloc[0]["查询面单数"], 125)
 
-    @patch("ui.logistics.tracking_lookup.save_tracking_checks")
-    @patch("ui.logistics.tracking_lookup.record_usps_usage")
-    @patch("ui.logistics.tracking_lookup.get_current_operator_name", return_value="Andy")
-    @patch("ui.logistics.tracking_lookup.load_usps_credentials")
-    @patch("ui.logistics.tracking_lookup.USPSClient")
+    @patch("ui.logistics.tracking.query.save_tracking_checks")
+    @patch("ui.logistics.tracking.query.record_usps_usage")
+    @patch("ui.logistics.tracking.query.get_current_operator_name", return_value="Andy")
+    @patch("ui.logistics.tracking.query.load_usps_credentials")
+    @patch("ui.logistics.tracking.query.USPSClient")
     def test_live_usps_query_records_tracking_and_batch_usage(
         self, client_class, credentials, _operator, record_usage,
         save_checks,
@@ -258,7 +271,7 @@ class LogisticsTrackingTests(unittest.TestCase):
         )
         self.assertEqual(save_checks.call_args.args[2], "Andy")
 
-    @patch("ui.logistics.tracking_lookup.load_latest_tracking_checks")
+    @patch("ui.logistics.tracking.query.load_latest_tracking_checks")
     def test_tracking_query_plan_uses_database_before_usps(self, load_latest):
         future = datetime.now(timezone.utc) + timedelta(minutes=30)
         load_latest.return_value = pd.DataFrame([{
@@ -273,7 +286,7 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(cached["tracking_number"].tolist(), ["92001"])
         self.assertEqual(pending, ["92002"])
 
-    @patch("ui.logistics.tracking_lookup.load_latest_tracking_checks")
+    @patch("ui.logistics.tracking.query.load_latest_tracking_checks")
     def test_tracking_query_plan_force_mode_refreshes_every_number(
         self, load_latest
     ):
@@ -288,14 +301,14 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertTrue(cached.empty)
         self.assertEqual(pending, ["92001"])
 
-    @patch("ui.logistics.tracking_lookup.save_tracking_checks")
-    @patch("ui.logistics.tracking_lookup.record_usps_usage")
+    @patch("ui.logistics.tracking.query.save_tracking_checks")
+    @patch("ui.logistics.tracking.query.record_usps_usage")
     @patch(
-        "ui.logistics.tracking_lookup.get_current_operator_name",
+        "ui.logistics.tracking.query.get_current_operator_name",
         return_value="Andy",
     )
-    @patch("ui.logistics.tracking_lookup.load_usps_credentials")
-    @patch("ui.logistics.tracking_lookup.USPSClient")
+    @patch("ui.logistics.tracking.query.load_usps_credentials")
+    @patch("ui.logistics.tracking.query.USPSClient")
     def test_usps_missing_response_is_saved_as_failed_check(
         self, client_class, credentials, _operator, record_usage,
         save_checks,
@@ -313,7 +326,7 @@ class LogisticsTrackingTests(unittest.TestCase):
         record_usage.assert_called_once()
         self.assertEqual(record_usage.call_args.args[3:5], (1, 1))
 
-    @patch("ui.logistics.page.st.session_state", new_callable=dict)
+    @patch("ui.logistics.review.state.st.session_state", new_callable=dict)
     def test_ocr_completion_refreshes_review_and_usps_context(self, state):
         row = {
             "external_order_id": "ORDER-1",
@@ -523,7 +536,7 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertIn("新面单平均 12.5秒/张", text)
         self.assertEqual(_format_duration(3661), "1小时1分1秒")
 
-    @patch("ui.logistics.page.perf_counter", return_value=20)
+    @patch("ui.logistics.review.ocr_format.perf_counter", return_value=20)
     def test_ocr_progress_displays_eta_and_thread_mode(self, _clock):
         text = _ocr_progress_text(
             "S2B", completed=20, total=100, started_at=0, ocr_workers=2
@@ -649,7 +662,7 @@ class LogisticsTrackingTests(unittest.TestCase):
         tabs = (MagicMock(), MagicMock())
         with patch("ui.logistics.page.has_permission", return_value=False), patch(
             "ui.logistics.page.st.tabs", return_value=tabs
-        ), patch("ui.logistics.page._render_sync") as render_sync, patch(
+        ), patch("ui.logistics.page.render_sync") as render_sync, patch(
             "ui.logistics.page.render_tracking_lookup"
         ) as render_lookup, patch(
             "ui.logistics.page.st.session_state", new_callable=dict
@@ -862,13 +875,17 @@ class LogisticsTrackingTests(unittest.TestCase):
 
     def test_logistics_platform_default_reuses_department_platforms(self):
         self.assertEqual(
-            _default_logistics_platforms(("汉森", "S2B", "SDS2")),
+            default_logistics_platforms(
+                ("汉森", "S2B", "SDS2"), CONNECTED_PLATFORMS
+            ),
             ["S2B"],
         )
 
     def test_logistics_platform_default_falls_back_when_s2b_is_unavailable(self):
         self.assertEqual(
-            _default_logistics_platforms(("汉森", "SDS1", "SDS2")),
+            default_logistics_platforms(
+                ("汉森", "SDS1", "SDS2"), CONNECTED_PLATFORMS
+            ),
             ["SDS1"],
         )
 

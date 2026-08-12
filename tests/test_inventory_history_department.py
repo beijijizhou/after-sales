@@ -3,11 +3,11 @@ import unittest
 import pandas as pd
 from pathlib import Path
 
-from ui.inventory.history.history import (
+from ui.inventory.history.workflows.page import (
     filter_movements_for_batches,
     filter_history_department,
 )
-from ui.inventory.history.history_batches import (
+from ui.inventory.history.core.batch_selector import (
     synchronize_batch_selector_state,
 )
 
@@ -64,7 +64,9 @@ class InventoryHistoryDepartmentTests(unittest.TestCase):
         self.assertEqual(result["quantity_change"].tolist(), [-100, -200])
 
     def test_filtered_history_does_not_expose_internal_batch_key(self):
-        source = Path("ui/inventory/history/history.py").read_text(
+        source = Path(
+            "ui/inventory/history/workflows/page.py"
+        ).read_text(
             encoding="utf-8"
         )
 

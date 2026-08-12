@@ -3,7 +3,7 @@ import unittest
 
 import pandas as pd
 
-from ui.inventory.history.quantity_search import (
+from ui.inventory.history.core.quantity_search import (
     find_outbound_quantity_candidates,
     outbound_movements_for_date,
     parse_quantity_search,

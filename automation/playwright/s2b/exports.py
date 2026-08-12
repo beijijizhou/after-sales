@@ -2,6 +2,8 @@ import re
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from automation.playwright.s2b.page_actions import click_visible_text
+
 
 EXPORT_RECORD_PATH = "/factory/exportRecord"
 MAX_GENERATION_WAIT_SECONDS = 8 * 60
@@ -38,7 +40,7 @@ def download_row(page, row):
 
 def submit_and_download(page, report):
     previous_pages = set(page.context.pages)
-    _click_text(page, "条件导出")
+    click_visible_text(page, "条件导出")
     _confirm_export(page)
     report("S2B 导出任务已提交，正在打开导出记录")
     records_page = _wait_for_records_page(page, previous_pages)
@@ -154,16 +156,6 @@ def _download_row(page, row):
         except PlaywrightTimeoutError as error:
             raise RuntimeError("S2B 已点击下载，但未收到 Excel") from error
     raise RuntimeError("S2B 记录已生成，但没有找到下载按钮")
-
-
-def _click_text(page, text):
-    matches = page.get_by_text(text, exact=True)
-    for index in range(matches.count()):
-        candidate = matches.nth(index)
-        if candidate.is_visible():
-            candidate.click()
-            return
-    raise RuntimeError(f"S2B 没有找到按钮：{text}")
 
 
 def _normalize(value):

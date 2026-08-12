@@ -27,19 +27,45 @@ refactors, not after every small feature.
 - User-role administration: `db/access.py` and `ui/access/`
 - Inventory persistence and rules: `db/inventory/`
 - Inventory UI: `ui/inventory/`
+- Inventory history data components: `ui/inventory/history/core/`; history
+  page, reversal, correction, and SKU workflows:
+  `ui/inventory/history/workflows/`.
 - Container workflow: `db/inventory/container/` and
   `ui/inventory/container/`
-- Consumables: `db/consumables/` and `ui/consumables/`
+- Consumables: `db/consumables/` and `ui/consumables/`, including
+  consumable reorder forecasting in `db/consumables/planning.py` and
+  `ui/consumables/planning.py`
 - Logistics label review: `automation/logistics/`, `db/logistics/`, and
-  `ui/logistics/`
+  `ui/logistics/`; page orchestration lives in `ui/logistics/page.py`, ERP
+  source selection in `sync_view.py` and `source_gateway.py`, carrier and
+  label review in `ui/logistics/review/`, and USPS lookup in
+  `ui/logistics/tracking/`.
 - Finance: `db/finance/` and `ui/finance/`
+- Finance persistence is separated into inventory reporting
+  (`db/finance/repository.py`), consumable valuation
+  (`consumable_repository.py`), and missing-cost maintenance
+  (`cost_maintenance.py`).
 - Production summaries: `utils/production/` and `ui/production/`
 - ERP normalization: `utils/erp/`
+- Shared Google Sheets response normalization: `utils/google_sheets.py`
+- Shared S2B browser interactions: `automation/playwright/s2b/page_actions.py`
+- Inventory localization runtime and static catalog:
+  `ui/inventory/i18n.py` and `ui/inventory/i18n_catalog.py`
 - Shared daily-consumption flow definitions and source classification:
   `utils/daily_consumption.py`
+- Shared daily-usage aggregation and forecast-model primitives:
+  `utils/daily_usage_model.py`
 - Inventory workbench and automatic-deduction registry:
   `ui/inventory/dashboard.py` and
   `automation/sync/daily_inventory_consumption.py`
+- Shared stock-write review: `ui/inventory/operations/inventory_review.py`;
+  adjustment comparison and editing remain in `adjustment_preview.py` and
+  `adjustment_editor.py`.
+- Incoming planning is split between core calculation, container arrival
+  aggregation, and human-facing views in `db/inventory/planning/incoming*.py`.
+- Colored production consumption separates cached sources, usage models, and
+  inventory deduction under `automation/sync/colored_*.py` and
+  `dtf_colored_inventory.py`.
 - Production collection: `automation/api/`, `automation/playwright/`, and
   `automation/sync/`
 - Phone-case image and dieline logic: `utils/image_tools/`,

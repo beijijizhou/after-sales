@@ -13,8 +13,8 @@ from utils.auth.constants import ROLE_PERMISSIONS
 class ConsumableInventoryTests(unittest.TestCase):
     def test_page_exposes_inbound_and_audit_as_primary_tabs(self):
         self.assertEqual(CONSUMABLE_TABS, [
-            "当前库存", "每日耗材出库", "耗材入库", "库存设置",
-            "库存流水", "撤销", "SKU 管理",
+            "当前库存", "点货预测", "消耗模型", "每日耗材出库",
+            "耗材入库", "库存设置", "库存流水", "撤销", "SKU 管理",
         ])
 
     def test_package_entry_converts_to_base_quantity(self):

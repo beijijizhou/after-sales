@@ -1,11 +1,8 @@
-from hashlib import sha1
-
 import pandas as pd
 import streamlit as st
 
-from db.finance import update_pending_cost_batch
 from db.inventory.core.constants import SIZE_COLUMNS
-from utils.sku_sorting import sort_sku_rows
+from hashlib import sha1
 
 
 IDENTITY_COLUMNS = [
@@ -14,33 +11,16 @@ IDENTITY_COLUMNS = [
 ]
 
 
-def render_pending_cost_batches(supabase, rows):
+def render_pending_cost_batches(rows):
     if rows.empty:
         return
     rows = _prepare(rows)
     summary = build_pending_cost_batch_summary(rows)
-    st.markdown("#### 待复核成本批次")
-    st.caption("同一批次按尺码横向展示；库存已包含的批次不会重复入库。")
+    st.markdown("#### 待到货与待处理成本批次")
+    st.caption(
+        "财务页面仅展示；修改件数、尺码或价格请到“库存 → 临时库存调整”。"
+    )
     st.dataframe(summary.drop(columns=["批次键"]), width="stretch", hide_index=True)
-
-    labels = {
-        row["批次键"]: (
-            f"{row['日期']}｜{row['品牌']} {row['材质']} {row['颜色']}｜"
-            f"{int(row['总件数']):,} 件｜${float(row['总金额']):,.2f}"
-        )
-        for row in summary.to_dict("records")
-    }
-    selected = st.selectbox(
-        "选择批次修改价格",
-        summary["批次键"].tolist(),
-        format_func=lambda key: labels.get(key, key),
-        key="finance_pending_cost_batch",
-    )
-    batch_rows = sort_sku_rows(
-        rows[rows["_batch_key"] == selected],
-        material="material", color="color", size="size",
-    )
-    _render_batch_cost_editor(supabase, selected, batch_rows)
 
 
 def build_pending_cost_batch_summary(rows):
@@ -75,37 +55,6 @@ def build_pending_cost_batch_summary(rows):
     ).reset_index(drop=True)
 
 
-def _render_batch_cost_editor(supabase, batch_key, rows):
-    active = rows[rows["size"].fillna("").str.upper().isin(SIZE_COLUMNS)]
-    if active.empty:
-        st.info("这个批次没有可修改的尺码明细")
-        return
-    key_suffix = sha1(batch_key.encode()).hexdigest()[:10]
-    with st.form(f"pending_cost_{key_suffix}"):
-        columns = st.columns(len(active))
-        entered = []
-        for column, (_, row) in zip(columns, active.iterrows()):
-            size = str(row["size"]).upper()
-            column.markdown(f"**{size}**")
-            column.caption(f"{int(row['quantity']):,} 件")
-            value = column.number_input(
-                "单位成本",
-                min_value=0.0,
-                value=float(row["unit_cost"]) if pd.notna(row["unit_cost"]) else 0.0,
-                step=0.0001,
-                format="%.4f",
-                key=f"pending_price_{key_suffix}_{size}",
-            )
-            entered.append((str(row["id"]), value))
-        saved = st.form_submit_button("保存整批价格", width="stretch")
-    if not saved:
-        return
-    for record_id, value in entered:
-        update_pending_cost_batch(supabase, record_id, value)
-    st.success(f"已保存这个批次 {len(entered)} 个尺码的成本，未改变库存数量")
-    st.rerun()
-
-
 def _prepare(rows):
     data = rows.copy()
     data["quantity"] = pd.to_numeric(data["quantity"], errors="coerce").fillna(0)
@@ -128,4 +77,4 @@ def _status_label(rows):
         return "待核价"
     if (rows["inventory_effect"] == "not_posted").all():
         return "待到货"
-    return "价格待复核"
+    return "价格已录入"

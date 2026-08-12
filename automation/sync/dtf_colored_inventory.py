@@ -1,14 +1,23 @@
-import json
 import pandas as pd
 
-from automation.production_cache import CACHE_DIR
-from automation.production import PLATFORMS_BY_DEPARTMENT
+from automation.sync.colored_source import (
+    build_colored_platform_audit,
+    list_colored_cached_dates,
+    load_daily_colored_production,
+    load_daily_colored_production_source,
+)
 from db.inventory.core.queries import load_inventory_items
 from db.inventory.core.constants import SIZE_COLUMNS
 from db.inventory.operations.adjustments import apply_adjustment_rows
 from utils.erp.inventory_review import (
     build_colored_tshirt_inventory_review,
     build_colored_tshirt_source_mapping,
+)
+from automation.sync.colored_models import (
+    build_colored_consumption_wide_table,
+    build_colored_forecast_usage,
+    build_colored_reconciliation_backlog as _build_reconciliation_backlog,
+    load_colored_consumption_history,
 )
 from utils.erp.catalog import normalize_color
 from utils.erp.inventory_mapping import normalize_size
@@ -73,121 +82,6 @@ def load_colored_day_deducted_by_sku(supabase, movement_date):
     return active.groupby(
         ["颜色", "尺码"], as_index=False
     )["已扣数量"].sum()
-
-
-def load_daily_colored_production_source(
-    current_date, require_complete=False
-):
-    candidates = []
-    for path in CACHE_DIR.glob("*.json"):
-        try:
-            metadata = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if (
-            metadata.get("platform") == AGGREGATE_PLATFORM
-            and metadata.get("start_date") == current_date.isoformat()
-            and metadata.get("end_date") == current_date.isoformat()
-            and path.with_suffix(".parquet").exists()
-        ):
-            candidates.append((str(metadata.get("saved_at") or ""), path))
-    if not candidates:
-        return pd.DataFrame(), {}
-    metadata_path = max(candidates)[1]
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    if require_complete and not metadata.get("is_complete"):
-        return pd.DataFrame(), metadata
-    raw = pd.read_parquet(metadata_path.with_suffix(".parquet"))
-    if "生产项状态" in raw:
-        raw = raw[~raw["生产项状态"].astype(str).str.contains("取消", na=False)]
-    daily = raw[(raw["部门"] == "DTF") & (raw["品类"] == CATEGORY)].copy()
-    if daily.empty:
-        return pd.DataFrame(), metadata
-    daily["数量"] = pd.to_numeric(daily["数量"], errors="coerce").fillna(0)
-    daily["原始颜色"] = daily["颜色"].fillna("").astype(str).str.strip()
-    daily["原始尺码"] = daily["尺码"].fillna("").astype(str).str.strip()
-    daily["颜色"] = daily["颜色"].map(normalize_color)
-    daily["尺码"] = daily["尺码"].map(normalize_size)
-    if "运营商" not in daily:
-        daily["运营商"] = "未标记平台"
-    daily["运营商"] = (
-        daily["运营商"].fillna("").astype(str).str.strip()
-        .replace("", "未标记平台")
-    )
-    detail = (
-        daily.groupby(
-            ["运营商", "原始颜色", "原始尺码", "颜色", "尺码"],
-            as_index=False,
-        )
-        .agg(生产数量=("数量", "sum"), 生产记录数=("数量", "size"))
-    )
-    return detail, metadata
-
-
-def list_colored_cached_dates(current_date, days=14):
-    start_date = current_date.fromordinal(
-        current_date.toordinal() - int(days) + 1
-    )
-    available = set()
-    for path in CACHE_DIR.glob("*.json"):
-        try:
-            metadata = json.loads(path.read_text(encoding="utf-8"))
-            target = current_date.fromisoformat(metadata["start_date"])
-        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
-            continue
-        if (
-            metadata.get("platform") == AGGREGATE_PLATFORM
-            and metadata.get("start_date") == metadata.get("end_date")
-            and start_date <= target <= current_date
-            and path.with_suffix(".parquet").exists()
-        ):
-            available.add(target)
-    return sorted(available, reverse=True)
-
-
-def load_daily_colored_production(current_date, require_complete=False):
-    detail, _metadata = load_daily_colored_production_source(
-        current_date, require_complete=require_complete
-    )
-    if detail.empty:
-        return pd.DataFrame()
-    return detail.groupby(
-        ["颜色", "尺码"], as_index=False
-    )["生产数量"].sum()
-
-
-def build_colored_platform_audit(current_date):
-    detail, metadata = load_daily_colored_production_source(current_date)
-    quantities = {}
-    counts = {}
-    if not detail.empty:
-        quantities = detail.groupby("运营商")["生产数量"].sum().to_dict()
-        counts = detail.groupby("运营商")["生产记录数"].sum().to_dict()
-    included = {
-        str(value).strip()
-        for value in metadata.get("included_platforms") or []
-    }
-    missing = {
-        str(value).strip()
-        for value in metadata.get("missing_platforms") or []
-    }
-    configured = list(PLATFORMS_BY_DEPARTMENT.get("DTF", ()))
-    extras = sorted((set(quantities) | included | missing) - set(configured))
-    rows = []
-    for platform in [*configured, *extras]:
-        if platform in missing:
-            status = "读取失败/缺失"
-        elif platform in included or platform in quantities:
-            status = "已读取"
-        else:
-            status = "未确认"
-        rows.append({
-            "平台": platform,
-            "读取状态": status,
-            "原始生产件数": int(quantities.get(platform, 0)),
-            "生产记录数": int(counts.get(platform, 0)),
-        })
-    return pd.DataFrame(rows), metadata
 
 
 def build_colored_daily_preview(supabase, current_date):
@@ -314,119 +208,14 @@ def apply_colored_daily_deduction(
     return int(rows["预计扣减"].sum())
 
 
-def load_colored_consumption_history(supabase, current_date, days=14):
-    frames = []
-    effective_days = 0
-    for offset in range(int(days)):
-        target_date = current_date.fromordinal(
-            current_date.toordinal() - offset
-        )
-        daily = load_daily_colored_production(
-            target_date, require_complete=False
-        )
-        if daily.empty:
-            continue
-        effective_days += 1
-        daily = daily.copy()
-        daily["颜色"] = daily["颜色"].replace({"浅灰": "灰色"})
-        frames.append(daily)
-    if not frames:
-        return pd.DataFrame(columns=["颜色", "尺码", "每日消耗", "有效天数"])
-    frame = pd.concat(frames, ignore_index=True)
-    summary = (
-        frame.groupby(["颜色", "尺码"], as_index=False)["生产数量"].sum()
-    )
-    summary["每日消耗"] = summary["生产数量"] / effective_days
-    summary["有效天数"] = effective_days
-    return summary[["颜色", "尺码", "每日消耗", "有效天数"]]
-
-
 def build_colored_reconciliation_backlog(
     supabase, current_date, days=14,
 ):
-    rows = []
-    for offset in range(int(days)):
-        movement_date = current_date.fromordinal(
-            current_date.toordinal() - offset
-        )
-        source, metadata = load_daily_colored_production_source(
-            movement_date
-        )
-        if source.empty:
-            continue
-        deducted = load_colored_day_deducted_total(
-            supabase, movement_date
-        )
-        if deducted <= 0:
-            continue
-        source_quantity = int(pd.to_numeric(
-            source["生产数量"], errors="coerce"
-        ).fillna(0).sum())
-        remaining = max(source_quantity - deducted, 0)
-        missing = tuple(metadata.get("missing_platforms") or ())
-        if remaining <= 0 and not missing:
-            continue
-        preview = build_colored_daily_preview(supabase, movement_date)
-        deductable = int(pd.to_numeric(
-            preview.get("预计扣减", pd.Series(dtype="float64")),
-            errors="coerce",
-        ).fillna(0).sum())
-        unresolved = max(remaining - deductable, 0)
-        if deductable:
-            status = "有库存差额可继续扣减"
-        elif unresolved:
-            status = "等待补库存或修正 SKU"
-        else:
-            status = "等待补齐平台数据"
-        rows.append({
-            "日期": movement_date,
-            "生产数据": source_quantity,
-            "已扣库存": deducted,
-            "当前可补扣": deductable,
-            "库存/SKU待核对": unresolved,
-            "尚未读取平台": "、".join(missing) or "无",
-            "状态": status,
-        })
-    return pd.DataFrame(rows)
-
-
-def build_colored_forecast_usage(history):
-    if history is None or history.empty:
-        return pd.DataFrame(columns=[
-            "department", "category", "planning_material",
-            "color", "size", "system_daily_usage",
-        ])
-    result = history.rename(columns={
-        "颜色": "color", "尺码": "size",
-        "每日消耗": "system_daily_usage",
-    }).copy()
-    result["department"] = "DTF"
-    result["category"] = CATEGORY
-    result["planning_material"] = "全部品牌/材质"
-    return result[[
-        "department", "category", "planning_material",
-        "color", "size", "system_daily_usage",
-    ]]
-
-
-def build_colored_consumption_wide_table(display):
-    columns = ["颜色", "指标", *SIZE_COLUMNS]
-    if display is None or display.empty:
-        return pd.DataFrame(columns=columns)
-    rows = []
-    for color in sorted(display["颜色"].dropna().astype(str).unique()):
-        color_rows = display[display["颜色"].astype(str) == color]
-        for field in ["每日消耗", "当前库存", "可撑天数"]:
-            values = (
-                color_rows.groupby("尺码", dropna=False)[field]
-                .sum(min_count=1).to_dict()
-            )
-            row = {"颜色": color, "指标": field}
-            for size in SIZE_COLUMNS:
-                value = values.get(size)
-                row[size] = round(float(value), 1) if pd.notna(value) else None
-            rows.append(row)
-    return pd.DataFrame(rows, columns=columns)
+    return _build_reconciliation_backlog(
+        supabase, current_date, days,
+        load_deducted_total=load_colored_day_deducted_total,
+        build_preview=build_colored_daily_preview,
+    )
 
 
 def _cap_allocation_at_zero(source, allocation):

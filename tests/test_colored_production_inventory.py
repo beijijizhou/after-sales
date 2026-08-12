@@ -16,9 +16,9 @@ from automation.sync.dtf_colored_inventory import (
     load_colored_consumption_history,
     _cap_allocation_at_zero,
 )
-from ui.inventory.planning.colored_consumption import (
-    _reconciliation_action,
-    _stock_change_display,
+from ui.inventory.planning.colored_review import (
+    reconciliation_action,
+    stock_change_display,
 )
 
 
@@ -26,13 +26,13 @@ class ColoredProductionInventoryTests(unittest.TestCase):
     def test_reconciliation_action_routes_each_problem(self):
         self.assertIn(
             "临时库存调整",
-            _reconciliation_action("库存为 0（待清点）"),
+            reconciliation_action("库存为 0（待清点）"),
         )
         self.assertIn(
             "原始字段",
-            _reconciliation_action("颜色未映射（待核对）"),
+            reconciliation_action("颜色未映射（待核对）"),
         )
-        self.assertIn("直接补扣", _reconciliation_action("可扣减"))
+        self.assertIn("直接补扣", reconciliation_action("可扣减"))
 
     def test_pending_detail_does_not_present_unresolved_as_outbound(self):
         preview = pd.DataFrame([
@@ -48,7 +48,7 @@ class ColoredProductionInventoryTests(unittest.TestCase):
             },
         ])
 
-        result = _stock_change_display(preview)
+        result = stock_change_display(preview)
 
         self.assertEqual(result["本次出库 (-)"].tolist(), [-12, 0])
         self.assertEqual(result["待处理数量"].tolist(), [0, 9])
@@ -147,7 +147,7 @@ class ColoredProductionInventoryTests(unittest.TestCase):
         }])
         with (
             patch(
-                "automation.sync.dtf_colored_inventory."
+                "automation.sync.colored_models."
                 "load_daily_colored_production_source",
                 side_effect=lambda day: (
                     (source, {"missing_platforms": ["Haloo"]})
@@ -179,7 +179,7 @@ class ColoredProductionInventoryTests(unittest.TestCase):
         ])
 
         with patch(
-            "automation.sync.dtf_colored_inventory."
+            "automation.sync.colored_models."
             "load_daily_colored_production",
             side_effect=lambda day, require_complete=False: (
                 fast_daily if day == target else pd.DataFrame()
@@ -259,7 +259,7 @@ class ColoredProductionInventoryTests(unittest.TestCase):
             "missing_platforms": ["S2B"],
         }
         with patch(
-            "automation.sync.dtf_colored_inventory."
+            "automation.sync.colored_source."
             "load_daily_colored_production_source",
             return_value=(detail, metadata),
         ):

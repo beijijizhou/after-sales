@@ -6,11 +6,11 @@ from db.inventory import (
     load_inventory_items,
 )
 from ui.inventory.category_routing import exclude_consumable_dimensions
-from ui.inventory.history.history import (
+from ui.inventory.history.workflows.page import (
     load_inventory_history_data,
     render_inventory_history,
-    render_sku_operation_history,
 )
+from ui.inventory.history.workflows.sku_history import render_sku_operation_history
 from ui.inventory.i18n import t
 from ui.inventory.shared import render_inventory_dimension_filters
 from ui.inventory.sku.initialization import render_inventory_initialization

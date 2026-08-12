@@ -3,6 +3,8 @@ import re
 
 import pandas as pd
 
+from utils.google_sheets import values_for_range
+
 
 DATE_TAB_PATTERN = re.compile(r"^\d{4}$")
 UV_DETAIL_RANGE = "A1:K1200"
@@ -19,7 +21,7 @@ def load_monthly_sku_summary(
     values_by_range = sheets.batch_get_values(spreadsheet_id, requested)
     for movement_date, tab in tabs:
         requested_range = f"'{tab}'!{detail_range}"
-        values = _range_values(values_by_range, tab, requested_range)
+        values = values_for_range(values_by_range, tab, requested_range)
         summary, note = _parse_detail_summary_values(values)
         total_quantity = int(sum(summary.values()))
         daily_rows.append({
@@ -70,18 +72,6 @@ def _parse_detail_summary_values(values):
     if skipped_rows:
         note = f"ok;skipped_rows={skipped_rows}"
     return result, note
-
-
-def _range_values(values_by_range, tab, requested_range):
-    if requested_range in values_by_range:
-        return values_by_range[requested_range]
-    suffix = requested_range.split("!", 1)[1]
-    for returned_range, values in values_by_range.items():
-        if returned_range.strip("'").startswith(f"{tab}'!") or (
-            returned_range.endswith(suffix) and tab in returned_range
-        ):
-            return values
-    return []
 
 
 def _list_month_tabs(sheets, spreadsheet_id, year, month):

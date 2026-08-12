@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from ui.inventory.history.history_batches import (
+from ui.inventory.history.core.batches import (
     add_movement_batch_key,
     add_sku_batch_key,
 )

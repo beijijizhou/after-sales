@@ -1,5 +1,7 @@
 import pandas as pd
 
+from db.inventory.core.constants import SIZE_COLUMNS
+
 
 IDENTITY_COLUMNS = ["品类", "品牌", "材质", "颜色"]
 
@@ -82,7 +84,5 @@ def _clean(value):
 
 
 def _size_order(value):
-    order = {size: index for index, size in enumerate(
-        ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"]
-    )}
+    order = {size: index for index, size in enumerate(SIZE_COLUMNS)}
     return order.get(str(value), 99), str(value)

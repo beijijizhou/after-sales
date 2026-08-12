@@ -21,6 +21,19 @@ Default execution mode is **standard**:
 5. Use full tests, browser checks, or live database verification only when
    the change's risk requires them.
 
+Before writing a new helper, service, selector, table model, validation rule,
+or database adapter, perform a cross-page reuse review. Start with
+`docs/FUNCTION_CATALOG.md`, then search the sibling pages and shared `ui/`,
+`db/`, `utils/`, and `automation/` modules by business fields, user-facing
+labels, table/RPC names, and tests—not only by the proposed function name.
+Choose in this order: compose an existing capability; extend an existing
+interface; extract a shared core and migrate every active duplicate; create a
+new implementation only when the catalog and search confirm that the business
+semantics are genuinely new. When a change exposes active duplication, remove
+that duplication in the same tested change instead of adding a third version.
+Keep `docs/FUNCTION_CATALOG.md` current when page ownership or shared
+capabilities change.
+
 Treat UI modularity as seriously as code modularity. Group related functions
 in the same page area, and separate distinct workflows with tabs or focused
 views instead of stacking multiple full tables and forms on one screen.

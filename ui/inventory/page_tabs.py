@@ -1,9 +1,9 @@
 import streamlit as st
 
-from ui.inventory.history.history import (
+from ui.inventory.history.workflows.page import (
     render_inventory_history,
 )
-from ui.inventory.history.daily_outbound_revisions import (
+from ui.inventory.history.workflows.revisions import (
     render_daily_outbound_revision_history,
 )
 from ui.inventory.i18n import t
@@ -12,7 +12,7 @@ from ui.inventory.operations.pages import (
     render_temporary_movement_operation,
 )
 from ui.inventory.planning.comparison import render_consumption_models
-from ui.inventory.planning.comparison import render_uv_daily_deduction
+from ui.inventory.planning.uv_view import render_uv_daily_deduction
 from ui.inventory.planning.colored_consumption import (
     render_colored_daily_deduction,
 )

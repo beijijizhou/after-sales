@@ -1,6 +1,6 @@
 import unittest
 
-from ui.inventory.history.daily_outbound_revisions import _flatten_revisions
+from ui.inventory.history.workflows.revisions import _flatten_revisions
 
 
 class DailyOutboundRevisionHistoryTests(unittest.TestCase):

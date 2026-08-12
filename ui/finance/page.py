@@ -221,7 +221,7 @@ def _render_department_summary(finance_df):
 
 
 def _render_inbound_batches(supabase, finance_df, pending_cost_df):
-    render_pending_cost_batches(supabase, pending_cost_df)
+    render_pending_cost_batches(pending_cost_df)
     batch_rows = _render_inventory_filters(
         finance_df, key="finance_batch_filters"
     )
@@ -231,7 +231,6 @@ def _render_inbound_batches(supabase, finance_df, pending_cost_df):
 def _render_cost_maintenance(
     supabase, finance_df, missing_cost_df, pending_cost_df,
 ):
-    render_pending_cost_batches(supabase, pending_cost_df)
     editor_source = pd.concat(
         [missing_cost_df, finance_df], ignore_index=True
     ).drop_duplicates(subset=["record_id"], keep="first")

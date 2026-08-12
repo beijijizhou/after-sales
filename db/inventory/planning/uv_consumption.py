@@ -2,6 +2,11 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from utils.daily_usage_model import (
+    EFFECTIVE_DAYS_GLOBAL_SINCE_FIRST,
+    build_daily_usage_summary,
+)
+
 
 UV_DAILY_ORDERS_SPREADSHEET_ID = (
     "1kbbexU-zePCPw5Rg5R2fJlcbnRLVFPYZQcL5U_Qoy7Y"
@@ -80,6 +85,7 @@ def build_uv_consumption_model(
 ):
     columns = [
         "品类", "材质", "颜色", "型号", "每日消耗", "有效数据天数",
+        "自然日均消耗", "窗口总消耗", "窗口天数",
     ]
     if movement_df.empty:
         return pd.DataFrame(columns=columns)
@@ -132,22 +138,22 @@ def build_uv_consumption_model(
     if result.empty:
         return pd.DataFrame(columns=columns)
     result["消耗"] = result["消耗"].abs()
-    available_dates = sorted(result["日期"].unique())
-    grouped = result.groupby(
-        keys, as_index=False
-    ).agg(
-        period_usage=("消耗", "sum"),
-        first_usage_date=("日期", "min"),
+    grouped = build_daily_usage_summary(
+        result,
+        keys,
+        "消耗",
+        current_date,
+        lookback_days,
+        date_column="日期",
+        effective_day_mode=EFFECTIVE_DAYS_GLOBAL_SINCE_FIRST,
+        observation_dates=sorted(result["日期"].unique()),
+        usage_column="每日消耗",
+        effective_days_column="有效数据天数",
+        natural_usage_column="自然日均消耗",
+        total_usage_column="窗口总消耗",
+        window_days_column="窗口天数",
+        round_digits=1,
     )
-    grouped["有效数据天数"] = grouped["first_usage_date"].apply(
-        lambda first_date: sum(
-            movement_date >= first_date
-            for movement_date in available_dates
-        )
-    )
-    grouped["每日消耗"] = (
-        grouped["period_usage"] / grouped["有效数据天数"]
-    ).round(1)
     return grouped[columns].sort_values(
         ["品类", "材质", "型号"], kind="stable"
     ).reset_index(drop=True)

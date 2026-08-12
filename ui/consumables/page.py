@@ -14,6 +14,10 @@ from ui.consumables.operations import (
     render_movement_entry,
     render_reversals,
 )
+from ui.consumables.planning import (
+    render_consumable_consumption_model,
+    render_consumable_reorder_forecast,
+)
 from ui.consumables.sku import render_sku_management
 from ui.consumables.stock import (
     build_latest_costs,
@@ -24,8 +28,8 @@ from utils.auth import has_permission, is_admin
 
 
 CONSUMABLE_TABS = [
-    "当前库存", "每日耗材出库", "耗材入库", "库存设置",
-    "库存流水", "撤销", "SKU 管理",
+    "当前库存", "点货预测", "消耗模型", "每日耗材出库",
+    "耗材入库", "库存设置", "库存流水", "撤销", "SKU 管理",
 ]
 
 
@@ -101,11 +105,19 @@ def _render_department_workspace(
     latest_costs = build_latest_costs(movements)
 
     (
-        stock_tab, issue_tab, inbound_tab, setting_tab,
-        ledger_tab, reversal_tab, sku_tab,
+        stock_tab, forecast_tab, model_tab, issue_tab, inbound_tab,
+        setting_tab, ledger_tab, reversal_tab, sku_tab,
     ) = st.tabs(CONSUMABLE_TABS)
     with stock_tab:
         render_stock(filtered_items, latest_costs, show_cost)
+    with forecast_tab:
+        render_consumable_reorder_forecast(
+            filtered_items, filtered_batches, filtered_movements
+        )
+    with model_tab:
+        render_consumable_consumption_model(
+            filtered_items, filtered_batches, filtered_movements
+        )
     with issue_tab:
         render_daily_issue_table(
             supabase, department_code, filtered_items, can_report

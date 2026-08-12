@@ -10,13 +10,13 @@ from db.inventory.operations.outbound_audit import (
     is_confirmed_outbound_row,
     verify_outbound_batch,
 )
-from ui.inventory.history.history_tables import (
+from ui.inventory.history.core.tables import (
     _format_signed_quantity,
     build_movement_detail_table,
 )
-from ui.inventory.history.history_batches import build_movement_batch_rows
-from ui.inventory.history.history_filters import filter_history_batches
-from ui.inventory.history.history_filters import (
+from ui.inventory.history.core.batches import build_movement_batch_rows
+from ui.inventory.history.core.filters import filter_history_batches
+from ui.inventory.history.core.filters import (
     filter_batches_by_outbound_kind,
     filter_history_batches,
     filter_reversal_scope,

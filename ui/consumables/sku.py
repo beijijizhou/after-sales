@@ -18,6 +18,7 @@ EDIT_COLUMNS = [
 def render_sku_management(
     supabase, department_id, items_df, can_manage
 ):
+    st.subheader("SKU 管理")
     create_tab, catalog_tab = st.tabs(["新增 SKU", "现有 SKU"])
     with create_tab:
         _render_create_form(

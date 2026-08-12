@@ -1,8 +1,8 @@
 import pandas as pd
 import streamlit as st
 
-from ui.inventory.history.history_batches import add_movement_batch_key
-from ui.inventory.history.history_tables import render_movement_table
+from ui.inventory.history.core.batches import add_movement_batch_key
+from ui.inventory.history.core.tables import render_movement_table
 
 
 def parse_quantity_search(value):

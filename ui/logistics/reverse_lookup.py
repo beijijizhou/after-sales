@@ -3,7 +3,7 @@ import streamlit as st
 
 from automation.logistics import classify_usps_subtype, usps_pickup_name
 from db.logistics import load_all_shipments_by_tracking
-from ui.logistics.tracking_lookup import parse_tracking_numbers
+from ui.logistics.tracking.input import parse_tracking_numbers
 
 
 def render_reverse_lookup(supabase, database_error):

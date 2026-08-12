@@ -16,7 +16,7 @@ from db.inventory import (
 )
 from db.inventory.core.snapshots import filter_snapshot_to_active_skus
 from db.inventory.sku import load_sku_imports
-from ui.inventory.history.history import (
+from ui.inventory.history.workflows.page import (
     filter_inventory_history_data,
     load_inventory_history_data,
 )

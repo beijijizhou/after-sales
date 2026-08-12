@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from ui.inventory.history.history import filter_inventory_history_data
+from ui.inventory.history.workflows.page import filter_inventory_history_data
 
 
 class InventoryHistoryDateTests(unittest.TestCase):
