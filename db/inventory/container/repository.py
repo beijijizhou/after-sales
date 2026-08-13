@@ -66,6 +66,30 @@ def load_container_search_records(supabase):
     return pd.DataFrame(response.data)
 
 
+def load_posted_container_by_inventory_batch(supabase, batch_id):
+    """Resolve one posted container from its inventory movement batch."""
+    events = (
+        supabase.table("inventory_container_events")
+        .select("container_key")
+        .eq("event_type", "入库")
+        .ilike("note", f"%库存批次：{batch_id}%")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not events:
+        return pd.DataFrame()
+    return (
+        supabase.table("inventory_container_imports")
+        .select(CONTAINER_COLUMNS)
+        .eq("container_key", events[0]["container_key"])
+        .execute()
+        .data
+    )
+
+
 def _execute_container_query(
     supabase, columns, start_date, end_date, department, category,
     statuses, date_field, brands, materials, colors, sizes,

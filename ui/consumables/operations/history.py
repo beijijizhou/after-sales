@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from db.consumables import reverse_consumable_batch
-from ui.consumables.units import to_boxes
+from ui.consumables.units import entry_unit, to_entry_quantity
 from utils.auth import get_current_operator_name
 
 
@@ -122,11 +122,12 @@ def _render_batch_detail(batch_id, movements_df, items_df, show_cost):
     detail["类型"] = detail["quantity_change"].apply(
         lambda value: "增加" if float(value) > 0 else "扣减"
     )
-    detail["箱数"] = detail.apply(
-        lambda row: _absolute_boxes(row["quantity_change"], row), axis=1
+    detail["数量"] = detail.apply(
+        lambda row: abs(to_entry_quantity(row["quantity_change"], row)), axis=1
     )
-    detail["操作后库存（箱）"] = detail.apply(
-        lambda row: to_boxes(row["quantity_after"], row), axis=1
+    detail["单位"] = detail.apply(entry_unit, axis=1)
+    detail["操作后库存"] = detail.apply(
+        lambda row: to_entry_quantity(row["quantity_after"], row), axis=1
     )
     display = detail.rename(columns={
         "category": "分类", "name": "耗材名称",
@@ -135,20 +136,15 @@ def _render_batch_detail(batch_id, movements_df, items_df, show_cost):
     })
     columns = [
         "类型", "分类", "耗材名称", "规格/型号", "品牌",
-        "箱数", "操作后库存（箱）", "备注",
+        "数量", "单位", "操作后库存", "备注",
     ]
     if show_cost:
         columns.insert(-1, "单位成本")
     st.dataframe(
         display[columns], width="stretch", hide_index=True,
         column_config={
-            "箱数": st.column_config.NumberColumn(format="%.2f"),
-            "操作后库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+            "数量": st.column_config.NumberColumn(format="%.2f"),
+            "操作后库存": st.column_config.NumberColumn(format="%.2f"),
             "单位成本": st.column_config.NumberColumn(format="$%.4f"),
         },
     )
-
-
-def _absolute_boxes(quantity, item):
-    value = to_boxes(quantity, item)
-    return None if value is None else abs(value)

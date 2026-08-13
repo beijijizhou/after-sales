@@ -1,9 +1,16 @@
-"""Inventory movement selection and audited reversal workflow."""
+"""Inventory movement selection and audited correction/reversal workflow."""
 
+import pandas as pd
 import streamlit as st
 
+from db.inventory.container.repository import (
+    load_posted_container_by_inventory_batch,
+)
 from db.inventory.operations.adjustments import reverse_inventory_batch
 from db.inventory.operations.outbound_audit import load_outbound_inventory
+from ui.inventory.container.item_editor import (
+    render_posted_container_correction,
+)
 from ui.inventory.history.core.batches import add_movement_batch_key
 from ui.inventory.history.core.tables import render_movement_table
 from ui.inventory.history.workflows.daily_outbound import (
@@ -36,6 +43,33 @@ def render_selected_movement(
         )
     if allow_undo:
         render_movement_undo(supabase, selected, reversed_ids)
+    else:
+        render_container_batch_correction(supabase, selected)
+
+
+def render_container_batch_correction(supabase, selected):
+    if selected.empty or not has_permission("can_edit_inventory"):
+        return
+    if not selected["quantity_change"].gt(0).all():
+        return
+    batch_ids = selected.get("batch_id", pd.Series(dtype=str)).dropna(
+    ).astype(str).unique()
+    if len(batch_ids) != 1:
+        return
+    try:
+        target = load_posted_container_by_inventory_batch(
+            supabase, batch_ids[0]
+        )
+    except Exception as error:
+        st.caption(f"货柜批次更正入口暂时无法加载：{error}")
+        return
+    target = pd.DataFrame(target)
+    if target.empty:
+        return
+    st.divider()
+    render_posted_container_correction(
+        supabase, target, str(target.iloc[0]["container_key"])
+    )
 
 
 def render_movement_undo(supabase, selected, reversed_ids):

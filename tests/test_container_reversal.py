@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import ANY, patch
 
 from db.inventory.container.workflow.reversal import (
+    extract_inventory_batch_id,
     get_container_undo_kind,
     undo_latest_container_confirmation,
 )
@@ -31,6 +32,13 @@ class _Supabase:
 
 
 class ContainerReversalTests(unittest.TestCase):
+    def test_extracts_inventory_batch_from_event_note(self):
+        batch_id = "09c429e7-9591-49a1-9622-27e1603e5116"
+        self.assertEqual(
+            extract_inventory_batch_id(f"已入库｜库存批次：{batch_id}"),
+            batch_id,
+        )
+
     def test_undo_kind_follows_current_state(self):
         self.assertEqual(get_container_undo_kind("已入库"), "posting")
         self.assertEqual(get_container_undo_kind("已到柜"), "arrival")

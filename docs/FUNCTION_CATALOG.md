@@ -47,10 +47,11 @@ an activity log.
 | Incoming inventory planning | `db/inventory/planning/incoming.py`, `incoming_containers.py`, `incoming_views.py` | Core risk calculations consume a normalized arrival timeline; UI uses the shared forecast/audit views. |
 | Colored production consumption | `automation/sync/colored_source.py`, `colored_models.py`, `dtf_colored_inventory.py` | Source cache, daily model and inventory deduction remain separate and composable. |
 | Finance persistence | `db/finance/repository.py`, `consumable_repository.py`, `cost_maintenance.py` | UI consumes stable finance functions; inventory, consumable and maintenance table details stay isolated. |
+| Cross-ledger inbound business batches | `db/finance/inbound_linking.py`, `ui/finance/inbound_batches.py` | Keep production and consumable ledger IDs independent, but group rows from the same container under one manager-facing inbound batch. |
 | SKU group identity changes | `db/inventory/master_data/sku_identity.py` | SKU editors reuse propagation and merge-preview rules before calling the write service. |
 | Inventory movement batches and selectors | `ui/inventory/history/core/batches.py`, `core/batch_selector.py` | Reuse batch identity, summary and dependent selector state. |
 | Inventory history filtering and tables | `ui/inventory/history/core/` | Extend shared movement/source/reversal filters, quantity search and tables instead of filtering inside pages. |
-| Inventory history workflows | `ui/inventory/history/workflows/` | Compose existing reversal, daily-outbound correction and SKU-history workflows; do not rebuild stock review. |
+| Inventory history workflows | `ui/inventory/history/workflows/` | Compose existing reversal, daily-outbound correction, posted-container quantity/cost correction and SKU-history workflows; do not rebuild stock review. Posted container corrections belong to the selected inventory-ledger batch, while the container page remains read-only after posting. |
 | Daily-consumption flow identity | `utils/daily_consumption.py` | Manual and automatic flows share this operational contract and source classification. |
 | Automatic daily deduction registry | `automation/sync/daily_inventory_consumption.py` | Register new automatic sources; do not add independent dashboard execution paths. |
 | Automatic deduction source preview | `automation/sync/daily_flow_preview.py` | Dashboard flows reuse the same single-source preparation, preview and audit fields. |
@@ -59,7 +60,7 @@ an activity log.
 | Container UI tables | `ui/inventory/container/tables.py`, `detail_tables.py`, `summary_tables.py` | Use the table facade; detail, packaging and grouped summaries retain separate owners. |
 | In-transit container workflow | `ui/inventory/container/transit_view.py` | Container pages compose the shared list/summary/detail operation instead of rebuilding state and progress tables. |
 | Consumable SKU administration | `ui/consumables/sku_models.py`, `sku_create.py`, `sku_catalog.py` | Reuse model transformations for copy defaults and catalog diffs; UI tabs do not reimplement them. |
-| Consumable package validation | `ui/consumables/operations/validation.py` | All inbound, issue and stocktake entry flows share package-size validation and feedback. |
+| Consumable quantity conversion | `ui/consumables/units.py` | All inbound, issue, stocktake, stock and history views use box conversion when configured and otherwise preserve the SKU base unit. |
 | Container inventory posting action | `ui/inventory/container/posting.py` | Pending and same-day posting call `post_container_with_feedback`; do not repeat RPC, operator, success and rerun handling. |
 | Sales parties and invoice signing | `ui/inventory/sales/customer_section.py`, `invoice_review.py` | Sales pages compose customer selection and preview-before-signing; inventory validation remains shared. |
 | Production platform catalog | `automation/production.py` | Logistics and production pages reuse the same department/platform ownership. |

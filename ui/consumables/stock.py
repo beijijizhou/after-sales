@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from ui.consumables.units import to_boxes
+from ui.consumables.units import entry_unit, to_entry_quantity
 
 
 def filter_items(items_df, categories, brands, search_text, active_mode):
@@ -44,11 +44,12 @@ def render_stock(items_df, latest_costs, show_cost):
     display["库存状态"] = "正常"
     display.loc[low_mask, "库存状态"] = "需要补货"
     display["包装换算"] = display.apply(_package_label, axis=1)
-    display["当前库存（箱）"] = display.apply(
-        lambda row: to_boxes(row["current_quantity"], row), axis=1
+    display["当前库存"] = display.apply(
+        lambda row: to_entry_quantity(row["current_quantity"], row), axis=1
     )
-    display["最低库存（箱）"] = display.apply(
-        lambda row: to_boxes(row["minimum_quantity"], row), axis=1
+    display["计数单位"] = display.apply(entry_unit, axis=1)
+    display["最低库存"] = display.apply(
+        lambda row: to_entry_quantity(row["minimum_quantity"], row), axis=1
     )
     display = display.rename(columns={
         "category": "分类", "name": "耗材名称",
@@ -59,7 +60,7 @@ def render_stock(items_df, latest_costs, show_cost):
 
     columns = [
         "库存状态", "分类", "耗材名称", "规格/型号", "品牌",
-        "当前库存（箱）", "包装换算", "最低库存（箱）", "状态",
+        "当前库存", "计数单位", "包装换算", "最低库存", "状态",
     ]
     if show_cost:
         display["最近入库成本"] = display["id"].map(latest_costs)
@@ -74,8 +75,8 @@ def render_stock(items_df, latest_costs, show_cost):
         width="stretch",
         hide_index=True,
         column_config={
-            "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
-            "最低库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+            "当前库存": st.column_config.NumberColumn(format="%.2f"),
+            "最低库存": st.column_config.NumberColumn(format="%.2f"),
             "最近入库成本": st.column_config.NumberColumn(format="$%.4f"),
             "库存估值": st.column_config.NumberColumn(format="$%.2f"),
         },

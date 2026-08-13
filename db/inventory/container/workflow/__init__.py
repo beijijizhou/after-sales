@@ -6,6 +6,7 @@ from db.inventory.container.workflow.posting import (
     post_container_inventory,
 )
 from db.inventory.container.workflow.reversal import (
+    extract_inventory_batch_id,
     get_container_undo_kind,
     undo_latest_container_confirmation,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "STATE_POSTED",
     "confirm_container_arrival",
     "confirm_container_arrival_date",
+    "extract_inventory_batch_id",
     "get_container_undo_kind",
     "normalize_container_state",
     "post_container_inventory",

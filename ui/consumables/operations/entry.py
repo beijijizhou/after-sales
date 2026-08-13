@@ -5,8 +5,13 @@ import pandas as pd
 import streamlit as st
 
 from db.consumables import apply_consumable_batch
-from ui.consumables.units import boxes_to_base, to_boxes
-from ui.consumables.operations.validation import validate_package_sizes
+from ui.consumables.units import (
+    entry_to_base,
+    entry_unit,
+    package_size,
+    to_boxes,
+    to_entry_quantity,
+)
 from utils.auth import get_current_operator_name
 
 
@@ -47,16 +52,15 @@ def render_movement_entry(
         key="consumable_movement_date",
     )
 
-    if not validate_package_sizes(active):
-        return
     labels, label_to_row = _build_sku_labels(active)
-    columns = ["耗材 SKU", "箱数", "备注"]
+    st.caption("有箱规的 SKU 按箱录入；没有箱规的 SKU 直接按件、米等基础单位录入。")
+    columns = ["耗材 SKU", "录入数量", "备注"]
     if show_cost and movement_label == "入库":
         columns.insert(3, "单位成本")
     template = pd.DataFrame([
         {
             "耗材 SKU": None,
-            "箱数": 0.0,
+            "录入数量": 0.0,
             "单位成本": None,
             "备注": "",
         }
@@ -72,7 +76,7 @@ def render_movement_entry(
             "耗材 SKU": st.column_config.SelectboxColumn(
                 required=True, options=labels
             ),
-            "箱数": st.column_config.NumberColumn(
+            "录入数量": st.column_config.NumberColumn(
                 min_value=0.0, step=1, format="%.2f"
             ),
             "单位成本": st.column_config.NumberColumn(
@@ -98,15 +102,19 @@ def render_movement_entry(
             "本次入库 (+)" if movement_label == "入库" else "本次出库 (-)"
         )
         display_preview = preview.rename(columns={
-            "本次变动（箱）": operation_column,
-            "操作后库存（箱）": "调整后库存（箱）",
+            "本次变动": operation_column,
+            "操作后库存": "调整后库存",
         })
         st.dataframe(
-            display_preview, width="stretch", hide_index=True,
+            display_preview[[
+                "耗材 SKU", "当前库存", operation_column,
+                "调整后库存", "录入单位", "换算数量", "换算单位",
+                *(["单位成本"] if "单位成本" in display_preview else []),
+            ]], width="stretch", hide_index=True,
             column_config={
-                "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+                "当前库存": st.column_config.NumberColumn(format="%.2f"),
                 operation_column: st.column_config.NumberColumn(format="%+.2f"),
-                "调整后库存（箱）": st.column_config.NumberColumn(format="%.2f"),
+                "调整后库存": st.column_config.NumberColumn(format="%.2f"),
                 "单位成本": st.column_config.NumberColumn(format="$%.4f"),
             },
         )
@@ -159,15 +167,13 @@ def _normalize_entry_rows(
     records, preview = [], []
     for row in edited.to_dict("records"):
         label = row.get("耗材 SKU")
-        quantity = pd.to_numeric(
-            row.get("箱数", row.get("数量")), errors="coerce"
-        )
+        quantity = pd.to_numeric(row.get(
+            "录入数量", row.get("箱数", row.get("数量"))
+        ), errors="coerce")
         if not label or pd.isna(quantity) or quantity <= 0:
             continue
         item = label_to_row[label]
-        actual_quantity = boxes_to_base(quantity, item)
-        if actual_quantity is None:
-            raise ValueError(f"{label} 没有设置每箱数量，不能按箱录入。")
+        actual_quantity = entry_to_base(quantity, item)
         record = {
             "item_id": item["id"],
             "quantity": actual_quantity,
@@ -182,10 +188,20 @@ def _normalize_entry_rows(
         )
         current_quantity = 0 if pd.isna(current_quantity) else float(current_quantity)
         signed_quantity = actual_quantity * (1 if direction > 0 else -1)
+        current_entry = to_entry_quantity(current_quantity, item)
+        signed_entry = float(quantity) * (1 if direction > 0 else -1)
+        resulting_entry = to_entry_quantity(
+            current_quantity + signed_quantity, item
+        )
         preview.append({
             "耗材 SKU": label,
+            "当前库存": current_entry,
+            "本次变动": signed_entry,
+            "操作后库存": resulting_entry,
+            "录入单位": entry_unit(item),
             "当前库存（箱）": to_boxes(current_quantity, item),
-            "本次变动（箱）": float(quantity) * (1 if direction > 0 else -1),
+            "本次变动（箱）": signed_entry
+            if package_size(item) is not None else None,
             "操作后库存（箱）": to_boxes(
                 current_quantity + signed_quantity, item
             ),

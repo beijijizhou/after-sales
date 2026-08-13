@@ -70,9 +70,10 @@
 - Different purchase batches may have different costs.
 - Temporary transferred stock is consumed before normal bulk stock.
 - Cost precision is four decimal places where supported.
-- Consumables are counted and entered in boxes across the UI. The ledger keeps
-  base-unit quantities internally and uses each SKU's required units-per-box
-  conversion for accurate inventory arithmetic.
+- Consumables with a configured box rule are counted and entered in boxes.
+  When a SKU genuinely has no box rule, the UI records and displays its base
+  unit (for example pieces or meters) without inventing a conversion. The
+  ledger always keeps base-unit quantities internally.
 - Customer sales outbound is separate from warehouse production issue. It
   stores reusable company/person customer records, the seller company profile,
   an immutable Invoice header and priced SKU lines, and one linked inventory

@@ -7,7 +7,8 @@ FINANCE_COLUMNS = [
     "record_id", "movement_id", "batch_id", "recorded_at",
     "date", "direction", "department", "category", "brand",
     "material", "color", "size", "quantity", "unit_cost",
-    "amount", "source_type", "missing_cost",
+    "amount", "source_type", "missing_cost", "business_batch_key",
+    "business_batch_label", "inventory_domain", "quantity_unit",
 ]
 
 
@@ -58,6 +59,10 @@ def load_inventory_finance_month(supabase, start_date, end_date):
         date_column="movement_date",
     )
     inbound = _exclude_stocktake_batches(supabase, inbound)
+    from db.finance.inbound_linking import attach_container_batches
+    inbound = attach_container_batches(
+        supabase, inbound, start_date, end_date
+    )
     outbound = _normalize_cost_rows(
         outbound_rows,
         "inventory_movements",
@@ -162,6 +167,8 @@ def _normalize_cost_rows(
         "date", "direction", "department",
         "category", "brand", "material", "color", "size", "quantity",
         "unit_cost", "amount", "source_type", "missing_cost",
+        "business_batch_key", "business_batch_label",
+        "inventory_domain", "quantity_unit",
     ]
     if not rows:
         return pd.DataFrame(columns=columns)
@@ -201,6 +208,10 @@ def _normalize_cost_rows(
     )
     result["amount"] = result["quantity"] * result["unit_cost"].fillna(0)
     result["missing_cost"] = result["unit_cost"].isna()
+    result["business_batch_key"] = ""
+    result["business_batch_label"] = ""
+    result["inventory_domain"] = "生产库存"
+    result["quantity_unit"] = "件"
     return result[columns]
 
 

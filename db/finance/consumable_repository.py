@@ -3,6 +3,7 @@
 import pandas as pd
 
 from db.finance.repository import FINANCE_COLUMNS, _fetch_pages
+from db.finance.inbound_linking import container_reference
 
 
 def load_consumable_finance_month(supabase, start_date, end_date):
@@ -107,6 +108,15 @@ def normalize_consumable_finance_rows(
     data["source_type"] = "consumable_" + data[
         "movement_type"
     ].fillna("adjustment").astype(str)
+    references = data.get("batch_note", pd.Series("", index=data.index)).map(
+        container_reference
+    )
+    data["business_batch_key"] = references.map(
+        lambda value: f"货柜:{value}" if value else ""
+    )
+    data["business_batch_label"] = references
+    data["inventory_domain"] = "耗材库存"
+    data["quantity_unit"] = data["base_unit"].fillna("")
     return data[FINANCE_COLUMNS].reset_index(drop=True)
 
 
@@ -129,7 +139,7 @@ def _load_consumable_frames(supabase, end_date=None):
     ))
     batch_columns = (
         "id,department_id,movement_type,movement_date,created_at,"
-        "reversal_of_batch_id"
+        "reversal_of_batch_id,note"
     )
     batches = pd.DataFrame(_fetch_pages(
         lambda start, end: supabase.table("consumable_movement_batches")
@@ -167,10 +177,12 @@ def _active_consumable_movements(batches, movements):
         batches.get("movement_type", pd.Series(index=batches.index)) == "reversal",
         "id",
     ].astype(str))
-    active = batches[~batches["id"].astype(str).isin(reversed_ids | reversal_ids)]
+    active = batches[~batches["id"].astype(str).isin(reversed_ids | reversal_ids)].copy()
+    if "note" not in active:
+        active["note"] = ""
     return movements.merge(
-        active[["id", "department_id", "movement_type"]].rename(
-            columns={"id": "active_batch_id"}
+        active[["id", "department_id", "movement_type", "note"]].rename(
+            columns={"id": "active_batch_id", "note": "batch_note"}
         ), left_on="batch_id", right_on="active_batch_id", how="inner",
     )
 

@@ -44,7 +44,7 @@ def undo_latest_container_confirmation(
 
 def _undo_posting(supabase, container_key, current, operated_by, note):
     event = _load_latest_event(supabase, container_key, "入库")
-    batch_id = _extract_inventory_batch_id(event.get("note"))
+    batch_id = extract_inventory_batch_id(event.get("note"))
     if not batch_id:
         raise ValueError("这次入库没有关联库存批次，无法安全撤销")
     previous = event.get("previous_status") or STATE_ARRIVED
@@ -153,7 +153,7 @@ def _load_latest_event(supabase, container_key, event_type):
     return rows[0]
 
 
-def _extract_inventory_batch_id(note):
+def extract_inventory_batch_id(note):
     match = BATCH_PATTERN.search(str(note or ""))
     return match.group(1) if match else None
 

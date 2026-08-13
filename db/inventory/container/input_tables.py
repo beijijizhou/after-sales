@@ -54,6 +54,9 @@ def normalize_container_rows(df):
     container_keys = {}
 
     def container_key(row):
+        supplied = str(row.get("货柜记录ID") or "").strip()
+        if supplied:
+            return supplied
         normalized = "".join(row["货柜号"].upper().split())
         return container_keys.setdefault(normalized, normalized) if normalized else str(uuid4())
 
@@ -93,7 +96,7 @@ def normalize_container_rows(df):
 def add_optional_columns(df):
     defaults = {
         "货柜号": "", "品类": "", "品牌": "", "成本": 0,
-        "状态": "在途", "备注": "",
+        "状态": "在途", "备注": "", "货柜记录ID": "",
     }
     for column, default in defaults.items():
         if column not in df.columns:

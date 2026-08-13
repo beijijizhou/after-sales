@@ -8,6 +8,7 @@ from db.inventory.container.tables import (
     build_container_template,
     build_filtered_container_summary,
     build_container_inventory_summary,
+    normalize_container_rows,
     sort_arrival_history_rows,
 )
 from ui.inventory.container.tables import calculate_container_totals
@@ -105,6 +106,25 @@ class ContainerDisplayTests(unittest.TestCase):
         template = build_container_template(today=date(2026, 7, 30))
 
         self.assertEqual(template.iloc[0]["预计运输天数"], 55)
+
+    def test_business_batch_key_groups_rows_without_physical_container_no(self):
+        source = pd.DataFrame([
+            {
+                "货柜记录ID": "363m紫色T｜08/13到货",
+                "发货日期": date(2026, 6, 19), "预计运输天数": 55,
+                "货柜号": "", "部门": "DTF", "品类": "彩色短袖",
+                "品牌": "Haloo", "材质": "180g", "颜色": "紫色",
+                "型号": size, "数量": 216, "成本": 2.44,
+                "状态": "在途", "备注": "363m",
+            }
+            for size in ["L", "XL"]
+        ])
+
+        result = normalize_container_rows(source)
+
+        self.assertEqual(result["货柜记录ID"].nunique(), 1)
+        self.assertEqual(result["货柜记录ID"].iloc[0], "363m紫色T｜08/13到货")
+        self.assertTrue(result["货柜号"].eq("").all())
 
     def test_uv_uses_compact_model_rows(self):
         source = pd.DataFrame([

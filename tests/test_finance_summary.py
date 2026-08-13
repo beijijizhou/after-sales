@@ -249,6 +249,35 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["数量"], 37200)
         self.assertAlmostEqual(result.iloc[0]["金额"], 22580.4)
 
+    def test_container_business_batch_groups_inventory_and_consumables(self):
+        inventory = _finance_inbound(
+            "lot", "inventory-batch", "2030", 65000, 0.2406,
+            "2026-08-11T22:00:00+00:00",
+        )
+        consumable = _finance_inbound(
+            "movement", "consumable-batch", "24×32+4cm", 25410,
+            0.0403, "2026-08-11T22:01:00+00:00",
+        )
+        for row, domain, unit in [
+            (inventory, "生产库存", "件"),
+            (consumable, "耗材库存", "件"),
+        ]:
+            row.update({
+                "business_batch_key": "货柜:12柜",
+                "business_batch_label": "12柜｜柜号 ZCSU7707166",
+                "inventory_domain": domain,
+                "quantity_unit": unit,
+            })
+
+        result = build_inbound_batch_summary(
+            pd.DataFrame([inventory, consumable])
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["批次名称"], "12柜｜柜号 ZCSU7707166")
+        self.assertEqual(result.iloc[0]["生产库存数量"], 65000)
+        self.assertEqual(result.iloc[0]["耗材项数"], 1)
+
     def test_finance_dashboard_is_admin_only(self):
         self.assertIn(
             "can_view_finance_dashboard", ROLE_PERMISSIONS["admin"]

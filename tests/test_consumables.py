@@ -39,6 +39,26 @@ class ConsumableInventoryTests(unittest.TestCase):
         self.assertEqual(preview.iloc[0]["本次变动（箱）"], 2)
         self.assertEqual(preview.iloc[0]["换算数量"], 24)
 
+    def test_unpackaged_entry_keeps_base_quantity_and_unit(self):
+        edited = pd.DataFrame([{
+            "耗材 SKU": "包装耗材｜气柱｜35cm宽｜米",
+            "录入数量": 12000,
+            "备注": "无箱规",
+        }])
+        labels = {
+            "包装耗材｜气柱｜35cm宽｜米": {
+                "id": "air-column", "current_quantity": 0,
+                "base_unit": "米", "package_unit": None,
+                "units_per_package": None,
+            }
+        }
+
+        rows, preview = _normalize_entry_rows(edited, labels, True)
+
+        self.assertEqual(rows[0]["quantity"], 12000)
+        self.assertEqual(preview.iloc[0]["录入单位"], "米")
+        self.assertEqual(preview.iloc[0]["操作后库存"], 12000)
+
     def test_similar_sku_copy_keeps_consumable_identity_and_packaging(self):
         items = pd.DataFrame([{
             "id": "film-100", "category": "膜", "name": "DTF转印膜",
