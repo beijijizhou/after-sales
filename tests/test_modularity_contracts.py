@@ -13,6 +13,16 @@ class ModularityContractTests(unittest.TestCase):
             "ui/inventory/planning/colored_consumption.py": 200,
             "db/inventory/container/tables.py": 200,
             "ui/inventory/operations/adjustment_preview.py": 200,
+            "ui/inventory/operations/outbound.py": 200,
+            "ui/inventory/operations/forms.py": 200,
+            "ui/inventory/dashboard.py": 250,
+            "ui/finance/page.py": 200,
+            "ui/inventory/sales/page.py": 200,
+            "ui/consumables/sku.py": 50,
+            "ui/inventory/container/tables.py": 150,
+            "ui/inventory/container/page.py": 150,
+            "ui/inventory/container/transit_view.py": 150,
+            "ui/inventory/shared/filters.py": 220,
         }
         for relative, limit in limits.items():
             with self.subTest(file=relative):
@@ -63,6 +73,24 @@ class ModularityContractTests(unittest.TestCase):
             "ui/inventory/operations/adjustment_editor.py",
             "ui/inventory/planning/colored_review.py",
             "ui/inventory/planning/uv_view.py",
+            "automation/sync/daily_flow_preview.py",
+            "db/inventory/dashboard_overview.py",
+            "db/inventory/dashboard_completion.py",
+            "ui/inventory/dashboard_overview.py",
+            "ui/inventory/dashboard_batch_view.py",
+            "ui/inventory/operations/outbound_entry.py",
+            "ui/inventory/operations/outbound_import.py",
+            "ui/inventory/operations/outbound_review.py",
+            "ui/inventory/container/detail_tables.py",
+            "ui/inventory/container/summary_tables.py",
+            "ui/consumables/sku_models.py",
+            "ui/consumables/sku_create.py",
+            "ui/consumables/sku_catalog.py",
+            "ui/inventory/sales/customer_section.py",
+            "ui/inventory/sales/invoice_review.py",
+            "ui/consumables/operations/stock_models.py",
+            "ui/inventory/operations/sku_creation.py",
+            "ui/inventory/shared/filter_models.py",
         )
         for relative in files:
             with self.subTest(file=relative):

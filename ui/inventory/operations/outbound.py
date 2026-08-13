@@ -1,38 +1,21 @@
 import streamlit as st
-import pandas as pd
 from datetime import datetime
 from hashlib import sha1
 from zoneinfo import ZoneInfo
 
-from db.inventory import SIZE_COLUMNS, normalize_adjustment_rows
-from db.inventory.operations.daily_outbound_versions import (
-    save_daily_outbound_revision,
-)
+from db.inventory import SIZE_COLUMNS
 from db.inventory.operations.outbound import (
     OUTBOUND_SPECS,
-    apply_outbound_batch_date,
     build_outbound_sku_lookup,
-    build_outbound_package_template,
-    convert_packages_to_adjustments,
-    convert_sku_package_entries,
     load_container_outbound_specs,
     load_sku_outbound_specs,
-    normalize_outbound_packages,
 )
 from db.inventory.master_data.repository import load_sku_catalog
-from db.inventory.operations.outbound_audit import (
-    find_outbound_inventory_issues,
-    load_outbound_inventory,
-)
 from ui.inventory.i18n import get_language
-from ui.inventory.operations.outbound_feedback import (
-    render_outbound_preview_summary,
-)
-from ui.inventory.operations.adjustment_preview import (
-    build_inventory_change_comparison,
-    render_inventory_change_comparison,
-)
 from ui.inventory.operations.outbound_status import finish_daily_outbound_backfill
+from ui.inventory.operations.outbound_entry import SKU_ENTRY_TEXT, render_sku_outbound_entry
+from ui.inventory.operations.outbound_import import render_outbound_import
+from ui.inventory.operations.outbound_review import render_outbound_review
 from ui.inventory.operations.packaging_rules import (
     render_packaging_rule_editor,
 )
@@ -40,60 +23,8 @@ from ui.inventory.operations.outbound_i18n import (
     COLUMNS,
     COLORS,
     TEXT,
-    to_display_table,
-    to_internal_table,
     translate_package,
 )
-from utils.auth import get_current_operator_name
-from utils.sku_sorting import sort_sku_rows
-
-
-SKU_ENTRY_TEXT = {
-    "zh": {
-        "title": "按 SKU 和箱规录入",
-        "help": "只添加实际出库的 SKU；填写箱数或包数后，下方直接显示换算总件数。",
-        "brand": "品牌",
-        "material": "材质",
-        "color": "颜色",
-        "size": "尺码",
-        "package": "包装单位",
-        "units": "箱规（件数）",
-        "units_help": "可留空使用换算规则；同一 SKU 有 70/72 件箱规时请直接填写。",
-        "count": "箱数 / 包数",
-        "total": "总件数",
-        "total_help": "根据箱规和箱数 / 包数自动计算，不可手动修改。",
-        "packages": {"Box": "箱", "Bag": "包"},
-        "import_title": "批量文件导入（可选）",
-    },
-    "en": {
-        "title": "Enter by SKU and pack size",
-        "help": "Add only outbound SKUs. The converted piece total appears below.",
-        "brand": "Brand", "material": "Material",
-        "color": "Color", "size": "Size",
-        "package": "Package",
-        "units": "Pieces per package",
-        "units_help": "Leave blank for the conversion rule, or enter an exact pack size.",
-        "count": "Boxes / bags",
-        "total": "Total pieces",
-        "total_help": "Calculated automatically from pack size and package count.",
-        "packages": {"Box": "Box", "Bag": "Bag"},
-        "import_title": "Batch file import (optional)",
-    },
-    "es": {
-        "title": "Registrar por SKU y empaque",
-        "help": "Agregue solo los SKU enviados; el total convertido aparece abajo.",
-        "brand": "Marca", "material": "Material",
-        "color": "Color", "size": "Talla",
-        "package": "Empaque",
-        "units": "Piezas por empaque",
-        "units_help": "Déjelo vacío para usar la regla o indique el empaque exacto.",
-        "count": "Cajas / bolsas",
-        "total": "Piezas totales",
-        "total_help": "Se calcula automáticamente según el empaque y la cantidad.",
-        "packages": {"Box": "Caja", "Bag": "Bolsa"},
-        "import_title": "Importación por archivo (opcional)",
-    },
-}
 
 
 def render_daily_outbound(supabase, department, category):
@@ -142,275 +73,31 @@ def render_daily_outbound(supabase, department, category):
         )
 
     entry_text = SKU_ENTRY_TEXT[language]
-    sku_values = list(sku_lookup.values())
-    brands = sorted({value["brand"] for value in sku_values})
-    materials = sorted({value["material"] for value in sku_values})
-    available_colors = {value["color"] for value in sku_values}
-    colors = [value for value in ["黑", "白"] if value in available_colors]
-    colors.extend(sorted(available_colors - set(colors)))
-    available_sizes = {value["size"] for value in sku_values}
-    sizes = [value for value in SIZE_COLUMNS if value in available_sizes]
-    sizes.extend(sorted(available_sizes - set(sizes)))
-    st.markdown(f"**{entry_text['title']}**")
-    st.caption(entry_text["help"])
     package_labels = entry_text["packages"]
-    entry_state_key = (
-        f"daily_outbound_sku_source_{language}_{version}_"
-        f"{movement_date.isoformat()}"
-    )
-    entry_table_version_key = f"{entry_state_key}_table_version"
-    entry_source = pd.DataFrame(
-        st.session_state.get(entry_state_key, [{
-            entry_text["brand"]: None,
-            entry_text["material"]: None,
-            entry_text["color"]: None,
-            entry_text["size"]: None,
-            entry_text["package"]: package_labels["Box"],
-            entry_text["units"]: None,
-            entry_text["count"]: 0,
-            entry_text["total"]: 0,
-        }])
-    )
-    entry_display_df = st.data_editor(
-        entry_source,
-        hide_index=True,
-        width="stretch",
-        num_rows="dynamic",
-        disabled=[entry_text["total"]],
-        column_config={
-            entry_text["brand"]: st.column_config.SelectboxColumn(
-                entry_text["brand"], options=brands, required=True,
-            ),
-            entry_text["material"]: st.column_config.SelectboxColumn(
-                entry_text["material"], options=materials, required=True,
-            ),
-            entry_text["color"]: st.column_config.SelectboxColumn(
-                entry_text["color"], options=colors, required=True,
-            ),
-            entry_text["size"]: st.column_config.SelectboxColumn(
-                entry_text["size"], options=sizes, required=True,
-            ),
-            entry_text["package"]: st.column_config.SelectboxColumn(
-                entry_text["package"],
-                options=list(package_labels.values()),
-                required=True,
-            ),
-            entry_text["units"]: st.column_config.NumberColumn(
-                entry_text["units"], min_value=1, step=1, format="%d",
-                help=entry_text["units_help"],
-            ),
-            entry_text["count"]: st.column_config.NumberColumn(
-                entry_text["count"], min_value=0, step=1, format="%d",
-                required=True,
-            ),
-            entry_text["total"]: st.column_config.NumberColumn(
-                entry_text["total"], min_value=0, format="%d",
-                help=entry_text["total_help"],
-            ),
-        },
-        key=(
-            f"daily_outbound_sku_editor_{language}_{version}_"
-            f"{movement_date.isoformat()}_{len(sku_lookup)}_"
-            f"{specs_signature}_"
-            f"{st.session_state.get(entry_table_version_key, 0)}"
-        ),
-    )
-    entry_df = entry_display_df.rename(columns={
-        entry_text["brand"]: "品牌",
-        entry_text["material"]: "材质",
-        entry_text["color"]: "颜色",
-        entry_text["size"]: "尺码",
-        entry_text["package"]: "包装单位",
-        entry_text["units"]: "箱规",
-        entry_text["count"]: "包装数量",
-        entry_text["total"]: "换算件数",
-    })
-    reverse_packages = {
-        label: package_type for package_type, label in package_labels.items()
-    }
-    entry_df["包装单位"] = entry_df["包装单位"].map(
-        reverse_packages
-    ).fillna("Box")
-    adjustment_df, package_preview_df = convert_sku_package_entries(
-        entry_df,
-        sku_lookup,
-        movement_date,
-        packaging_rules,
-        sku_packaging_rules,
-    )
-    calculated_totals = []
-    for _, entry_row in entry_df.iterrows():
-        _, row_preview = convert_sku_package_entries(
-            pd.DataFrame([entry_row]),
-            sku_lookup,
-            movement_date,
-            packaging_rules,
-            sku_packaging_rules,
-        )
-        calculated_totals.append(
-            int(row_preview.iloc[0]["总件数"])
-            if not row_preview.empty else 0
-        )
-    displayed_totals = pd.to_numeric(
-        entry_df["换算件数"], errors="coerce"
-    ).fillna(0).astype(int).tolist()
-    if displayed_totals != calculated_totals:
-        refreshed_source = entry_display_df.copy()
-        refreshed_source[entry_text["total"]] = calculated_totals
-        st.session_state[entry_state_key] = refreshed_source.to_dict("records")
-        st.session_state[entry_table_version_key] = (
-            int(st.session_state.get(entry_table_version_key, 0)) + 1
-        )
-        st.rerun()
-    package_preview_df = sort_sku_rows(
-        package_preview_df,
-        material="材质",
-        color="颜色",
-        size="尺码",
-        leading=["品牌"],
+    adjustment_df, package_preview_df = render_sku_outbound_entry(
+        sku_lookup, movement_date, packaging_rules, sku_packaging_rules,
+        entry_text, language, version, specs_signature,
     )
 
-    with st.expander(entry_text["import_title"], expanded=False):
-        date_column = COLUMNS[language]["日期"]
-        template_df = to_display_table(
-            build_outbound_package_template(outbound_specs), language
-        ).drop(columns=[date_column])
-        st.download_button(
-            text["download"],
-            data=template_df.to_csv(index=False).encode("utf-8-sig"),
-            file_name=text["file"],
-            mime="text/csv",
-            width="stretch",
-        )
-        uploaded_file = st.file_uploader(
-            text["upload"],
-            type=["xlsx", "xls", "csv"],
-            key=(
-                f"daily_outbound_upload_{language}_{version}_"
-                f"{movement_date.isoformat()}"
-            ),
-        )
-        if uploaded_file is not None:
-            try:
-                upload_df = (
-                    pd.read_csv(uploaded_file)
-                    if uploaded_file.name.lower().endswith(".csv")
-                    else pd.read_excel(uploaded_file)
-                )
-                upload_df = normalize_outbound_packages(
-                    apply_outbound_batch_date(
-                        to_internal_table(upload_df, language), movement_date
-                    ),
-                    outbound_specs,
-                )
-                uploaded_adjustments = convert_packages_to_adjustments(
-                    upload_df,
-                    packaging_rules,
-                    sku_packaging_rules,
-                    outbound_specs,
-                )
-                adjustment_df = pd.concat(
-                    [adjustment_df, uploaded_adjustments], ignore_index=True
-                )
-            except Exception as error:
-                st.error(f"{text['read_error']}: {error}")
-                return
+    imported, failed = render_outbound_import(
+        movement_date, language, version, text, entry_text["import_title"],
+        outbound_specs, packaging_rules, sku_packaging_rules,
+    )
+    if failed:
+        return
+    if not imported.empty:
+        import pandas as pd
+        adjustment_df = pd.concat([adjustment_df, imported], ignore_index=True)
     if adjustment_df.empty:
         st.info(text["empty"])
         return
 
-    st.markdown(f"#### {text['preview']}")
-    if not package_preview_df.empty:
-        display_preview = package_preview_df.copy()
-        display_preview["包装单位"] = display_preview["包装单位"].map(
-            package_labels
-        )
-        display_preview = display_preview.rename(columns={
-            "品牌": entry_text["brand"],
-            "材质": entry_text["material"],
-            "颜色": entry_text["color"],
-            "尺码": entry_text["size"],
-            "包装单位": entry_text["package"],
-            "箱规": entry_text["units"],
-            "包装数量": entry_text["count"],
-            "总件数": entry_text["total"],
-        })
-        st.dataframe(display_preview, hide_index=True, width="stretch")
-    adjustment_df = normalize_adjustment_rows(adjustment_df)
-    if adjustment_df.empty:
-        st.warning(text["empty"])
-        return
-    total = render_outbound_preview_summary(adjustment_df, text)
-    try:
-        inventory_df = load_outbound_inventory(
-            supabase, department, category
-        )
-        inventory_issues = find_outbound_inventory_issues(
-            adjustment_df, inventory_df
-        )
-    except Exception as error:
-        st.error(f"{text['inventory_check_error']}: {error}")
-        return
-    render_inventory_change_comparison(
-        build_inventory_change_comparison(inventory_df, adjustment_df),
-        action="扣减",
+    total = render_outbound_review(
+        supabase, department, category, movement_date, adjustment_df,
+        package_preview_df, entry_text, text,
     )
-    if not inventory_issues.empty:
-        st.warning(
-            "当前出库存在库存不足。系统会完整保存仓库申报数量，"
-            "库存只扣到 0，并单独记录未扣差额；不会生成临时入库。"
-        )
-        st.dataframe(
-            inventory_issues,
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "数量": st.column_config.NumberColumn(
-                    text["outbound_quantity"], format="%d"
-                ),
-                "当前库存": st.column_config.NumberColumn(
-                    text["current_inventory"], format="%d"
-                ),
-                "缺口": st.column_config.NumberColumn(
-                    text["shortage"], format="%d"
-                ),
-            },
-        )
-        missing_sku_count = int(
-            (inventory_issues["问题"] == "SKU 不存在").sum()
-        )
-        if missing_sku_count:
-            st.warning(
-                f"其中 {missing_sku_count} 个 SKU 不存在：申报数据会保留，"
-                "但该 SKU 本次实际库存扣减为 0。"
-            )
-    st.warning(text["unsaved"])
-    if not st.button(
-        text["confirm"], width="stretch", type="primary"
-    ):
+    if total is None:
         return
-
-    username = get_current_operator_name()
-    try:
-        saved = save_daily_outbound_revision(
-            supabase,
-            department,
-            category,
-            movement_date,
-            adjustment_df,
-            username,
-            note="仓库每日出货",
-        )
-    except Exception as error:
-        st.error(f"{text['save_error']}: {error}")
-        return
-    shortage_total = int(saved.get("shortage_total") or 0)
-    if shortage_total:
-        st.warning(
-            f"仓库申报 {int(saved.get('requested_total') or total):,} 件已保存；"
-            f"实际库存扣减 {int(saved.get('applied_total') or 0):,} 件；"
-            f"未扣差额 {shortage_total:,} 件已进入批次核对。"
-        )
     st.session_state["inventory_saved_message"] = (
         f"{total:,} {text['saved']}"
     )

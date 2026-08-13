@@ -1,6 +1,5 @@
 """UV consumption and daily inventory-deduction views."""
 
-import pandas as pd
 import streamlit as st
 
 from automation.sync.uv_daily_operation import (
@@ -18,6 +17,7 @@ from db.inventory.planning.uv_consumption import (
     load_uv_consumption_history,
 )
 from ui.inventory.i18n import t
+from ui.inventory.operations.system_deduction import system_deduction_display
 from ui.inventory.planning.uv_source import (
     google_sheets_client,
     render_uv_spreadsheet_selector,
@@ -134,12 +134,7 @@ def _load_preview(supabase, spreadsheet_id, current_date, state_key, date_key):
 
 def _render_preview(preview, current_date):
     st.caption(f"扣减日期：{current_date:%Y-%m-%d}")
-    display = preview.rename(columns={
-        "预计扣减": "本次出库 (-)", "扣减后库存": "调整后库存",
-    }).copy()
-    display["本次出库 (-)"] = -pd.to_numeric(
-        display["本次出库 (-)"], errors="coerce"
-    ).fillna(0).abs().astype(int)
+    display = system_deduction_display(preview)
     st.dataframe(display, hide_index=True, width="stretch")
     pending = preview[preview["状态"] == "可扣减"]
     blocking = preview[~preview["状态"].isin(SYNCABLE_STATUSES)]

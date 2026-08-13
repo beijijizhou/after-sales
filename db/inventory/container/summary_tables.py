@@ -5,6 +5,7 @@ import pandas as pd
 from db.inventory import SIZE_COLUMNS
 from db.inventory.container.labels import get_container_display_label
 from db.inventory.core.constants import UV_MODEL_ORDER
+from utils.option_values import ordered_values
 
 
 def build_container_inventory_summary(display_df):
@@ -113,10 +114,5 @@ def get_container_item_columns(display_df):
 
 
 def ordered_item_columns(values):
-    available = {
-        str(value).strip() for value in values
-        if pd.notna(value) and str(value).strip()
-    }
     preferred = [*SIZE_COLUMNS, *UV_MODEL_ORDER]
-    ordered = [value for value in preferred if value in available]
-    return [*ordered, *sorted(available - set(ordered))] or SIZE_COLUMNS
+    return ordered_values(values, preferred) or SIZE_COLUMNS

@@ -39,3 +39,10 @@ def build_exact_search_preview(values):
         }
         for candidate, original_value in candidate_to_input.items()
     ]
+
+
+def build_fuzzy_search_preview(values):
+    return [
+        {"原始输入": value, "实际查询内容": f"%{value}%"}
+        for value in values
+    ]

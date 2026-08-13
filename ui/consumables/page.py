@@ -25,6 +25,7 @@ from ui.consumables.stock import (
     render_stock,
 )
 from utils.auth import has_permission, is_admin
+from utils.option_values import unique_values
 
 
 CONSUMABLE_TABS = [
@@ -160,8 +161,8 @@ def _render_department_filter(departments):
 def _render_item_filters(items):
     if items.empty:
         return items
-    category_options = _options(items, "category")
-    brand_options = _options(items, "brand")
+    category_options = unique_values(items["category"])
+    brand_options = unique_values(items["brand"])
     col1, col2, col3, col4 = st.columns([1.2, 1.2, 1.4, 1])
     categories = col1.multiselect(
         "分类", category_options, key="consumable_categories"
@@ -193,10 +194,3 @@ def _filter_history(batches, movements, items):
         batches["id"].astype(str).isin(batch_ids)
     ].copy()
     return visible_batches, visible_movements
-
-
-def _options(df, column):
-    return sorted({
-        str(value).strip() for value in df[column].dropna()
-        if str(value).strip()
-    })

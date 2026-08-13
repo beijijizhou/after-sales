@@ -1,11 +1,8 @@
+from utils.barcode_patterns import build_fuzzy_search_preview
+
+
 def build_search_preview(barcodes):
-    return [
-        {
-            "原始输入": barcode,
-            "实际查询内容": f"%{barcode}%",
-        }
-        for barcode in barcodes
-    ]
+    return build_fuzzy_search_preview(barcodes)
 
 
 def search(supabase, barcodes):

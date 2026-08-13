@@ -1,4 +1,7 @@
-from utils.barcode_patterns import build_candidate_to_input
+from utils.barcode_patterns import (
+    build_candidate_to_input,
+    build_exact_search_preview,
+)
 
 
 def chunk_list(values, size):
@@ -7,15 +10,7 @@ def chunk_list(values, size):
 
 
 def build_search_preview(barcodes):
-    candidate_to_input = build_candidate_to_input(barcodes)
-
-    return [
-        {
-            "原始输入": original_value,
-            "实际查询内容": candidate,
-        }
-        for candidate, original_value in candidate_to_input.items()
-    ]
+    return build_exact_search_preview(barcodes)
 
 
 def search(supabase, barcodes):

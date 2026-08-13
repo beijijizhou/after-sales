@@ -14,6 +14,7 @@ from automation.sync.dtf_colored_inventory import (
 )
 from db.inventory.core.constants import SIZE_COLUMNS
 from ui.inventory.shared.filters import _reset_invalid_selectbox
+from ui.inventory.operations.system_deduction import system_deduction_display
 from utils.auth.session import get_current_operator_name, has_permission
 from utils.sku_sorting import sort_sku_rows
 
@@ -142,22 +143,9 @@ def render_colored_reconciliation(supabase, current_date):
 
 
 def stock_change_display(preview):
-    display = pd.DataFrame(preview).rename(columns={
-        "预计扣减": "本次出库 (-)", "扣减后库存": "调整后库存",
-        "未扣数量": "待处理数量",
-    })
-    if "本次出库 (-)" in display:
-        deductible = display.get("状态", pd.Series("可扣减", index=display.index)).eq("可扣减")
-        quantities = pd.to_numeric(
-            display["本次出库 (-)"], errors="coerce"
-        ).fillna(0).abs().astype(int)
-        display["本次出库 (-)"] = -quantities.where(deductible, 0)
-    if "待处理数量" not in display:
-        display["待处理数量"] = 0
-    display["待处理数量"] = pd.to_numeric(
-        display["待处理数量"], errors="coerce"
-    ).fillna(0).astype(int)
-    return display
+    return system_deduction_display(
+        preview, eligible_status="可扣减", pending_column="未扣数量"
+    )
 
 
 def reconciliation_action(status):

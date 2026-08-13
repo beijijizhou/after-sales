@@ -1,4 +1,3 @@
-import pandas as pd
 import streamlit as st
 
 from db.inventory import (
@@ -7,6 +6,7 @@ from db.inventory import (
     build_material_color_inventory_table,
 )
 from ui.inventory.i18n import t
+from utils.option_values import unique_values
 
 
 def render_black_white_color_summary(
@@ -28,7 +28,7 @@ def render_black_white_color_summary(
 
     summary_filter_title = filter_title
     if not category:
-        materials = _unique_values(black_white_df, "材质")
+        materials = unique_values(black_white_df.get("材质", []))
         summary_filter_title = t("黑白短袖")
         if materials:
             summary_filter_title += f" · {'/'.join(materials)}"
@@ -43,8 +43,8 @@ def render_black_white_color_summary(
         st.info(t("暂无黑白短袖库存数据"))
         return
 
-    materials = _unique_values(black_white_df, "材质")
-    brands = _unique_values(black_white_df, "品牌")
+    materials = unique_values(black_white_df.get("材质", []))
+    brands = unique_values(black_white_df.get("品牌", []))
     if materials:
         st.caption(
             t("已合并所选材质：{materials}").format(
@@ -107,11 +107,3 @@ def render_colored_brand_merged_summary(
             },
         },
     )
-
-
-def _unique_values(df, column):
-    return sorted({
-        str(value).strip()
-        for value in df.get(column, pd.Series(dtype=str)).dropna()
-        if str(value).strip()
-    })

@@ -2,6 +2,7 @@ import pandas as pd
 
 from db.inventory.core.constants import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT
 from db.inventory.core.pagination import fetch_range_pages
+from db.inventory.core.query_filters import apply_inventory_dimension_filters
 
 
 def load_inventory_dimensions(supabase):
@@ -134,16 +135,10 @@ def load_latest_inventory_movement_date(
         .select("movement_date")
         .eq("department", department)
     )
-    if category:
-        query = query.eq("category", category)
-    for column, values in [
-        ("brand", brands),
-        ("material", materials),
-        ("color", colors),
-        ("size", sizes),
-    ]:
-        if values:
-            query = query.in_(column, list(values))
+    query = apply_inventory_dimension_filters(
+        query, category=category, brands=brands, materials=materials,
+        colors=colors, sizes=sizes,
+    )
     rows = (
         query.order("movement_date", desc=True)
         .limit(1)

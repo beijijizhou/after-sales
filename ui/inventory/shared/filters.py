@@ -7,6 +7,15 @@ import streamlit as st
 from db.inventory import SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
 from ui.inventory.i18n import t
+from ui.inventory.shared.filter_models import (
+    build_inventory_filter_title,
+    filter_inventory_rows,
+    normalize_dimensions,
+    ordered_options,
+)
+
+_normalize_dimensions = normalize_dimensions
+_ordered_options = ordered_options
 
 
 PREFERRED_DEPARTMENTS = ["DTF", "UV", "3D"]
@@ -154,60 +163,6 @@ def render_inventory_dimension_filters(
         department, category, selected_brands, selected_materials,
         selected_colors, selected_sizes,
     )
-
-
-def filter_inventory_rows(
-    df, category="", brands=None, materials=None, colors=None, sizes=None
-):
-    if df.empty:
-        return df
-    result = df.copy()
-    if category and "category" in result.columns:
-        result = result[result["category"] == category]
-    if brands and "brand" in result.columns:
-        result = result[result["brand"].isin(brands)]
-    if materials and "material" in result.columns:
-        result = result[result["material"].isin(materials)]
-    if colors and "color" in result.columns:
-        result = result[result["color"].isin(colors)]
-    if sizes and "size" in result.columns:
-        result = result[result["size"].isin(sizes)]
-    return result.reset_index(drop=True)
-
-
-def build_inventory_filter_title(
-    category="", brands=None, materials=None, colors=None, sizes=None,
-):
-    parts = [t(category) if category else t("全部品类")]
-    for values in [brands, materials, colors, sizes]:
-        if values:
-            parts.append("/".join(t(str(value)) for value in values))
-    return " · ".join(part for part in parts if part)
-
-
-def _normalize_dimensions(dimensions):
-    columns = [
-        "department", "category", "brand", "material", "color", "size"
-    ]
-    result = pd.DataFrame(dimensions).copy()
-    for column in columns:
-        if column not in result.columns:
-            result[column] = ""
-        result[column] = result[column].fillna("").astype(str).str.strip()
-    return result[columns]
-
-
-def _ordered_options(values, preferred, include_missing=True):
-    available = {
-        str(value).strip() for value in values
-        if pd.notna(value) and str(value).strip()
-    }
-    ordered = list(dict.fromkeys(
-        preferred if include_missing else [
-            value for value in preferred if value in available
-        ]
-    ))
-    return [*ordered, *sorted(available - set(ordered))]
 
 
 def _reset_invalid_selectbox(key, options):

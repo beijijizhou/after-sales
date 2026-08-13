@@ -11,12 +11,6 @@ from db.inventory import (
     build_wide_adjustment_template,
     normalize_adjustment_rows,
 )
-from db.inventory.sku import (
-    apply_sku_rows,
-    build_sku_template,
-    normalize_sku_rows,
-    parse_sku_file,
-)
 from utils.auth import get_current_operator_name, has_permission
 from ui.inventory.operations.adjustment_costs import (
     apply_size_costs,
@@ -31,8 +25,8 @@ from ui.inventory.operations.adjustment_preview import (
 )
 from ui.inventory.operations.model_forms import (
     render_model_adjust_form,
-    render_model_sku_form,
 )
+from ui.inventory.operations.sku_creation import render_new_sku_form
 from ui.inventory.i18n import get_language, t
 
 
@@ -158,94 +152,6 @@ def adjustment_dimension_options(inventory_df):
 def _adjustment_scope_key(department, category, brands, materials, colors):
     value = repr((department, category, brands, materials, colors))
     return sha1(value.encode("utf-8")).hexdigest()[:10]
-
-
-def render_new_sku_form(supabase, department, category, inventory_df=None):
-    if department != "DTF":
-        return render_model_sku_form(supabase, department, category)
-    st.subheader(t("新增 SKU"))
-    saved_message = st.session_state.pop("new_sku_saved_message", None)
-    if saved_message:
-        st.success(saved_message)
-    form_version = st.session_state.get("new_sku_editor_version", 0)
-    can_view_cost = has_permission("can_manage_cost")
-    show_cost = False
-    if can_view_cost:
-        with st.expander(t("内部字段"), expanded=False):
-            show_cost = st.checkbox(t("启用成本列"), value=True, key="show_new_sku_cost")
-
-    template_df = build_sku_template()
-    if not show_cost:
-        template_df = template_df.drop(columns=["成本"])
-
-    st.download_button(
-        t("下载新增 SKU 模板"), data=template_df.to_csv(index=False).encode("utf-8-sig"),
-        file_name="新增SKU模板.csv", mime="text/csv", width="stretch",
-    )
-    uploaded_file = st.file_uploader(
-        t("上传新增 SKU Excel / CSV"),
-        type=["xlsx", "xls", "csv"],
-        key=f"new_sku_upload_{form_version}",
-    )
-    if uploaded_file is not None:
-        try:
-            sku_df = parse_sku_file(uploaded_file)
-        except Exception as e:
-            st.error(f"{t('文件读取失败')}: {e}")
-            return
-    else:
-        default_df = build_sku_template()
-        default_df.loc[0, "日期"] = datetime.now(ZoneInfo("America/New_York")).date()
-        default_df.loc[0, "材质"] = "180g"
-        if not show_cost:
-            default_df = default_df.drop(columns=["成本"])
-        sku_columns = {"日期": st.column_config.DateColumn(t("日期"), required=True)}
-        sku_columns["品牌"] = st.column_config.TextColumn(t("品牌"))
-        sku_columns["材质"] = st.column_config.TextColumn(t("材质"), required=True)
-        sku_columns["颜色"] = st.column_config.TextColumn(t("颜色"), required=True)
-        if show_cost:
-            sku_columns["成本"] = st.column_config.NumberColumn(
-                t("成本"), min_value=0.0, step=0.0001, format="%.4f"
-            )
-        for size in SIZE_COLUMNS:
-            sku_columns[size] = st.column_config.NumberColumn(size, min_value=0, step=1)
-        sku_df = st.data_editor(
-            default_df, hide_index=True, num_rows="dynamic", width="stretch",
-            column_config=sku_columns,
-            key=f"new_inventory_skus_{get_language()}_{form_version}",
-        )
-
-    if uploaded_file is not None:
-        preview_df = sku_df if show_cost or "成本" not in sku_df.columns else sku_df.drop(columns=["成本"])
-        st.dataframe(preview_df, hide_index=True, width="stretch")
-    if st.button(t("保存新增 SKU"), width="stretch"):
-        try:
-            cleaned_df = normalize_sku_rows(sku_df)
-            if cleaned_df.empty:
-                st.warning(t("请先填写有效 SKU"))
-                return
-            if inventory_df is not None and not inventory_df.empty:
-                existing_keys = set(zip(inventory_df["品牌"], inventory_df["材质"], inventory_df["颜色"]))
-                original_count = len(cleaned_df)
-                cleaned_df = cleaned_df[
-                    ~cleaned_df.apply(lambda row: (row["品牌"], row["材质"], row["颜色"]) in existing_keys, axis=1)
-                ]
-                if cleaned_df.empty:
-                    st.warning(t("重复 SKU"))
-                    return
-                skipped_count = original_count - len(cleaned_df)
-            else:
-                skipped_count = 0
-
-            apply_sku_rows(supabase, department, category, cleaned_df)
-            message = t("已保存新 SKU").format(count=len(cleaned_df))
-            if skipped_count:
-                message += " " + t("已跳过 SKU").format(count=skipped_count)
-            st.session_state["new_sku_saved_message"] = message
-            st.session_state["new_sku_editor_version"] = st.session_state.get("new_sku_editor_version", 0) + 1
-            st.rerun()
-        except Exception as e:
-            st.error(f"{t('新增 SKU 失败')}: {e}")
 
 
 def render_inventory_unit_calculator():

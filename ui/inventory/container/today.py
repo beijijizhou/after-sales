@@ -5,13 +5,15 @@ from ui.inventory.shared.filters import _reset_invalid_selectbox
 
 from db.inventory.container.repository import load_inventory_containers
 from db.inventory.container.labels import get_container_display_label
-from db.inventory.container.workflow import post_container_inventory
-from ui.inventory.container.posting import render_container_posting_stock_review
+from ui.inventory.container.posting import (
+    post_container_with_feedback,
+    render_container_posting_stock_review,
+)
 from ui.inventory.container.tables import (
     render_container_inventory_summary,
     render_container_records,
 )
-from utils.auth import get_current_operator_name, has_permission
+from utils.auth import has_permission
 
 
 def container_tab_names(has_today_arrivals, has_pending_posting=False):
@@ -137,15 +139,4 @@ def render_today_arrival_posting(supabase, raw_df):
         key=f"today_arrival_posting_{container_key}",
     ):
         return
-    try:
-        post_container_inventory(
-            supabase,
-            container_key,
-            get_current_operator_name(),
-            note,
-        )
-        st.success(f"入库成功：库存增加 {total:,} 件")
-        st.toast("货柜已完成入库")
-        st.rerun()
-    except Exception as error:
-        st.error(f"确认入库失败：{error}")
+    post_container_with_feedback(supabase, container_key, note, total)

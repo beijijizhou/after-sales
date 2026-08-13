@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
+from utils.option_values import ordered_values, unique_values
 
 
 def linked_sku_options(
@@ -14,15 +15,15 @@ def linked_sku_options(
         return {"materials": [], "brands": [], "colors": [], "sizes": []}
     if material:
         source = source[source["material"] == material]
-    brands = _values(source, "brand")
+    brands = _frame_values(source, "brand")
     if brand:
         source = source[source["brand"] == brand]
-    colors = _ordered(_values(source, "color"), ["黑", "白"])
+    colors = ordered_values(_frame_values(source, "color"), ["黑", "白"])
     if color:
         source = source[source["color"] == color]
-    sizes = _ordered(_values(source, "size"), SIZE_COLUMNS)
+    sizes = ordered_values(_frame_values(source, "size"), SIZE_COLUMNS)
     return {
-        "materials": _values(source, "material"),
+        "materials": _frame_values(source, "material"),
         "brands": brands,
         "colors": colors,
         "sizes": sizes,
@@ -151,17 +152,8 @@ def _linked_selectbox(container, label, options, key):
     )
 
 
-def _values(frame, column):
+def _frame_values(frame, column):
     source = pd.DataFrame(frame)
     if source.empty or column not in source:
         return []
-    return sorted({
-        str(value).strip() for value in source[column].dropna()
-        if str(value).strip()
-    })
-
-
-def _ordered(values, preferred):
-    values = set(values)
-    result = [value for value in preferred if value in values]
-    return [*result, *sorted(values - set(result))]
+    return unique_values(source[column])

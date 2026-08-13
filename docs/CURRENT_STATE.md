@@ -56,8 +56,18 @@ refactors, not after every small feature.
 - Shared daily-usage aggregation and forecast-model primitives:
   `utils/daily_usage_model.py`
 - Inventory workbench and automatic-deduction registry:
-  `ui/inventory/dashboard.py` and
-  `automation/sync/daily_inventory_consumption.py`
+  `ui/inventory/dashboard*.py`, `db/inventory/dashboard*.py`,
+  `automation/sync/daily_inventory_consumption.py`, and the reusable
+  single-source preview in `automation/sync/daily_flow_preview.py`.
+- Daily outbound is composed from the controller and its entry, import and
+  review components in `ui/inventory/operations/outbound*.py`.
+- Container list, detail/packaging, and grouped summaries are separated in
+  `ui/inventory/container/tables.py`, `detail_tables.py`, and
+  `summary_tables.py`; in-transit progress and operations live in
+  `transit_view.py`.
+- Consumable SKU creation/catalog share `ui/consumables/sku_models.py`;
+  customer sales separates party editing and preview-before-signing under
+  `ui/inventory/sales/`.
 - Shared stock-write review: `ui/inventory/operations/inventory_review.py`;
   adjustment comparison and editing remain in `adjustment_preview.py` and
   `adjustment_editor.py`.

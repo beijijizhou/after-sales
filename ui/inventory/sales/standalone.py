@@ -4,6 +4,7 @@ from db.inventory import load_inventory_dimensions
 from db.inventory.master_data.repository import load_sku_catalog
 from ui.inventory.sales.page import render_customer_sales_outbound
 from utils.auth import has_permission
+from utils.option_values import unique_values
 
 
 def render_customer_sales_page(supabase):
@@ -18,14 +19,14 @@ def render_customer_sales_page(supabase):
         st.warning("暂无可销售的库存 SKU。")
         return
 
-    departments = _values(dimensions, "department")
+    departments = unique_values(dimensions["department"])
     default_department = "DTF" if "DTF" in departments else departments[0]
     department = _select_with_reset(
         "销售库存部门", departments, "customer_sales_department",
         default_department,
     )
     scoped = dimensions[dimensions["department"] == department]
-    categories = _values(scoped, "category")
+    categories = unique_values(scoped["category"])
     default_category = (
         "黑白短袖" if "黑白短袖" in categories else categories[0]
     )
@@ -55,10 +56,3 @@ def _select_with_reset(label, options, key, default):
     if st.session_state.get(key) not in options:
         st.session_state[key] = default
     return st.selectbox(label, options, key=key)
-
-
-def _values(frame, column):
-    return sorted({
-        str(value).strip() for value in frame[column].dropna()
-        if str(value).strip()
-    })

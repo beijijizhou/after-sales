@@ -5,7 +5,8 @@ import pandas as pd
 import streamlit as st
 
 from db.consumables import apply_consumable_batch
-from ui.consumables.units import boxes_to_base, package_size, to_boxes
+from ui.consumables.units import boxes_to_base, to_boxes
+from ui.consumables.operations.validation import validate_package_sizes
 from utils.auth import get_current_operator_name
 
 
@@ -46,12 +47,7 @@ def render_movement_entry(
         key="consumable_movement_date",
     )
 
-    missing = active[active.apply(package_size, axis=1).isna()]
-    if not missing.empty:
-        st.error(
-            "以下耗材尚未设置每箱数量："
-            + "、".join(missing["name"].astype(str))
-        )
+    if not validate_package_sizes(active):
         return
     labels, label_to_row = _build_sku_labels(active)
     columns = ["耗材 SKU", "箱数", "备注"]

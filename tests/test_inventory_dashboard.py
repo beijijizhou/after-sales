@@ -234,19 +234,19 @@ class InventoryDashboardTests(unittest.TestCase):
         ])
         with (
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "load_uv_daily_consumption_total", return_value=0,
             ),
             patch(
-                "automation.sync.daily_inventory_consumption.load_daily_summary",
+                "automation.sync.daily_flow_preview.load_daily_summary",
                 return_value={"Tie_2030": 2000, "Iphone": 500},
             ),
             patch(
-                "automation.sync.daily_inventory_consumption.load_inventory_items",
+                "automation.sync.daily_flow_preview.load_inventory_items",
                 return_value=pd.DataFrame(),
             ),
             patch(
-                "automation.sync.daily_inventory_consumption.build_daily_sync_preview",
+                "automation.sync.daily_flow_preview.build_daily_sync_preview",
                 return_value=preview_rows,
             ),
         ):
@@ -403,15 +403,15 @@ class InventoryDashboardTests(unittest.TestCase):
         ])
         with (
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "load_colored_day_deducted_total", return_value=0,
             ),
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "build_colored_daily_preview", return_value=rows,
             ),
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "build_colored_platform_audit",
                 return_value=(sources, {"missing_platforms": ["S2B"]}),
             ),
@@ -442,15 +442,15 @@ class InventoryDashboardTests(unittest.TestCase):
         ])
         with (
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "load_colored_day_deducted_total", return_value=0,
             ),
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "build_colored_daily_preview", return_value=rows,
             ),
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "build_colored_platform_audit",
                 return_value=(sources, {"missing_platforms": []}),
             ),
@@ -478,15 +478,15 @@ class InventoryDashboardTests(unittest.TestCase):
         }
         with (
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "load_colored_day_deducted_total", return_value=0,
             ),
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "build_colored_daily_preview", return_value=rows,
             ),
             patch(
-                "automation.sync.daily_inventory_consumption."
+                "automation.sync.daily_flow_preview."
                 "build_colored_platform_audit",
                 return_value=(sources, metadata),
             ),

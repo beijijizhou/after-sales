@@ -138,12 +138,13 @@ def render_container_posting_action(
         key=f"{key_prefix}_post_{container_key}",
     ):
         return
+    post_container_with_feedback(supabase, container_key, note, total)
+
+
+def post_container_with_feedback(supabase, container_key, note, total):
     try:
         post_container_inventory(
-            supabase,
-            container_key,
-            get_current_operator_name(),
-            note,
+            supabase, container_key, get_current_operator_name(), note
         )
         st.success(f"入库成功：库存增加 {total:,} 件")
         st.toast("货柜已完成入库")

@@ -5,6 +5,8 @@ import streamlit as st
 
 from utils.barcode_patterns import (
     build_candidate_to_input,
+    build_exact_search_preview,
+    build_fuzzy_search_preview,
     is_exact_expansion_pattern,
 )
 
@@ -46,15 +48,7 @@ def normalize_search_preview(search_values):
 
 
 def build_exact_preview(barcodes):
-    candidate_to_input = build_candidate_to_input(barcodes)
-
-    return [
-        {
-            INPUT_COLUMN: original_value,
-            QUERY_COLUMN: candidate,
-        }
-        for candidate, original_value in candidate_to_input.items()
-    ]
+    return build_exact_search_preview(barcodes)
 
 
 def build_fuzzy_preview(barcodes):
@@ -69,13 +63,10 @@ def build_fuzzy_preview(barcodes):
         if not is_exact_expansion_pattern(barcode)
     ]
 
-    return build_exact_preview(exact_barcodes) + [
-        {
-            INPUT_COLUMN: barcode,
-            QUERY_COLUMN: f"%{barcode}%",
-        }
-        for barcode in global_search_barcodes
-    ]
+    return (
+        build_exact_preview(exact_barcodes)
+        + build_fuzzy_search_preview(global_search_barcodes)
+    )
 
 
 def build_search_preview(barcodes):

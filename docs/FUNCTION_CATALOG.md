@@ -37,9 +37,12 @@ an activity log.
 | Inventory apparel size order | `db/inventory/core/constants.py` | Import `SIZE_COLUMNS`; never define another `S` through `5XL` sequence. |
 | Human SKU sorting | `utils/sku_sorting.py` | Use for entry, preview, history, costing and detail tables. |
 | Inventory scope filters and stale-state reset | `ui/inventory/shared/filters.py` | Extend this filter contract instead of building independent department/category/SKU filters. |
+| Inventory filter models | `ui/inventory/shared/filter_models.py` | Reuse pure row filtering, option ordering and title construction outside Streamlit state. |
+| Selector value cleanup and business ordering | `utils/option_values.py` | Use `unique_values` and `ordered_values`; pages must not recreate `_values`, `_options`, or `_ordered` helpers with the same semantics. |
 | Linked SKU dependency options | `ui/inventory/shared/linked_sku_table.py` | Reuse `material -> brand -> color -> size/model` options in sales, containers and transfers. |
 | Inventory before/change/result review | `ui/inventory/operations/inventory_review.py` | Every inventory-writing UI composes this review; adjustment-specific comparison and editing remain separate. |
 | Container input, display and summaries | `db/inventory/container/input_tables.py`, `tables.py`, `summary_tables.py` | Normalize input once, keep business identity in display conversion, and reuse grouped summaries. |
+| Inventory query dimension filters | `db/inventory/core/query_filters.py` | Repository queries compose department/category/brand/material/color/size filters through one owner. |
 | Outbound packaging and verification | `db/inventory/operations/outbound.py`, `outbound_specs.py`, `outbound_verification.py` | Pages compose package conversion and persisted-batch verification; do not query package sources locally. |
 | Incoming inventory planning | `db/inventory/planning/incoming.py`, `incoming_containers.py`, `incoming_views.py` | Core risk calculations consume a normalized arrival timeline; UI uses the shared forecast/audit views. |
 | Colored production consumption | `automation/sync/colored_source.py`, `colored_models.py`, `dtf_colored_inventory.py` | Source cache, daily model and inventory deduction remain separate and composable. |
@@ -50,6 +53,15 @@ an activity log.
 | Inventory history workflows | `ui/inventory/history/workflows/` | Compose existing reversal, daily-outbound correction and SKU-history workflows; do not rebuild stock review. |
 | Daily-consumption flow identity | `utils/daily_consumption.py` | Manual and automatic flows share this operational contract and source classification. |
 | Automatic daily deduction registry | `automation/sync/daily_inventory_consumption.py` | Register new automatic sources; do not add independent dashboard execution paths. |
+| Automatic deduction source preview | `automation/sync/daily_flow_preview.py` | Dashboard flows reuse the same single-source preparation, preview and audit fields. |
+| Daily outbound entry and review | `ui/inventory/operations/outbound_entry.py`, `outbound_import.py`, `outbound_review.py` | Compose entry/import with the shared inventory review; do not duplicate conversion or shortage handling in pages. |
+| System deduction display model | `ui/inventory/operations/system_deduction.py` | UV, colored and dashboard previews reuse signed outbound/result column normalization. |
+| Container UI tables | `ui/inventory/container/tables.py`, `detail_tables.py`, `summary_tables.py` | Use the table facade; detail, packaging and grouped summaries retain separate owners. |
+| In-transit container workflow | `ui/inventory/container/transit_view.py` | Container pages compose the shared list/summary/detail operation instead of rebuilding state and progress tables. |
+| Consumable SKU administration | `ui/consumables/sku_models.py`, `sku_create.py`, `sku_catalog.py` | Reuse model transformations for copy defaults and catalog diffs; UI tabs do not reimplement them. |
+| Consumable package validation | `ui/consumables/operations/validation.py` | All inbound, issue and stocktake entry flows share package-size validation and feedback. |
+| Container inventory posting action | `ui/inventory/container/posting.py` | Pending and same-day posting call `post_container_with_feedback`; do not repeat RPC, operator, success and rerun handling. |
+| Sales parties and invoice signing | `ui/inventory/sales/customer_section.py`, `invoice_review.py` | Sales pages compose customer selection and preview-before-signing; inventory validation remains shared. |
 | Production platform catalog | `automation/production.py` | Logistics and production pages reuse the same department/platform ownership. |
 | ERP product normalization | `utils/erp/` | Source adapters feed shared normalized records; do not normalize the same platform in UI code. |
 | Daily usage model | `utils/daily_usage_model.py` | Inventory and consumable planning reuse common daily-rate calculations where units and semantics match. |
@@ -57,6 +69,7 @@ an activity log.
 | Logistics carrier/label review | `ui/logistics/review/` | Compose model, OCR runner, state and view; keep `page.py` as controller only. |
 | USPS tracking input/query/results | `ui/logistics/tracking/` | Reuse input normalization, cache/query, label and origin components. |
 | S2B visible page actions | `automation/playwright/s2b/page_actions.py` | Browser workflows reuse shared visible exact-text interaction. |
+| Barcode search candidates and previews | `utils/barcode_patterns.py` | Exact and fuzzy search strategies reuse canonical candidate-to-input and preview schemas; UI only composes them. |
 
 ## Reuse Review Gate
 

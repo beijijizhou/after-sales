@@ -1,6 +1,7 @@
 import pandas as pd
 
 from db.inventory.container.tables import normalize_container_rows
+from db.inventory.core.query_filters import apply_inventory_dimension_filters
 
 
 CONTAINER_COLUMNS = (
@@ -90,21 +91,12 @@ def apply_container_filters(
         query = query.gte(date_field, start_date.isoformat())
     if end_date is not None:
         query = query.lte(date_field, end_date.isoformat())
-    if department:
-        query = query.eq("department", department)
-    if category:
-        query = query.eq("category", category)
     if statuses:
         query = query.in_("status", statuses)
-    for column, values in [
-        ("brand", brands),
-        ("material", materials),
-        ("color", colors),
-        ("size", sizes),
-    ]:
-        if values:
-            query = query.in_(column, list(values))
-    return query
+    return apply_inventory_dimension_filters(
+        query, department=department, category=category, brands=brands,
+        materials=materials, colors=colors, sizes=sizes,
+    )
 
 
 def load_container_dimensions(supabase):

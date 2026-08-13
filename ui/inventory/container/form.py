@@ -18,6 +18,15 @@ from utils.auth import get_current_operator_name, has_permission
 from ui.inventory.container.tables import render_packaging_check
 from ui.inventory.shared.linked_sku_table import linked_sku_options
 from ui.table_layout import fit_table_height
+from ui.inventory.container.form_models import (
+    add_container_identity,
+    build_container_form_rows,
+    build_item_column_config as _build_item_column_config,
+    container_identity_columns as _container_identity_columns,
+    edited_total as _edited_total,
+    empty_container_items as _empty_container_items,
+    keep_container_items,
+)
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -212,113 +221,3 @@ def _select_linked_value(
     if st.session_state.get(key) not in choices:
         st.session_state[key] = choices[0]
     return target.selectbox(label, choices, key=key)
-
-
-def _empty_container_items(department):
-    columns = ["品类", "材质", "品牌", "颜色"]
-    if department == "DTF":
-        columns.extend(SIZE_COLUMNS)
-    else:
-        columns.extend(["型号", "数量"])
-    columns.extend(["成本", "备注", "删除"])
-    return pd.DataFrame(columns=columns)
-
-
-def add_container_identity(items, identity, department):
-    result = pd.DataFrame(items).copy()
-    identity_columns = _container_identity_columns(department)
-    if any(not str(identity.get(column, "")).strip() for column in [
-        "品类", "材质",
-    ]):
-        return result, False
-    record = {
-        "品类": identity.get("品类", ""),
-        "材质": identity.get("材质", ""),
-        "品牌": identity.get("品牌", ""),
-        "颜色": identity.get("颜色", ""),
-        "成本": 0.0, "备注": "", "删除": False,
-    }
-    if department == "DTF":
-        record.update({size: 0 for size in SIZE_COLUMNS})
-    else:
-        record.update({"型号": identity.get("型号", ""), "数量": 0})
-    if not result.empty:
-        duplicate = pd.Series(True, index=result.index)
-        for column in identity_columns:
-            duplicate &= result[column].fillna("").astype(str).eq(
-                str(record.get(column, ""))
-            )
-        if duplicate.any():
-            return result, False
-    return pd.concat([result, pd.DataFrame([record])], ignore_index=True), True
-
-
-def _container_identity_columns(department):
-    columns = ["品类", "品牌", "材质", "颜色"]
-    if department != "DTF":
-        columns.append("型号")
-    return columns
-
-
-def _build_item_column_config(department, can_view_cost):
-    columns = {
-        "品类": st.column_config.TextColumn("品类"),
-        "品牌": st.column_config.TextColumn("品牌"),
-        "材质": st.column_config.TextColumn("材质"),
-        "颜色": st.column_config.TextColumn("颜色"),
-        "成本": st.column_config.NumberColumn(
-            "成本", min_value=0.0, step=0.0001, format="%.4f"
-        ),
-        "备注": st.column_config.TextColumn("SKU 备注"),
-        "删除": st.column_config.CheckboxColumn("删除"),
-    }
-    if department == "DTF":
-        columns.update({
-            size: st.column_config.NumberColumn(size, min_value=0, step=1)
-            for size in SIZE_COLUMNS
-        })
-    else:
-        columns["型号"] = st.column_config.TextColumn("型号")
-        columns["数量"] = st.column_config.NumberColumn(
-            "数量", min_value=0, step=1
-        )
-    if not can_view_cost:
-        columns["成本"] = None
-    return columns
-
-
-def build_container_form_rows(
-    items, shipped_date, transit_days, container_no, department,
-    status, container_note,
-):
-    result = pd.DataFrame(items).drop(columns=["删除"], errors="ignore").copy()
-    result.insert(0, "部门", department)
-    result.insert(0, "货柜号", str(container_no or "").strip())
-    result.insert(0, "预计运输天数", int(transit_days))
-    result.insert(0, "发货日期", shipped_date)
-    result["状态"] = status
-    result["备注"] = result["备注"].fillna("").astype(str).str.strip()
-    shared_note = str(container_note or "").strip()
-    if shared_note:
-        result["备注"] = result["备注"].map(
-            lambda value: "；".join(filter(None, [shared_note, value]))
-        )
-    return result
-
-
-def keep_container_items(items):
-    result = pd.DataFrame(items).copy()
-    if "删除" not in result:
-        return result
-    delete_mask = result["删除"].fillna(False).astype(bool)
-    return result.loc[~delete_mask].copy()
-
-
-def _edited_total(df):
-    if "数量" in df.columns:
-        value = pd.to_numeric(df["数量"], errors="coerce").fillna(0).sum()
-        return int(value)
-    return int(sum(
-        pd.to_numeric(df.get(size, 0), errors="coerce").fillna(0).sum()
-        for size in SIZE_COLUMNS
-    ))
