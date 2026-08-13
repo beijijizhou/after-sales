@@ -39,6 +39,19 @@ class InventoryHistoryPaginationTests(unittest.TestCase):
         self.assertEqual(fetch_range_pages(fetch_page, limit=0), [])
         self.assertFalse(called)
 
+    def test_none_limit_reads_until_last_page(self):
+        source = [{"id": index} for index in range(1_001)]
+        requests = []
+
+        def fetch_page(start, end):
+            requests.append((start, end))
+            return source[start:end + 1]
+
+        rows = fetch_range_pages(fetch_page, limit=None)
+
+        self.assertEqual(len(rows), 1_001)
+        self.assertEqual(requests, [(0, 999), (1000, 1999)])
+
 
 if __name__ == "__main__":
     unittest.main()

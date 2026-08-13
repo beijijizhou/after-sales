@@ -20,6 +20,7 @@ from automation.sync.dtf_colored_inventory import (
 )
 from db.inventory.dashboard import (
     DAILY_COMPLETION_START_DATE,
+    _load_daily_inventory_movements,
     build_automatic_missing_dates,
     build_daily_completion_dates,
     build_daily_operation_table,
@@ -34,6 +35,56 @@ from ui.inventory.dashboard import (
 
 
 class InventoryDashboardTests(unittest.TestCase):
+    def test_completion_loader_reads_past_database_thousand_row_page(self):
+        source = [
+            {
+                "department": "DTF", "category": "黑白短袖",
+                "movement_date": "2026-08-01", "quantity_change": -1,
+                "reason": "仓库每日出货", "batch_id": f"bw-{index}",
+                "reversal_of_batch_id": None,
+                "created_at": f"2026-08-01T00:00:{index % 60:02d}+00:00",
+            }
+            for index in range(1_000)
+        ]
+        source.append({
+            "department": "UV", "category": "铁板画",
+            "movement_date": "2026-08-07", "quantity_change": -20,
+            "reason": "Google Sheets UV每日消耗｜2026-08-07｜Tie_2030",
+            "batch_id": "uv-0807", "reversal_of_batch_id": None,
+            "created_at": "2026-08-08T00:00:00+00:00",
+        })
+
+        class Response:
+            def __init__(self, data):
+                self.data = data
+
+        class Query:
+            def __init__(self):
+                self.start, self.end = 0, 999
+
+            def select(self, *_args): return self
+            def gte(self, *_args): return self
+            def lte(self, *_args): return self
+            def order(self, *_args, **_kwargs): return self
+            def range(self, start, end):
+                self.start, self.end = start, end
+                return self
+            def execute(self):
+                return Response(source[self.start:self.end + 1])
+
+        class Supabase:
+            def table(self, _name): return Query()
+
+        movements = _load_daily_inventory_movements(
+            Supabase(), date(2026, 8, 1), date(2026, 8, 7)
+        )
+        completed = build_daily_completion_dates(
+            movements, pd.DataFrame()
+        )
+
+        self.assertEqual(len(movements), 1_001)
+        self.assertIn(date(2026, 8, 7), completed["uv"])
+
     def test_daily_completion_business_start_is_august_first(self):
         self.assertEqual(
             DAILY_COMPLETION_START_DATE, date(2026, 8, 1)

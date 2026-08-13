@@ -6,6 +6,7 @@ from db.consumables import (
     load_consumable_batches,
     load_departments,
 )
+from db.inventory.core.pagination import fetch_range_pages
 from db.inventory.dashboard_overview import load_inventory_overview
 from db.inventory.dashboard_completion import (
     DAILY_FLOW_LABELS,
@@ -97,15 +98,23 @@ def _daily_operation_label(row):
 
 
 def _load_daily_inventory_movements(supabase, start_date, end_date):
-    rows = (
-        supabase.table("inventory_movements")
-        .select(
-            "department,category,movement_date,quantity_change,reason,"
-            "batch_id,reversal_of_batch_id"
-        )
-        .gte("movement_date", start_date.isoformat())
-        .lte("movement_date", end_date.isoformat())
-        .execute().data
-        or []
+    columns = (
+        "department,category,movement_date,quantity_change,reason,"
+        "batch_id,reversal_of_batch_id,created_at"
     )
+
+    def fetch_page(start, end):
+        return (
+            supabase.table("inventory_movements")
+            .select(columns)
+            .gte("movement_date", start_date.isoformat())
+            .lte("movement_date", end_date.isoformat())
+            .order("movement_date")
+            .order("created_at")
+            .range(start, end)
+            .execute().data
+            or []
+        )
+
+    rows = fetch_range_pages(fetch_page, limit=None)
     return pd.DataFrame(rows)
