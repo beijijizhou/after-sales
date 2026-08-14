@@ -14,6 +14,24 @@ LOCAL_CREDENTIALS = (
 
 
 def load_humbird_credentials(streamlit_secrets, platform, supabase=None):
+    open_api = _open_api_profile(streamlit_secrets, platform)
+    legacy = _load_legacy_credentials(
+        streamlit_secrets, platform, supabase
+    )
+    if open_api and legacy:
+        return {
+            **legacy,
+            **open_api,
+            "fallback_credential_source": legacy.get("credential_source"),
+        }
+    if open_api or legacy:
+        return open_api or legacy
+    raise ValueError(
+        f"未配置 {platform} 开放平台 API Key 或备用 API token"
+    )
+
+
+def _load_legacy_credentials(streamlit_secrets, platform, supabase=None):
     database = _database_client(streamlit_secrets, supabase)
     encryption_secret = _encryption_secret(streamlit_secrets)
     if database is not None and encryption_secret:
@@ -38,9 +56,7 @@ def load_humbird_credentials(streamlit_secrets, platform, supabase=None):
             credentials = _profile(tomllib.load(file), platform)
         if credentials:
             return credentials
-    raise ValueError(
-        f"未配置 {platform} API token；请先将管理员登录授权同步到数据库"
-    )
+    return None
 
 
 def save_humbird_credentials(
@@ -91,3 +107,29 @@ def _profile(secrets, platform):
         return None
     token = str(profile.get("token") or "").strip()
     return {**profile, "token": token} if token else None
+
+
+def _open_api_profile(secrets, platform):
+    if platform != "Haloo":
+        return None
+    try:
+        profile = dict(secrets["humbird_open_api"][platform])
+    except (KeyError, TypeError):
+        profile = {}
+    api_key = str(
+        profile.get("api_key")
+        or _secret_value(secrets, "HUMBIRD_OPEN_API_KEY")
+    ).strip()
+    if not api_key:
+        return None
+    return {
+        "api_key": api_key,
+        "credential_source": "humbird_open_api",
+    }
+
+
+def _secret_value(secrets, key):
+    try:
+        return secrets[key]
+    except (KeyError, TypeError):
+        return ""

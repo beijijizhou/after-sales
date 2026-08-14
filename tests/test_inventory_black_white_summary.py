@@ -4,7 +4,11 @@ from datetime import date
 import pandas as pd
 
 from automation.production_reference import reweight_partial_production
-from db.inventory import SIZE_COLUMNS, build_color_inventory_table
+from db.inventory import (
+    SIZE_COLUMNS,
+    build_color_inventory_table,
+    build_material_color_inventory_table,
+)
 from db.inventory.planning.consumption_alerts import (
     build_inventory_consumption_alerts,
 )
@@ -77,6 +81,24 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
         self.assertEqual(int(black["M"]), 67)
         self.assertEqual(int(white["S"]), 8)
         self.assertEqual(int(white["M"]), 9)
+
+    def test_material_view_keeps_material_layers_and_combines_brands(self):
+        rows = []
+        for brand, material, color, small in [
+            ("Haloo", "180g", "黑", 10),
+            ("SK", "180g", "黑", 5),
+            ("Cotton", "CVC", "白", 8),
+            ("T64", "160g", "白", 9),
+        ]:
+            row = {"品牌": brand, "材质": material, "颜色": color, "S": small}
+            row.update({size: 0 for size in SIZE_COLUMNS if size != "S"})
+            rows.append(row)
+
+        summary = build_material_color_inventory_table(pd.DataFrame(rows))
+
+        self.assertEqual(summary["材质"].tolist(), ["180g", "160g", "CVC"])
+        material_180 = summary.loc[summary["材质"] == "180g"].iloc[0]
+        self.assertEqual(int(material_180["S"]), 15)
 
     def test_forecast_exposes_combined_stock_and_estimated_current_stock(self):
         stock = pd.DataFrame([{

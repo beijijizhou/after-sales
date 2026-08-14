@@ -31,6 +31,7 @@ from automation.logistics.diy19 import (
     load_diy19_logistics_credentials,
 )
 from automation.logistics.usps import USPSClient, classify_usps_response
+from automation.logistics.humbird import fetch_humbird_shipments
 
 __all__ = [
     "USPSClient", "classify_usps_response", "fetch_s2b_pending_shipments",
@@ -45,4 +46,5 @@ __all__ = [
     "parse_logistics_upload",
     "parse_logistics_paste",
     "parse_logistics_frame",
+    "fetch_humbird_shipments",
 ]

@@ -19,11 +19,99 @@ from automation.api.humbird.http_client import (
     _signed_headers,
     fetch_humbird_production_records_http,
 )
+from automation.api.humbird.open_client import (
+    HumbirdOpenApiClient,
+    PAGE_SIZE,
+    _enrich_record,
+)
 from automation.production import load_production_data
 from utils.erp.humbird_parser import parse_humbird_records
 
 
 class HumbirdApiTests(unittest.TestCase):
+    @patch("automation.production.fetch_humbird_production_records_http")
+    @patch("automation.production.fetch_open_production_records")
+    def test_open_api_failure_falls_back_to_legacy_token(
+        self, fetch_open, fetch_legacy
+    ):
+        fetch_open.side_effect = RuntimeError("temporary outage")
+        fetch_legacy.return_value = []
+        progress = []
+
+        result = load_production_data(
+            "Haloo",
+            date(2026, 8, 12),
+            date(2026, 8, 12),
+            credentials={"api_key": "official", "token": "legacy"},
+            report_progress=progress.append,
+        )
+
+        fetch_open.assert_called_once()
+        fetch_legacy.assert_called_once()
+        self.assertIn("旧接口备用通道", result.source)
+        self.assertTrue(any("切换旧接口" in item for item in progress))
+
+    def test_open_api_uses_api_key_and_public_router(self):
+        response = type("Response", (), {
+            "status_code": 200,
+            "raise_for_status": lambda self: None,
+            "json": lambda self: {
+                "code": 200,
+                "result": {
+                    "result_code": 200,
+                    "data": {"list": [{"code": "ITEM-1"}], "total": 1},
+                },
+            },
+        })()
+        session = type("Session", (), {})()
+        calls = []
+
+        def post(url, **kwargs):
+            calls.append((url, kwargs))
+            return response
+
+        session.post = post
+        client = HumbirdOpenApiClient({"api_key": "open-key"}, session)
+
+        rows = client.production_items(
+            date(2026, 8, 12), date(2026, 8, 12)
+        )
+
+        self.assertEqual(rows, [{"code": "ITEM-1"}])
+        self.assertEqual(
+            calls[0][0], "https://open.hihumbird.com/api/router"
+        )
+        self.assertEqual(calls[0][1]["headers"]["x-api-key"], "open-key")
+        self.assertEqual(
+            calls[0][1]["json"]["api_type"],
+            "oc.production.item.page",
+        )
+        self.assertEqual(calls[0][1]["json"]["page_size"], 200)
+        self.assertEqual(PAGE_SIZE, 200)
+
+    def test_open_api_product_detail_fills_color_and_size(self):
+        result = _enrich_record(
+            {
+                "order_no": "ORDER-1", "spu_id": "10", "sku_id": "20",
+                "status": 9,
+            },
+            {
+                "name": "180g 多色短袖T恤",
+                "skus": [{
+                    "id": "20",
+                    "attribute_items": [
+                        {"type": 1, "name": "粉色"},
+                        {"type": 2, "name": "2XL"},
+                    ],
+                }],
+            },
+        )
+
+        self.assertEqual(result["production_order_id"], "ORDER-1")
+        self.assertEqual(result["color"], "粉色")
+        self.assertEqual(result["size"], "2XL")
+        self.assertEqual(result["status_name"], "已生产")
+
     @patch("automation.api.humbird.client.fetch_humbird_production_records_http")
     def test_legacy_humbird_entrypoint_is_api_only(self, fetch):
         fetch.return_value = [{"code": "item-1"}]

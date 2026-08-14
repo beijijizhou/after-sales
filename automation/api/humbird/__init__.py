@@ -5,6 +5,11 @@ from automation.api.humbird.http_client import (
     fetch_humbird_production_records_http,
 )
 from automation.api.humbird.payload import build_production_item_payload
+from automation.api.humbird.open_client import (
+    HumbirdOpenApiClient,
+    HumbirdOpenApiError,
+    fetch_open_production_records,
+)
 
 
 __all__ = [
@@ -13,4 +18,7 @@ __all__ = [
     "fetch_humbird_production_records_http",
     "HumbirdAuthenticationError",
     "load_humbird_credentials",
+    "HumbirdOpenApiClient",
+    "HumbirdOpenApiError",
+    "fetch_open_production_records",
 ]

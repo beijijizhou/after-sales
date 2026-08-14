@@ -38,19 +38,31 @@ def render_black_white_color_summary(
         else t("整体黑白库存汇总")
     )
     st.subheader(summary_title)
-    summary_df = build_color_inventory_table(black_white_df)
+    summary_level = st.segmented_control(
+        t("汇总层级"),
+        ["整体合计", "按材质分层"],
+        default="整体合计",
+        format_func=t,
+        key="black_white_inventory_summary_level",
+    )
+    if summary_level == "按材质分层":
+        summary_df = build_material_color_inventory_table(black_white_df)
+    else:
+        summary_df = build_color_inventory_table(black_white_df)
     if summary_df.empty:
         st.info(t("暂无黑白短袖库存数据"))
         return
 
     materials = unique_values(black_white_df.get("材质", []))
     brands = unique_values(black_white_df.get("品牌", []))
-    if materials:
+    if materials and summary_level == "整体合计":
         st.caption(
             t("已合并所选材质：{materials}").format(
                 materials="、".join(materials)
             )
         )
+    elif materials:
+        st.caption(t("每个材质分别汇总，材质内合并所选品牌。"))
     if len(brands) > 1:
         st.caption(
             t("已合并 {count} 个品牌：{brands}").format(
@@ -59,11 +71,16 @@ def render_black_white_color_summary(
         )
 
     sizes = visible_sizes or SIZE_COLUMNS
+    leading_columns = ["材质", "颜色"] if summary_level == "按材质分层" else ["颜色"]
+    table_height = min(max((len(summary_df) + 1) * 35 + 8, 150), 900)
     st.dataframe(
-        summary_df[["颜色", *sizes, "总库存"]],
+        summary_df[[*leading_columns, *sizes, "总库存"]],
         hide_index=True,
         width="stretch",
+        height=table_height,
+        row_height=35,
         column_config={
+            "材质": st.column_config.TextColumn(t("材质"), width="small"),
             "颜色": st.column_config.TextColumn(t("颜色")),
             "总库存": st.column_config.NumberColumn(
                 t("总库存"), format="%d"

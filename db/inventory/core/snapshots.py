@@ -6,6 +6,11 @@ INVENTORY_KEY_COLUMNS = [
 ]
 
 
+def should_use_saved_snapshot(selected_date, current_date):
+    """Today's stock is live; persisted snapshots are historical only."""
+    return selected_date < current_date
+
+
 def filter_snapshot_to_active_skus(snapshot_df, active_inventory_df):
     """Keep current active SKU identities while preserving snapshot values."""
     snapshot = pd.DataFrame(snapshot_df).copy()

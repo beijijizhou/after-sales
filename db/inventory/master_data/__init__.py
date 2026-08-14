@@ -17,6 +17,15 @@ from db.inventory.master_data.sku_service import (
     create_skus,
     update_skus,
 )
+from db.inventory.master_data.sku_merge import (
+    build_sku_group_merge_preview,
+    build_sku_merge_groups,
+    compatible_merge_targets,
+    group_key,
+    group_label,
+    load_sku_merge_rules,
+    merge_sku_groups,
+)
 
 __all__ = [
     "SPECIFICATION_TYPES",
@@ -25,6 +34,13 @@ __all__ = [
     "create_department",
     "create_material",
     "build_sku_merge_preview",
+    "build_sku_group_merge_preview",
+    "build_sku_merge_groups",
+    "compatible_merge_targets",
+    "group_key",
+    "group_label",
+    "load_sku_merge_rules",
+    "merge_sku_groups",
     "create_skus",
     "initialize_sku_inventory",
     "load_master_data",

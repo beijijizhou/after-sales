@@ -13,6 +13,7 @@ from db.inventory.master_data import (
 from ui.inventory.i18n import t
 from ui.inventory.sku.create import render_create_skus
 from ui.inventory.sku.master_forms import render_master_data_forms
+from ui.inventory.sku.merge import render_sku_merge
 from ui.inventory.sku.editor_models import (
     build_sku_editor_wide_source,
     display_catalog as _display_catalog,
@@ -58,8 +59,11 @@ def render_sku_management(
         _render_catalog(supabase, department_code, sku_filters)
         return
 
-    catalog_tab, create_tab, edit_tab, master_tab = st.tabs(
-        [t("SKU 目录"), t("新增 SKU"), t("修改 SKU"), t("新增 SKU 选项")]
+    catalog_tab, create_tab, edit_tab, merge_tab, master_tab = st.tabs(
+        [
+            t("SKU 目录"), t("新增 SKU"), t("修改 SKU"),
+            "SKU 并入", t("新增 SKU 选项"),
+        ]
     )
     with catalog_tab:
         _render_catalog(supabase, department_code, sku_filters)
@@ -71,6 +75,11 @@ def render_sku_management(
     with edit_tab:
         _render_editor(
             supabase, department, categories, brands, materials, sku_filters
+        )
+    with merge_tab:
+        render_sku_merge(
+            supabase, department_code,
+            load_sku_catalog(supabase, department_code),
         )
     with master_tab:
         render_master_data_forms(supabase, departments, categories)

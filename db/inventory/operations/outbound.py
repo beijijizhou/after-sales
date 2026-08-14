@@ -175,11 +175,16 @@ def convert_sku_package_entries(
             source.get("包装数量"), errors="coerce"
         )
         package_count = int(count_value) if pd.notna(count_value) else 0
-        package_type = str(source.get("包装单位") or "Box").strip()
+        package_type = str(source.get("包装单位") or "Piece").strip()
         if sku is None or package_count <= 0:
             continue
         explicit_units = pd.to_numeric(source.get("箱规"), errors="coerce")
-        units = int(explicit_units) if pd.notna(explicit_units) and explicit_units > 0 else None
+        if package_type == "Piece":
+            units = 1
+        elif pd.notna(explicit_units) and explicit_units > 0:
+            units = int(explicit_units)
+        else:
+            units = None
         if units is None:
             units = get_special_package_units(
                 sku_packaging_rules,

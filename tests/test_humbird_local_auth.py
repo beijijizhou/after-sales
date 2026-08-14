@@ -8,6 +8,28 @@ from automation.api.humbird.config import load_humbird_credentials
 
 
 class HumbirdLocalAuthTest(unittest.TestCase):
+    @patch("automation.api.humbird.config.load_erp_token")
+    def test_haloo_keeps_open_api_key_and_database_token(self, load):
+        load.return_value = "database-token"
+        credentials = load_humbird_credentials(
+            {
+                "HUMBIRD_OPEN_API_KEY": "official-key",
+                "SUPABASE_KEY": "service-key",
+            },
+            "Haloo",
+            supabase=object(),
+        )
+
+        self.assertEqual(credentials["api_key"], "official-key")
+        self.assertEqual(credentials["token"], "database-token")
+        self.assertEqual(
+            credentials["credential_source"], "humbird_open_api"
+        )
+        self.assertEqual(
+            credentials["fallback_credential_source"], "database"
+        )
+        load.assert_called_once()
+
     @patch(
         "automation.api.humbird.config.load_erp_token",
         return_value="database-token",

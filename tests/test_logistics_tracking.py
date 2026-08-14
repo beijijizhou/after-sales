@@ -40,6 +40,7 @@ from automation.logistics.label_cache import (
 from automation.logistics.label_downloads import build_label_archive
 from automation.logistics.sds import _qa_token
 from automation.logistics.sds import _parcel_rows as _sds_parcel_rows
+from automation.logistics.humbird import fetch_humbird_shipments
 from automation.logistics.imports import (
     parse_logistics_frame,
     parse_logistics_paste,
@@ -73,6 +74,7 @@ from ui.logistics.review.state import (
     store_review_ocr_results as _store_review_ocr_results,
 )
 from ui.logistics.sync_view import CONNECTED_PLATFORMS
+from ui.logistics.source_gateway import fetch_humbird_shipments as gateway_humbird
 from ui.logistics.tracking.input import (
     normalize_suggested_rows,
     parse_order_tracking_table,
@@ -101,6 +103,9 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_logistics_gateway_imports_humbird_adapter_directly(self):
+        self.assertIs(gateway_humbird, fetch_humbird_shipments)
+
     def test_usps_lookup_does_not_start_ocr_for_unreviewed_label(self):
         context = pd.DataFrame([{
             "物流单号": "92001",
@@ -874,6 +879,7 @@ class LogisticsTrackingTests(unittest.TestCase):
         )
 
     def test_logistics_platform_default_reuses_department_platforms(self):
+        self.assertIn("Haloo", CONNECTED_PLATFORMS)
         self.assertEqual(
             default_logistics_platforms(
                 ("汉森", "S2B", "SDS2"), CONNECTED_PLATFORMS
@@ -888,6 +894,39 @@ class LogisticsTrackingTests(unittest.TestCase):
             ),
             ["SDS1"],
         )
+
+    @patch("automation.logistics.humbird.HumbirdOpenApiClient")
+    def test_humbird_waybill_uses_shared_shipment_shape(self, client_type):
+        client = client_type.return_value
+        client.production_items.return_value = [{
+            "code": "ITEM-1",
+            "order_no": "ORDER-1",
+            "order_third_id": "SHOP-1",
+            "status": 9,
+            "delivery_time": 1786590000000,
+        }]
+        client.waybill.return_value = {
+            "track_number": "9400111122223333444455",
+            "logistics_method_name": "USPS",
+            "logistics_method_id": "USPS-GA",
+            "url": "https://labels.test/ORDER-1.pdf",
+            "width": 100,
+            "height": 150,
+        }
+
+        rows = fetch_humbird_shipments(
+            "Haloo", {"api_key": "key"},
+            datetime(2026, 8, 12).date(),
+            datetime(2026, 8, 12).date(),
+            status=6,
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["erp_platform"], "Haloo")
+        self.assertEqual(rows[0]["external_order_id"], "ORDER-1")
+        self.assertEqual(rows[0]["tracking_number"], "9400111122223333444455")
+        self.assertEqual(rows[0]["label_url"], "https://labels.test/ORDER-1.pdf")
+        self.assertEqual(rows[0]["erp_status"], "已发货")
 
     def test_live_usps_workflow_does_not_require_database_rows(self):
         display = pd.DataFrame([classify_usps_response({

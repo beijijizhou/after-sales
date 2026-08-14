@@ -59,6 +59,16 @@
   operator, business date, and before/after balances. Do not turn a single
   reclassification into a permanent cross-brand aggregation rule or rewrite
   all historical SKU identities.
+- A persistent SKU merge is a separate, explicit master-data rule. It may
+  route one source brand group into a target brand only when department,
+  category, material, color, and size semantics remain compatible. Activating
+  the rule atomically transfers current quantity, warehouse distribution, and
+  open cost lots; creates any missing target-size SKU; leaves historical
+  movements unchanged; sets the source SKU quantity to zero and makes it
+  inactive; and records both a batch audit and the active source-to-target
+  rule. Future container inbound using the source identity is routed to the
+  target. The SKU-management UI must show the active rule and a size-level
+  before/source/target/after preview before confirmation.
 - Manual inventory adjustment has three explicit actions: increase, decrease,
   and set. `Set` is a physical-count operation: the entered number is the
   target balance, while the system preserves the prior balance, target,

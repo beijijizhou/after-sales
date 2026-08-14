@@ -14,7 +14,10 @@ from db.inventory import (
     load_inventory_movements,
     load_inventory_snapshot,
 )
-from db.inventory.core.snapshots import filter_snapshot_to_active_skus
+from db.inventory.core.snapshots import (
+    filter_snapshot_to_active_skus,
+    should_use_saved_snapshot,
+)
 from db.inventory.sku import load_sku_imports
 from ui.inventory.history.workflows.page import (
     filter_inventory_history_data,
@@ -118,17 +121,23 @@ def render_inventory_summary(supabase):
             complete_category_raw_df,
             category, brands, materials, colors, selected_sizes,
         )
-        try:
-            snapshot_df = load_inventory_snapshot(supabase, department, category, selected_date)
-            snapshot_df = filter_snapshot_to_active_skus(
-                snapshot_df, complete_category_raw_df
-            )
-            snapshot_df = filter_inventory_rows(
-                snapshot_df, category, brands, materials, colors,
-                selected_sizes,
-            )
-        except Exception:
-            snapshot_df = raw_df.iloc[0:0]
+        current_date = st.session_state["inventory_today"]
+        if should_use_saved_snapshot(selected_date, current_date):
+            try:
+                snapshot_df = load_inventory_snapshot(
+                    supabase, department, category, selected_date
+                )
+                snapshot_df = filter_snapshot_to_active_skus(
+                    snapshot_df, complete_category_raw_df
+                )
+                snapshot_df = filter_inventory_rows(
+                    snapshot_df, category, brands, materials, colors,
+                    selected_sizes,
+                )
+            except Exception:
+                snapshot_df = raw_df.iloc[0:0]
+        else:
+            snapshot_df = raw_df.copy()
 
         has_saved_snapshot = not snapshot_df.empty
         if snapshot_df.empty:
@@ -163,7 +172,6 @@ def render_inventory_summary(supabase):
             )
             if can_view_cost else None
         )
-        current_date = st.session_state["inventory_today"]
         # The as-of date describes the department ledger, not the current
         # display filters. Filtering a quiet SKU must not move the ledger back.
         latest_movement_date = load_latest_inventory_movement_date(

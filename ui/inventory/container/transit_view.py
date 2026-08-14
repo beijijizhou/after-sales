@@ -12,6 +12,10 @@ from db.inventory.container.tables import build_container_display
 from ui.inventory.container.events import render_status_update
 from ui.inventory.container.item_editor import render_container_item_editor
 from ui.inventory.container.progress_view import render_arrival_alerts
+from ui.inventory.container.selection import (
+    container_selection_widget_key,
+    selected_container_key,
+)
 from ui.inventory.container.tables import render_container_detail, render_filtered_container_summary
 from ui.inventory.container.week import merge_current_week_with_overdue
 from ui.table_layout import fit_table_height
@@ -60,14 +64,41 @@ def _render_metrics(raw, display, today):
 def _render_progress_list(supabase, raw, progress):
     render_arrival_alerts(progress)
     table = progress.drop(columns=["货柜记录ID"])
-    selected = st.dataframe(table, hide_index=True, width="stretch", height=fit_table_height(table), on_select="rerun", selection_mode="single-row", key="transit_container_list_selection", column_config={
-        "发货日期": st.column_config.DateColumn("发货日期"), "预计到货日期": st.column_config.DateColumn("预计到货日期"),
-        "已运输天数": st.column_config.NumberColumn("已运输天数", format="%d 天"), "剩余天数": st.column_config.NumberColumn("剩余天数", format="%d 天"),
-        "到货提醒": st.column_config.TextColumn("到货提醒"), "运输进度": st.column_config.ProgressColumn("运输进度", min_value=0, max_value=100, format="%d%%"),
-        "总件数": st.column_config.NumberColumn("总件数", format="%d"),
-    })
-    if selected.selection.rows:
-        render_transit_operation(supabase, raw, progress.iloc[selected.selection.rows[0]]["货柜记录ID"])
+    container_keys = progress["货柜记录ID"].tolist()
+    widget_key = container_selection_widget_key(
+        st.session_state,
+        "transit_container_list_selection",
+        container_keys,
+    )
+    selected = st.dataframe(
+        table,
+        hide_index=True,
+        width="stretch",
+        height=fit_table_height(table),
+        on_select="rerun",
+        selection_mode="single-row",
+        key=widget_key,
+        column_config={
+            "发货日期": st.column_config.DateColumn("发货日期"),
+            "预计到货日期": st.column_config.DateColumn("预计到货日期"),
+            "已运输天数": st.column_config.NumberColumn(
+                "已运输天数", format="%d 天"
+            ),
+            "剩余天数": st.column_config.NumberColumn(
+                "剩余天数", format="%d 天"
+            ),
+            "到货提醒": st.column_config.TextColumn("到货提醒"),
+            "运输进度": st.column_config.ProgressColumn(
+                "运输进度", min_value=0, max_value=100, format="%d%%"
+            ),
+            "总件数": st.column_config.NumberColumn("总件数", format="%d"),
+        },
+    )
+    container_key = selected_container_key(
+        container_keys, selected.selection.rows
+    )
+    if container_key:
+        render_transit_operation(supabase, raw, container_key)
     else:
         st.caption("点选一行即可查看明细、确认到柜或直接入库。")
 

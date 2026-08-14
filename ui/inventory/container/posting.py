@@ -14,6 +14,10 @@ from ui.inventory.container.cost_editor import (
     auto_save_container_costs,
     can_edit_container_cost,
 )
+from ui.inventory.container.selection import (
+    container_selection_widget_key,
+    selected_container_key,
+)
 from ui.inventory.operations.adjustment_preview import (
     build_inventory_change_comparison,
     render_inventory_change_comparison,
@@ -76,6 +80,12 @@ def render_pending_container_posting(supabase, raw_df):
     summary["实际到柜日期"] = pd.to_datetime(
         summary["实际到柜日期"], errors="coerce"
     ).dt.date
+    container_keys = summary["货柜记录ID"].tolist()
+    widget_key = container_selection_widget_key(
+        st.session_state,
+        "pending_container_posting",
+        container_keys,
+    )
     selected = st.dataframe(
         summary.drop(columns="货柜记录ID"),
         hide_index=True,
@@ -83,7 +93,7 @@ def render_pending_container_posting(supabase, raw_df):
         height=fit_table_height(summary),
         on_select="rerun",
         selection_mode="single-row",
-        key="pending_container_posting",
+        key=widget_key,
         column_config={
             "实际到柜日期": st.column_config.DateColumn("实际到柜日期"),
             "待入库件数": st.column_config.NumberColumn(
@@ -91,12 +101,13 @@ def render_pending_container_posting(supabase, raw_df):
             ),
         },
     )
-    if not selected.selection.rows:
+    container_key = selected_container_key(
+        container_keys, selected.selection.rows
+    )
+    if not container_key:
         st.info("选择一个货柜查看明细并确认入库")
         return
 
-    row = summary.iloc[selected.selection.rows[0]]
-    container_key = row["货柜记录ID"]
     target = raw_df[raw_df["container_key"] == container_key]
     edited_detail_df = render_container_detail(
         build_container_display(

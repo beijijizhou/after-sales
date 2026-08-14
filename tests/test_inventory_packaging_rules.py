@@ -19,7 +19,60 @@ from ui.inventory.operations.outbound_i18n import (
     to_display_table,
     to_internal_table,
 )
+from ui.inventory.operations.outbound_entry import SKU_ENTRY_TEXT
+
+
 class InventoryPackagingRuleTests(unittest.TestCase):
+    def test_piece_box_and_bag_are_available_with_piece_first(self):
+        self.assertEqual(
+            list(SKU_ENTRY_TEXT["zh"]["packages"].values()),
+            ["件", "箱", "包"],
+        )
+
+    def test_piece_entry_is_not_multiplied_by_packaging_rules(self):
+        sku_df = pd.DataFrame([{
+            "brand": "Haloo", "material": "CVC",
+            "color": "黑", "size": "S", "is_active": True,
+        }])
+        lookup = build_outbound_sku_lookup(sku_df)
+        entries = pd.DataFrame([{
+            "品牌": "Haloo", "材质": "CVC",
+            "颜色": "黑", "尺码": "S",
+            "包装单位": "Piece",
+            "箱规": 100,
+            "包装数量": 1_000,
+        }])
+
+        adjustments, preview = convert_sku_package_entries(
+            entries,
+            lookup,
+            pd.Timestamp("2026-08-14").date(),
+            {"standard_box": 80},
+        )
+
+        self.assertEqual(preview.loc[0, "包装单位"], "Piece")
+        self.assertEqual(preview.loc[0, "箱规"], 1)
+        self.assertEqual(preview.loc[0, "总件数"], 1_000)
+        self.assertEqual(adjustments.loc[0, "数量"], 1_000)
+
+    def test_missing_package_unit_defaults_to_pieces(self):
+        sku_df = pd.DataFrame([{
+            "brand": "Haloo", "material": "CVC",
+            "color": "白", "size": "M", "is_active": True,
+        }])
+        lookup = build_outbound_sku_lookup(sku_df)
+        entries = pd.DataFrame([{
+            "品牌": "Haloo", "材质": "CVC",
+            "颜色": "白", "尺码": "M", "包装数量": 200,
+        }])
+
+        _, preview = convert_sku_package_entries(
+            entries, lookup, pd.Timestamp("2026-08-14").date()
+        )
+
+        self.assertEqual(preview.loc[0, "包装单位"], "Piece")
+        self.assertEqual(preview.loc[0, "总件数"], 200)
+
     def test_compact_sku_entry_shows_pack_size_and_total(self):
         sku_df = pd.DataFrame([{
             "brand": "Cotton", "material": "CVC",

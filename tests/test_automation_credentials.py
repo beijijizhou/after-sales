@@ -1,5 +1,9 @@
 import unittest
 from unittest.mock import Mock
+from base64 import urlsafe_b64encode
+import hashlib
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from db.automation_credentials import (
     CredentialDecryptionError,
@@ -59,6 +63,33 @@ class AutomationCredentialTests(unittest.TestCase):
 
         self.assertEqual(token, "plain-token")
 
+    def test_database_token_reads_edge_function_encryption(self):
+        secret = "secret"
+        key = hashlib.sha256(
+            f"after-sales:erp-api-token:{secret}".encode("utf-8")
+        ).digest()
+        nonce = b"123456789012"
+        ciphertext = AESGCM(key).encrypt(
+            nonce,
+            b"edge-token",
+            None,
+        )
+        encrypted_token = (
+            "aesgcm:v1:"
+            f"{_base64url(nonce)}:"
+            f"{_base64url(ciphertext)}"
+        )
+        database = Mock()
+        database.table.return_value = _Query([{
+            "platform": "Haloo",
+            "encrypted_token": encrypted_token,
+            "status": "active",
+        }])
+
+        token = load_erp_token(database, "Haloo", secret)
+
+        self.assertEqual(token, "edge-token")
+
     def test_wrong_deployment_secret_does_not_return_garbage(self):
         writer = _Query()
         database = Mock()
@@ -79,6 +110,14 @@ class AutomationCredentialTests(unittest.TestCase):
 
         with self.assertRaises(CredentialExpiredError):
             load_erp_token(database, "Haloo", "secret")
+
+
+def _base64url(value):
+    return (
+        urlsafe_b64encode(value)
+        .decode("utf-8")
+        .rstrip("=")
+    )
 
 
 if __name__ == "__main__":

@@ -26,6 +26,12 @@ secret values from the UI.
 
 ## Shared Humbird ERP authorization
 
+Haloo 优先使用蜂鸟官方开放平台。在 Streamlit Secrets 中配置
+`HUMBIRD_OPEN_API_KEY`；官方文档与接口清单见
+`docs/HUMBIRD_OPEN_API.md`。该模式不需要 Chrome、网页登录或 token 刷新。
+原有数据库加密 token 继续保留为生产数据备用通道，官方 API 暂时不可用时
+会自动回退；不要在启用 API Key 后删除旧 token。
+
 Run `sql/production/erp_api_credentials.sql` once in Supabase before enabling
 Haloo, 莆田, or 隆丰 production synchronization. Their bearer tokens are stored
 encrypted in `erp_api_credentials`; the application derives the encryption key

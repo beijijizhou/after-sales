@@ -49,6 +49,7 @@ an activity log.
 | Finance persistence | `db/finance/repository.py`, `consumable_repository.py`, `cost_maintenance.py` | UI consumes stable finance functions; inventory, consumable and maintenance table details stay isolated. |
 | Cross-ledger inbound business batches | `db/finance/inbound_linking.py`, `ui/finance/inbound_batches.py` | Keep production and consumable ledger IDs independent, but group rows from the same container under one manager-facing inbound batch. |
 | SKU group identity changes | `db/inventory/master_data/sku_identity.py` | SKU editors reuse propagation and merge-preview rules before calling the write service. |
+| Persistent SKU merge rules | `db/inventory/master_data/sku_merge.py`, `ui/inventory/sku/merge.py` | SKU management owns audited source-to-target rules, size-level previews and current-rule visibility; inventory history is never rewritten. |
 | Inventory movement batches and selectors | `ui/inventory/history/core/batches.py`, `core/batch_selector.py` | Reuse batch identity, summary and dependent selector state. |
 | Inventory history filtering and tables | `ui/inventory/history/core/` | Extend shared movement/source/reversal filters, quantity search and tables instead of filtering inside pages. |
 | Inventory history workflows | `ui/inventory/history/workflows/` | Compose existing reversal, daily-outbound correction, posted-container quantity/cost correction and SKU-history workflows; do not rebuild stock review. Posted container corrections belong to the selected inventory-ledger batch, while the container page remains read-only after posting. |
@@ -65,6 +66,7 @@ an activity log.
 | Sales parties and invoice signing | `ui/inventory/sales/customer_section.py`, `invoice_review.py` | Sales pages compose customer selection and preview-before-signing; inventory validation remains shared. |
 | Production platform catalog | `automation/production.py` | Logistics and production pages reuse the same department/platform ownership. |
 | ERP product normalization | `utils/erp/` | Source adapters feed shared normalized records; do not normalize the same platform in UI code. |
+| Humbird official production and logistics API | `automation/api/humbird/open_client.py`, `automation/logistics/humbird.py` | Haloo production and waybill acquisition share the official Open Platform client; keep API-key auth, product/SKU hydration and order-level waybill lookup out of UI code. |
 | Daily usage model | `utils/daily_usage_model.py` | Inventory and consumable planning reuse common daily-rate calculations where units and semantics match. |
 | Google Sheets returned-range matching | `utils/google_sheets.py` | All Sheets batch readers use the shared normalized range lookup. |
 | Logistics carrier/label review | `ui/logistics/review/` | Compose model, OCR runner, state and view; keep `page.py` as controller only. |

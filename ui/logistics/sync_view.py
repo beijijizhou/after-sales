@@ -27,7 +27,9 @@ from ui.logistics.source_gateway import (
 from utils.auth import has_permission
 
 
-CONNECTED_PLATFORMS = {"S2B", "七创", "一朵云", *SDS_PLATFORM_PROFILES}
+CONNECTED_PLATFORMS = {
+    "Haloo", "S2B", "七创", "一朵云", *SDS_PLATFORM_PROFILES,
+}
 ORDER_STAGES = {
     "待排产/未接单": 1, "生产中": 2, "已完成/已发货": 6,
 }
@@ -156,4 +158,3 @@ def _render_upload_sync():
         f"已导入 {len(rows):,} 条｜普通USPS {usps_count:,} 条｜"
         f"其他物流 {len(rows) - usps_count:,} 条"
     )
-

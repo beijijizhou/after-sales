@@ -9,9 +9,9 @@ from utils.sku_sorting import sort_sku_rows
 from utils.option_values import ordered_values
 
 SKU_ENTRY_TEXT = {
-    "zh": {"title": "按 SKU 和箱规录入", "help": "只添加实际出库的 SKU；填写箱数或包数后，下方直接显示换算总件数。", "brand": "品牌", "material": "材质", "color": "颜色", "size": "尺码", "package": "包装单位", "units": "箱规（件数）", "units_help": "可留空使用换算规则；同一 SKU 有 70/72 件箱规时请直接填写。", "count": "箱数 / 包数", "total": "总件数", "total_help": "根据箱规和箱数 / 包数自动计算，不可手动修改。", "packages": {"Box": "箱", "Bag": "包"}, "import_title": "批量文件导入（可选）"},
-    "en": {"title": "Enter by SKU and pack size", "help": "Add only outbound SKUs. The converted piece total appears below.", "brand": "Brand", "material": "Material", "color": "Color", "size": "Size", "package": "Package", "units": "Pieces per package", "units_help": "Leave blank for the conversion rule, or enter an exact pack size.", "count": "Boxes / bags", "total": "Total pieces", "total_help": "Calculated automatically from pack size and package count.", "packages": {"Box": "Box", "Bag": "Bag"}, "import_title": "Batch file import (optional)"},
-    "es": {"title": "Registrar por SKU y empaque", "help": "Agregue solo los SKU enviados; el total convertido aparece abajo.", "brand": "Marca", "material": "Material", "color": "Color", "size": "Talla", "package": "Empaque", "units": "Piezas por empaque", "units_help": "Déjelo vacío para usar la regla o indique el empaque exacto.", "count": "Cajas / bolsas", "total": "Piezas totales", "total_help": "Se calcula automáticamente según el empaque y la cantidad.", "packages": {"Box": "Caja", "Bag": "Bolsa"}, "import_title": "Importación por archivo (opcional)"},
+    "zh": {"title": "按 SKU 和包装单位录入", "help": "只添加实际出库的 SKU；默认按件录入，选择箱或包时再按包装规格换算。", "brand": "品牌", "material": "材质", "color": "颜色", "size": "尺码", "package": "包装单位", "units": "每箱 / 包件数", "units_help": "按件录入时无需填写；箱或包可留空使用换算规则，同一 SKU 有 70/72 件箱规时请直接填写。", "count": "数量", "total": "总件数", "total_help": "按件录入时等于数量；按箱或包录入时自动换算。", "packages": {"Piece": "件", "Box": "箱", "Bag": "包"}, "import_title": "批量文件导入（可选）"},
+    "en": {"title": "Enter by SKU and package unit", "help": "Add only outbound SKUs. Piece is the default; boxes and bags use their package conversion.", "brand": "Brand", "material": "Material", "color": "Color", "size": "Size", "package": "Package unit", "units": "Pieces per box / bag", "units_help": "Not needed for pieces. Leave blank to use the box or bag conversion rule.", "count": "Quantity", "total": "Total pieces", "total_help": "Equal to quantity for pieces; converted automatically for boxes or bags.", "packages": {"Piece": "Piece", "Box": "Box", "Bag": "Bag"}, "import_title": "Batch file import (optional)"},
+    "es": {"title": "Registrar por SKU y unidad de empaque", "help": "Agregue solo los SKU enviados. La pieza es la unidad predeterminada.", "brand": "Marca", "material": "Material", "color": "Color", "size": "Talla", "package": "Unidad", "units": "Piezas por caja / bolsa", "units_help": "No se requiere para piezas; déjelo vacío para usar la regla de conversión.", "count": "Cantidad", "total": "Piezas totales", "total_help": "Para piezas equivale a la cantidad; cajas y bolsas se convierten automáticamente.", "packages": {"Piece": "Pieza", "Box": "Caja", "Bag": "Bolsa"}, "import_title": "Importación por archivo (opcional)"},
 }
 
 
@@ -31,7 +31,7 @@ def render_sku_outbound_entry(
     table_key = f"{state_key}_table_version"
     source = pd.DataFrame(st.session_state.get(state_key, [{
         text["brand"]: None, text["material"]: None, text["color"]: None,
-        text["size"]: None, text["package"]: labels["Box"],
+        text["size"]: None, text["package"]: labels["Piece"],
         text["units"]: None, text["count"]: 0, text["total"]: 0,
     }]))
     display = st.data_editor(
@@ -50,7 +50,7 @@ def render_sku_outbound_entry(
     })
     entries["包装单位"] = entries["包装单位"].map(
         {label: kind for kind, label in labels.items()}
-    ).fillna("Box")
+    ).fillna("Piece")
     adjustments, preview = convert_sku_package_entries(
         entries, sku_lookup, movement_date, packaging_rules, sku_packaging_rules
     )
@@ -91,4 +91,3 @@ def _row_total(row, lookup, movement_date, rules, sku_rules):
         pd.DataFrame([row]), lookup, movement_date, rules, sku_rules
     )
     return int(preview.iloc[0]["总件数"]) if not preview.empty else 0
-

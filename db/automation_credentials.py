@@ -1,10 +1,12 @@
 """Encrypted shared credentials for server-side ERP automation."""
 
 from base64 import urlsafe_b64encode
+from base64 import urlsafe_b64decode
 from datetime import datetime, timezone
 import hashlib
 
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 TABLE = "erp_api_credentials"
@@ -35,10 +37,17 @@ def load_erp_token(supabase, platform, encryption_secret):
             f"{platform} 共享授权已失效，需要管理员重新登录并更新一次"
         )
     try:
+        encrypted_token = str(row["encrypted_token"])
+        if encrypted_token.startswith("aesgcm:v1:"):
+            return _decrypt_aesgcm_token(encrypted_token, encryption_secret)
+
         return _cipher(encryption_secret).decrypt(
-            str(row["encrypted_token"]).encode("utf-8")
+            encrypted_token.encode("utf-8")
         ).decode("utf-8")
-    except (InvalidToken, KeyError, UnicodeDecodeError) as error:
+    except (
+        InvalidToken, KeyError, UnicodeDecodeError,
+        ValueError,
+    ) as error:
         raise CredentialDecryptionError(
             f"{platform} 数据库 token 无法解密；请确认部署密钥一致"
         ) from error
@@ -102,6 +111,29 @@ def _cipher(secret):
         f"after-sales:erp-api-token:{secret}".encode("utf-8")
     ).digest()
     return Fernet(urlsafe_b64encode(digest))
+
+
+def _decrypt_aesgcm_token(value, secret):
+    _prefix, _version, nonce, ciphertext = value.split(":", 3)
+    cipher = AESGCM(_encryption_key(secret))
+    return cipher.decrypt(
+        _decode_urlsafe(nonce),
+        _decode_urlsafe(ciphertext),
+        None,
+    ).decode("utf-8")
+
+
+def _encryption_key(secret):
+    return hashlib.sha256(
+        f"after-sales:erp-api-token:{secret}".encode("utf-8")
+    ).digest()
+
+
+def _decode_urlsafe(value):
+    padding = "=" * (-len(value) % 4)
+    return urlsafe_b64decode(
+        f"{value}{padding}".encode("utf-8")
+    )
 
 
 def _fingerprint(token):
