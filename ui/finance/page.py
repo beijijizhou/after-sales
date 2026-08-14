@@ -14,6 +14,7 @@ from db.finance import (
 from ui.finance.cost_editor import render_inbound_cost_editor
 from ui.finance.inbound_batches import render_inbound_batch_browser
 from ui.finance.pending_costs import render_pending_cost_batches
+from ui.finance.platform_finance import render_platform_finance
 from ui.production_data.uv_monthly_summary import (
     render_uv_monthly_summary,
 )
@@ -35,64 +36,88 @@ def render_finance_page(supabase):
     month = _render_month_selector()
     start_date, end_date = _month_range(month)
     report_date = _report_date(month, end_date)
-    recent_start = report_date - timedelta(days=13)
-
-    with st.spinner("正在汇总月度财务数据..."):
-        finance_df = load_inventory_finance_month(
-            supabase, start_date, end_date
-        )
-        if recent_start < start_date:
-            recent_finance_df = load_inventory_finance_month(
-                supabase, recent_start, report_date + timedelta(days=1)
-            )
-        else:
-            recent_finance_df = finance_df[
-                (pd.to_datetime(finance_df["date"]).dt.date >= recent_start)
-                & (pd.to_datetime(finance_df["date"]).dt.date <= report_date)
-            ].reset_index(drop=True)
-        inventory_value_df = load_inventory_value_snapshot(supabase)
-        missing_cost_df = load_missing_inventory_cost_lots(supabase)
-        pending_cost_df = load_pending_cost_batches(supabase)
-        container_df = load_container_finance_month(
-            supabase, start_date, end_date
-        )
-
-    (
-        inventory_tab,
-        summary_tab,
-        batch_tab,
-        edit_tab,
-        detail_tab,
-        container_tab,
-        uv_tab,
-    ) = st.tabs([
+    sections = [
+        "入库批次",
         "商品库存月报",
         "部门 / 品类",
-        "入库批次",
         "成本维护",
         "流水明细",
         "货柜采购",
         "UV生产月汇总",
-    ])
-    with inventory_tab:
+        "平台财务",
+    ]
+    section = st.radio(
+        "财务模块",
+        sections,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="finance_section",
+    )
+
+    if section == "入库批次":
+        with st.spinner("正在读取入库批次..."):
+            finance_df = load_inventory_finance_month(
+                supabase, start_date, end_date
+            )
+            pending_cost_df = load_pending_cost_batches(supabase)
+        _render_inbound_batches(supabase, finance_df, pending_cost_df)
+    elif section == "商品库存月报":
+        with st.spinner("正在汇总商品库存月报..."):
+            finance_df = load_inventory_finance_month(
+                supabase, start_date, end_date
+            )
+            recent_finance_df = _load_recent_finance(
+                supabase, finance_df, start_date, report_date
+            )
+            inventory_value_df = load_inventory_value_snapshot(supabase)
         _render_inventory_report(
             finance_df, recent_finance_df,
             inventory_value_df, month, report_date,
         )
-    with summary_tab:
+    elif section == "部门 / 品类":
+        with st.spinner("正在汇总部门与品类..."):
+            finance_df = load_inventory_finance_month(
+                supabase, start_date, end_date
+            )
         _render_department_summary(finance_df)
-    with batch_tab:
-        _render_inbound_batches(supabase, finance_df, pending_cost_df)
-    with edit_tab:
+    elif section == "成本维护":
+        with st.spinner("正在读取成本维护数据..."):
+            finance_df = load_inventory_finance_month(
+                supabase, start_date, end_date
+            )
+            missing_cost_df = load_missing_inventory_cost_lots(supabase)
+            pending_cost_df = load_pending_cost_batches(supabase)
         _render_cost_maintenance(
             supabase, finance_df, missing_cost_df, pending_cost_df
         )
-    with detail_tab:
+    elif section == "流水明细":
+        with st.spinner("正在读取财务流水..."):
+            finance_df = load_inventory_finance_month(
+                supabase, start_date, end_date
+            )
         _render_cost_detail(finance_df)
-    with container_tab:
+    elif section == "货柜采购":
+        with st.spinner("正在读取货柜采购数据..."):
+            container_df = load_container_finance_month(
+                supabase, start_date, end_date
+            )
         _render_container_report(container_df, month)
-    with uv_tab:
+    elif section == "UV生产月汇总":
         render_uv_monthly_summary(default_month=month)
+    elif section == "平台财务":
+        render_platform_finance(report_date)
+
+
+def _load_recent_finance(supabase, finance_df, start_date, report_date):
+    recent_start = report_date - timedelta(days=13)
+    if recent_start < start_date:
+        return load_inventory_finance_month(
+            supabase, recent_start, report_date + timedelta(days=1)
+        )
+    return finance_df[
+        (pd.to_datetime(finance_df["date"]).dt.date >= recent_start)
+        & (pd.to_datetime(finance_df["date"]).dt.date <= report_date)
+    ].reset_index(drop=True)
 
 
 def _render_month_selector():

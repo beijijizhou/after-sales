@@ -13,7 +13,10 @@ from automation.logistics import (
     local_login_available,
     refresh_local_s2b_token,
 )
-from automation.logistics.humbird import fetch_humbird_shipments
+from automation.logistics.humbird import (
+    HUMBIRD_OPEN_LOGISTICS_PLATFORMS,
+    fetch_humbird_shipments,
+)
 from automation.production import SDS_PLATFORM_PROFILES
 from automation.api.humbird.config import load_humbird_credentials
 from db.supabase_client import supabase
@@ -21,7 +24,7 @@ from ui.logistics.review.model import erp_time_range
 
 
 def fetch_source(source, department, status, start_date, end_date):
-    if source == "Haloo":
+    if source in HUMBIRD_OPEN_LOGISTICS_PLATFORMS:
         return fetch_humbird_shipments(
             source,
             load_humbird_credentials(st.secrets, source, supabase),

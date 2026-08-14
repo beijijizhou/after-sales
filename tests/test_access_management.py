@@ -13,7 +13,12 @@ from db.access import (
     validate_role_definition,
 )
 from ui.access.page import access_change_preview, filter_access_users
-from ui.access.permissions import permission_matrix
+from ui.access.permissions import (
+    permission_group_matrix,
+    permission_matrix,
+    role_permission_detail,
+    role_permission_summary,
+)
 from ui.access.role_editor import role_permission_preview
 import utils.auth.session as auth_session
 from utils.auth.constants import NAV_SECTIONS
@@ -119,6 +124,42 @@ class AccessManagementTests(unittest.TestCase):
         self.assertEqual(matrix.at["主管", "查看物流查询"], "✓")
         self.assertEqual(matrix.at["主管", "同步ERP、OCR与物流管理"], "")
         self.assertEqual(matrix.at["主管", "管理用户与角色权限"], "")
+
+    def test_role_permission_summary_is_compact_and_counted(self):
+        roles, catalog, assigned = _dynamic_role_frames()
+
+        summary = role_permission_summary(
+            roles, catalog, assigned
+        ).set_index("角色")
+
+        self.assertEqual(summary.at["主管", "已启用权限"], 2)
+        self.assertEqual(summary.at["主管", "全部权限"], 4)
+        self.assertEqual(summary.at["主管", "覆盖率"], 50)
+
+    def test_role_detail_can_filter_one_permission_group(self):
+        roles, catalog, assigned = _dynamic_role_frames()
+
+        detail = role_permission_detail(
+            "supervisor", catalog, assigned, "物流"
+        ).set_index("权限")
+
+        self.assertEqual(len(detail), 2)
+        self.assertEqual(detail.at["查看物流查询", "状态"], "✓ 已启用")
+        self.assertEqual(
+            detail.at["同步ERP、OCR与物流管理", "状态"], "— 未启用"
+        )
+
+    def test_group_matrix_only_contains_selected_group(self):
+        roles, catalog, assigned = _dynamic_role_frames()
+
+        matrix = permission_group_matrix(
+            "物流", roles, catalog, assigned
+        )
+
+        self.assertEqual(
+            matrix.columns.tolist(),
+            ["角色", "查看物流查询", "同步ERP、OCR与物流管理"],
+        )
 
     def test_access_preview_lists_added_and_removed_permissions(self):
         roles, catalog, assigned = _dynamic_role_frames()
@@ -257,6 +298,17 @@ class AccessManagementTests(unittest.TestCase):
         self.assertIn("app_actor_can_manage_access", sql)
         self.assertIn("app_role_change_audit", sql)
         self.assertIn("upsert_app_role", sql)
+
+    def test_role_schema_archives_legacy_wide_permission_table(self):
+        schema = (
+            Path(__file__).resolve().parents[1]
+            / "sql" / "access" / "role_management" / "01_schema.sql"
+        ).read_text()
+
+        self.assertIn("information_schema.columns", schema)
+        self.assertIn("column_name = 'role_key'", schema)
+        self.assertIn("rename to app_role_permissions_legacy_wide", schema)
+        self.assertNotIn("drop table", schema.lower())
 
 
 def _dynamic_role_frames():

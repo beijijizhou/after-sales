@@ -5,6 +5,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from automation.api.humbird.open_client import HumbirdOpenApiClient
 
 
+HUMBIRD_OPEN_LOGISTICS_PLATFORMS = frozenset({"Haloo", "隆丰"})
+
+
 STAGE_STATUSES = {
     1: [-1],
     2: [1, 5],

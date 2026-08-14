@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from automation.api.fangguo.auth import login_fangguo
+from automation.api.fangguo.auth import login_fangguo_cached
 
 
 API_URL = "https://fangguo.com/fgapp/statistics/warehouse/stat/details1"
@@ -81,7 +81,7 @@ def _fetch_page(
 
 def _authenticated_client(credentials):
     if credentials.get("username") and credentials.get("password"):
-        return login_fangguo(credentials)
+        return login_fangguo_cached(credentials)
     token = str(credentials.get("token") or "").strip()
     if not token:
         raise ValueError("方果配置需要账号密码或 token")

@@ -2,9 +2,9 @@
 
 官方文档入口：<https://open.hihumbird.com/api/>
 
-本项目的 Haloo 生产数据和订单物流优先使用蜂鸟官方开放平台，不依赖
-Chrome、Playwright、网页登录状态或网页登录 token。莆田和隆丰尚未配置各自
-的开放平台 Key 时，继续使用原有服务器 token 适配器。
+本项目的 Haloo、莆田和隆丰生产数据在配置各自的开放平台 Key 后，优先使用
+蜂鸟官方开放平台，不依赖 Chrome、Playwright、网页登录状态或网页登录
+token。尚未配置开放平台 Key 的平台继续使用原有服务器 token 适配器。
 
 Haloo 原有 Bearer token + HMAC 生产接口继续保留。系统会同时加载官方 API
 Key 与数据库中的旧 token；官方生产接口无权限、限流或临时故障时，自动切换
@@ -13,17 +13,15 @@ Key 与数据库中的旧 token；官方生产接口无权限、限流或临时�
 
 ## 部署配置
 
-在本地 `.streamlit/secrets.toml` 或 Streamlit Community Cloud 的 Secrets 中配置：
+在本地 `.streamlit/secrets.toml` 或 Streamlit Community Cloud 的 Secrets 中按
+平台分别配置。真实 Key 不得写入 Git、日志或页面：
 
 ```toml
-HUMBIRD_OPEN_API_KEY = "蜂鸟商家后台生成的 API Key"
-```
+[humbird_open_api."Haloo"]
+api_key = "Haloo 账号在蜂鸟商家后台生成的 API Key"
 
-真实 Key 不得写入 Git、日志或页面。也可以使用分平台结构：
-
-```toml
-[humbird_open_api.Haloo]
-api_key = "蜂鸟商家后台生成的 API Key"
+[humbird_open_api."隆丰"]
+api_key = "隆丰账号在蜂鸟商家后台生成的 API Key"
 ```
 
 ## 已接入链路
@@ -39,9 +37,10 @@ api_key = "蜂鸟商家后台生成的 API Key"
 | 获取物流面单 | `logistics.waybill.get` | 按订单号获取物流商、物流单号、面单 PDF 和面单尺寸 |
 | 确认发货 | `logistics.delivery.confirm` | 写操作；当前只记录文档能力，系统不会在读取链路中自动调用 |
 
-生产数据入口位于“生产数据”页面；物流入口位于“物流单号追踪 → 从 ERP
-自动读取”。物流结果继续进入共享的物流识别、USPS 筛选、面单 OCR 和数据库
-缓存流程，不建立蜂鸟专用的重复页面或数据表。
+生产数据入口位于“生产数据”页面；Haloo 和隆丰的物流入口均位于“物流单号
+追踪 → 从 ERP 自动读取”，并复用同一个蜂鸟开放平台适配器。物流结果继续进入
+共享的物流识别、USPS 筛选、面单 OCR 和数据库缓存流程，不为不同蜂鸟账号
+建立重复页面或数据表。
 
 ## 状态口径
 

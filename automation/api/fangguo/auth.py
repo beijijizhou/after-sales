@@ -1,3 +1,7 @@
+from hashlib import sha256
+from threading import Lock
+from time import monotonic
+
 import requests
 
 
@@ -6,6 +10,9 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36"
 )
+DEFAULT_TOKEN_CACHE_SECONDS = 45 * 60
+_TOKEN_CACHE = {}
+_TOKEN_CACHE_LOCK = Lock()
 
 
 def login_fangguo(credentials, session=None):
@@ -34,6 +41,37 @@ def login_fangguo(credentials, session=None):
     if not token:
         raise ValueError("方果登录成功，但响应中缺少 token")
     return client, _strip_bearer(token)
+
+
+def login_fangguo_cached(credentials):
+    """Reuse a Fangguo login token in this server process until its TTL ends."""
+    cache_seconds = int(
+        credentials.get("token_cache_seconds") or DEFAULT_TOKEN_CACHE_SECONDS
+    )
+    cache_seconds = max(0, cache_seconds)
+    cache_key = _credential_cache_key(credentials)
+    now = monotonic()
+    with _TOKEN_CACHE_LOCK:
+        cached = _TOKEN_CACHE.get(cache_key)
+        if cached and cached["expires_at"] > now:
+            return requests.Session(), cached["token"]
+
+    client, token = login_fangguo(credentials)
+    if cache_seconds:
+        with _TOKEN_CACHE_LOCK:
+            _TOKEN_CACHE[cache_key] = {
+                "token": token,
+                "expires_at": monotonic() + cache_seconds,
+            }
+    return client, token
+
+
+def clear_fangguo_login_cache(credentials=None):
+    with _TOKEN_CACHE_LOCK:
+        if credentials is None:
+            _TOKEN_CACHE.clear()
+        else:
+            _TOKEN_CACHE.pop(_credential_cache_key(credentials), None)
 
 
 def _login_headers(credentials):
@@ -75,3 +113,12 @@ def _extract_token(payload):
 def _strip_bearer(token):
     value = str(token).strip()
     return value[7:].strip() if value.casefold().startswith("bearer ") else value
+
+
+def _credential_cache_key(credentials):
+    identity = "\0".join([
+        str(credentials.get("tenant_id") or ""),
+        str(credentials.get("username") or ""),
+        str(credentials.get("password") or ""),
+    ])
+    return sha256(identity.encode("utf-8")).hexdigest()

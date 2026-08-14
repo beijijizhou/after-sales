@@ -84,15 +84,16 @@ class SharedReuseContractTests(unittest.TestCase):
             with self.subTest(file=relative):
                 self.assertIn("apply_inventory_dimension_filters", source)
 
-    def test_consumable_entry_uses_shared_package_validation(self):
-        files = (
-            "ui/consumables/operations/entry.py",
-            "ui/consumables/operations/stock_tables.py",
-        )
-        for relative in files:
-            source = (PROJECT_ROOT / relative).read_text()
-            with self.subTest(file=relative):
-                self.assertIn("validate_package_sizes", source)
+    def test_consumable_stocktake_uses_package_validation(self):
+        stocktake = (
+            PROJECT_ROOT / "ui/consumables/operations/stock_tables.py"
+        ).read_text()
+        entry = (
+            PROJECT_ROOT / "ui/consumables/operations/entry.py"
+        ).read_text()
+        self.assertIn("validate_package_sizes", stocktake)
+        self.assertNotIn("validate_package_sizes", entry)
+        self.assertIn("entry_to_base", entry)
 
     def test_container_posting_has_one_feedback_action(self):
         posting = (PROJECT_ROOT / "ui/inventory/container/posting.py").read_text()

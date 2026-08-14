@@ -7,7 +7,7 @@ from db.access import (
     load_roles,
 )
 from ui.access.audit import render_access_audit
-from ui.access.permissions import permission_matrix
+from ui.access.permissions import render_permission_overview
 from ui.access.role_editor import render_role_configuration
 from ui.access.user_editor import (
     access_change_preview,
@@ -42,14 +42,7 @@ def render_access_management_page(supabase):
     with role_tab:
         render_role_configuration(supabase, roles, catalog, assigned)
     with matrix_tab:
-        st.info(
-            "此矩阵直接读取数据库中的角色—权限组合；"
-            "角色配置保存后会立即反映在这里。"
-        )
-        st.dataframe(
-            permission_matrix(roles, catalog, assigned),
-            hide_index=True, width="stretch",
-        )
+        render_permission_overview(roles, catalog, assigned)
     with audit_tab:
         render_access_audit(supabase, roles)
 

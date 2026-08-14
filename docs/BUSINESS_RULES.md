@@ -166,6 +166,30 @@
 
 ## Production And QA
 
+## Platform Finance
+
+- Platform financial corrections use a read, reconcile, preview and export
+  workflow. A corrected price calculation must preserve the provider's
+  original order line, material fee, other fees, refunds and total alongside
+  the proposed price rule, recalculated material fee and difference. A preview
+  or export never silently writes revised amounts back to the provider.
+- Provider customer-group IDs, when used, and credentials are tenant
+  configuration, not shared source constants. A blank customer-group filter
+  reads every customer in the selected tenant and date range. Financial
+  acquisition must read every page, dedupe stable order/SKU identities and
+  show unmatched price rules before users rely on the recalculated total.
+- Fangguo reconciliation prices default to one price per product/material for
+  the current Haloo and Longfeng accounts. The operator may explicitly switch
+  to product-and-model pricing when models need different prices. Color and
+  provider SKU specification remain traceability fields and never split the
+  price rule. The result produces separate Haloo and Longfeng bills, with
+  Longfeng 1/2/3 consolidated and every bill retaining its order numbers,
+  original amount, corrected amount and amount still due.
+- Each customer-facing Bill is one Excel workbook: the first worksheet is the
+  concise product summary and the second is the provider order detail. The UI
+  does not emit separate recalculation or order-detail CSV files for the same
+  Bill.
+
 - Prefer Supabase summary functions over downloading daily detail rows.
 - Filter by date and platform in the database, not after loading the full table.
 - Haloo versus other clients is based on the database `platform`, not barcode

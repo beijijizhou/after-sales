@@ -1,4 +1,5 @@
 from db.inventory.container.repository import (
+    append_inventory_container_items,
     create_inventory_containers,
     load_container_dimensions,
     load_inventory_containers,
@@ -38,6 +39,7 @@ __all__ = [
     "build_container_template",
     "confirm_container_arrival",
     "confirm_container_arrival_date",
+    "append_inventory_container_items",
     "create_inventory_containers",
     "load_inventory_containers",
     "load_container_dimensions",

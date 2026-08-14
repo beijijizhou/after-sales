@@ -20,6 +20,17 @@ The logistics page requires:
 - `logistics_s2b_accounts.UV.token` and/or
   `logistics_s2b_accounts.DTF.token` when those accounts are enabled.
 
+The Fangguo platform-finance tab uses
+`factory_credentials."方果"`. Configure `username`, `password`, `tenant_id`,
+and the tenant-specific `finance_group_ids` list. A short-lived `token` may be
+used instead of username/password, but it must remain in Secrets and must
+never be pasted into source code or logs. Username/password login tokens are
+cached in server memory for 45 minutes by default; configure
+`token_cache_seconds` to match the provider session lifetime.
+For a fixed reconciliation scope, also configure `finance_customer_ids` and
+`finance_customer_names`. The IDs preserve the provider identity while the
+names drive the exact order-line filter returned by the finance endpoint.
+
 Never commit real values to GitHub. Streamlit Cloud injects these values only
 on the server. Browser users can run authorized operations but cannot read the
 secret values from the UI.

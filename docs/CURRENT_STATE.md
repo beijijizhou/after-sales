@@ -40,7 +40,8 @@ refactors, not after every small feature.
   source selection in `sync_view.py` and `source_gateway.py`, carrier and
   label review in `ui/logistics/review/`, and USPS lookup in
   `ui/logistics/tracking/`.
-- Finance: `db/finance/` and `ui/finance/`
+- Finance: `db/finance/` and `ui/finance/`; provider order-fee acquisition
+  lives in provider adapters such as `automation/api/fangguo/finance.py`.
 - Finance persistence is separated into inventory reporting
   (`db/finance/repository.py`), consumable valuation
   (`consumable_repository.py`), and missing-cost maintenance

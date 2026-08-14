@@ -22,6 +22,30 @@ create table if not exists public.app_roles (
     )
 );
 
+-- July 2026 installations used the same table name for a wide, boolean
+-- permission table whose primary key was `role`. Archive that unused legacy
+-- table before creating the normalized role-permission relation. Never drop
+-- it automatically: administrators may still need it for comparison.
+do $$
+begin
+    if to_regclass('public.app_role_permissions') is not null
+       and not exists (
+           select 1
+           from information_schema.columns
+           where table_schema = 'public'
+             and table_name = 'app_role_permissions'
+             and column_name = 'role_key'
+       ) then
+        if to_regclass('public.app_role_permissions_legacy_wide') is not null then
+            raise exception
+                'Both legacy app_role_permissions and its backup already exist; inspect them before continuing';
+        end if;
+        alter table public.app_role_permissions
+            rename to app_role_permissions_legacy_wide;
+    end if;
+end;
+$$;
+
 create table if not exists public.app_role_permissions (
     role_key text not null references public.app_roles(role_key) on delete cascade,
     permission_key text not null

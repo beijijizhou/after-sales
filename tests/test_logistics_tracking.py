@@ -74,7 +74,10 @@ from ui.logistics.review.state import (
     store_review_ocr_results as _store_review_ocr_results,
 )
 from ui.logistics.sync_view import CONNECTED_PLATFORMS
-from ui.logistics.source_gateway import fetch_humbird_shipments as gateway_humbird
+from ui.logistics.source_gateway import (
+    fetch_humbird_shipments as gateway_humbird,
+    fetch_source,
+)
 from ui.logistics.tracking.input import (
     normalize_suggested_rows,
     parse_order_tracking_table,
@@ -105,6 +108,23 @@ from utils.auth.constants import ROLE_PERMISSIONS
 class LogisticsTrackingTests(unittest.TestCase):
     def test_logistics_gateway_imports_humbird_adapter_directly(self):
         self.assertIs(gateway_humbird, fetch_humbird_shipments)
+
+    @patch("ui.logistics.source_gateway.load_humbird_credentials")
+    @patch("ui.logistics.source_gateway.fetch_humbird_shipments")
+    def test_longfeng_routes_through_shared_humbird_logistics_adapter(
+        self, fetch, credentials
+    ):
+        credentials.return_value = {"api_key": "longfeng-key"}
+        fetch.return_value = [{"tracking_number": "9400"}]
+        start = datetime(2026, 8, 13).date()
+
+        rows = fetch_source("隆丰", "DTF", 6, start, start)
+
+        self.assertEqual(rows, [{"tracking_number": "9400"}])
+        fetch.assert_called_once_with(
+            "隆丰", {"api_key": "longfeng-key"}, start, start,
+            status=6, department="DTF",
+        )
 
     def test_usps_lookup_does_not_start_ocr_for_unreviewed_label(self):
         context = pd.DataFrame([{
@@ -880,6 +900,12 @@ class LogisticsTrackingTests(unittest.TestCase):
 
     def test_logistics_platform_default_reuses_department_platforms(self):
         self.assertIn("Haloo", CONNECTED_PLATFORMS)
+        self.assertIn("隆丰", CONNECTED_PLATFORMS)
+        dtf_pending = [
+            platform for platform in PLATFORMS_BY_DEPARTMENT["DTF"]
+            if platform not in CONNECTED_PLATFORMS
+        ]
+        self.assertEqual(dtf_pending, ["莆田", "汉森", "方果"])
         self.assertEqual(
             default_logistics_platforms(
                 ("汉森", "S2B", "SDS2"), CONNECTED_PLATFORMS

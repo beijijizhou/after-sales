@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from automation.logistics import parse_logistics_frame
+from automation.logistics.humbird import HUMBIRD_OPEN_LOGISTICS_PLATFORMS
 from automation.production import (
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
@@ -28,7 +29,8 @@ from utils.auth import has_permission
 
 
 CONNECTED_PLATFORMS = {
-    "Haloo", "S2B", "七创", "一朵云", *SDS_PLATFORM_PROFILES,
+    *HUMBIRD_OPEN_LOGISTICS_PLATFORMS,
+    "S2B", "七创", "一朵云", *SDS_PLATFORM_PROFILES,
 }
 ORDER_STAGES = {
     "待排产/未接单": 1, "生产中": 2, "已完成/已发货": 6,
@@ -58,9 +60,11 @@ def _render_erp_sync():
         key=f"logistics_platforms_{department}",
     )
     connected = [item for item in platforms if item in CONNECTED_PLATFORMS]
+    pending = [item for item in platforms if item not in CONNECTED_PLATFORMS]
     st.caption(
         f"{department} 已配置平台：{'、'.join(platforms) or '暂无'}｜"
-        f"已接入物流接口：{'、'.join(connected) or '暂无'}"
+        f"已接入物流接口：{'、'.join(connected) or '暂无'}｜"
+        f"尚未接入物流接口：{'、'.join(pending) or '无'}"
     )
     stage = st.selectbox("订单阶段", list(ORDER_STAGES))
     dates = st.columns(2)

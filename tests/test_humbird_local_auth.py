@@ -8,6 +8,55 @@ from automation.api.humbird.config import load_humbird_credentials
 
 
 class HumbirdLocalAuthTest(unittest.TestCase):
+    @patch(
+        "automation.api.humbird.config._load_legacy_credentials",
+        return_value=None,
+    )
+    def test_longfeng_uses_its_platform_open_api_key(self, _legacy):
+        credentials = load_humbird_credentials(
+            {
+                "HUMBIRD_OPEN_API_KEY": "haloo-only",
+                "humbird_open_api": {
+                    "隆丰": {"api_key": "longfeng-key"},
+                },
+            },
+            "隆丰",
+        )
+
+        self.assertEqual(credentials["api_key"], "longfeng-key")
+        self.assertEqual(
+            credentials["credential_source"], "humbird_open_api"
+        )
+
+    @patch(
+        "automation.api.humbird.config._load_legacy_credentials",
+        side_effect=RuntimeError("expired legacy token"),
+    )
+    def test_open_api_key_is_not_blocked_by_expired_legacy_token(
+        self, _legacy
+    ):
+        credentials = load_humbird_credentials(
+            {
+                "humbird_open_api": {
+                    "隆丰": {"api_key": "longfeng-key"},
+                },
+            },
+            "隆丰",
+        )
+
+        self.assertEqual(credentials["api_key"], "longfeng-key")
+
+    @patch(
+        "automation.api.humbird.config._load_legacy_credentials",
+        return_value=None,
+    )
+    def test_global_open_api_key_remains_haloo_only(self, _legacy):
+        with self.assertRaisesRegex(ValueError, "隆丰"):
+            load_humbird_credentials(
+                {"HUMBIRD_OPEN_API_KEY": "haloo-only"},
+                "隆丰",
+            )
+
     @patch("automation.api.humbird.config.load_erp_token")
     def test_haloo_keeps_open_api_key_and_database_token(self, load):
         load.return_value = "database-token"

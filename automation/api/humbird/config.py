@@ -15,9 +15,14 @@ LOCAL_CREDENTIALS = (
 
 def load_humbird_credentials(streamlit_secrets, platform, supabase=None):
     open_api = _open_api_profile(streamlit_secrets, platform)
-    legacy = _load_legacy_credentials(
-        streamlit_secrets, platform, supabase
-    )
+    try:
+        legacy = _load_legacy_credentials(
+            streamlit_secrets, platform, supabase
+        )
+    except Exception:
+        if not open_api:
+            raise
+        legacy = None
     if open_api and legacy:
         return {
             **legacy,
@@ -110,15 +115,17 @@ def _profile(secrets, platform):
 
 
 def _open_api_profile(secrets, platform):
-    if platform != "Haloo":
-        return None
     try:
         profile = dict(secrets["humbird_open_api"][platform])
     except (KeyError, TypeError):
         profile = {}
     api_key = str(
         profile.get("api_key")
-        or _secret_value(secrets, "HUMBIRD_OPEN_API_KEY")
+        or (
+            _secret_value(secrets, "HUMBIRD_OPEN_API_KEY")
+            if platform == "Haloo"
+            else ""
+        )
     ).strip()
     if not api_key:
         return None

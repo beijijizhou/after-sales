@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
@@ -19,6 +20,7 @@ from ui.finance.cost_editor import build_cost_batch_summary, find_cost_changes
 from ui.finance.inbound_batches import build_inbound_batch_summary
 from ui.finance.pending_costs import build_pending_cost_batch_summary
 from ui.finance.page import _build_two_week_daily_amounts
+import ui.finance.page as finance_page
 from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
 
 
@@ -48,6 +50,30 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result["outbound_quantity"], 45)
         self.assertEqual(result["outbound_amount"], 52)
         self.assertEqual(result["missing_outbound_quantity"], 5)
+
+    def test_finance_page_defaults_to_lazy_inbound_batch_loading(self):
+        empty = pd.DataFrame()
+        spinner = MagicMock()
+        spinner.__enter__.return_value = None
+        spinner.__exit__.return_value = None
+        with (
+            patch.object(finance_page, "_render_month_selector", return_value=date(2026, 8, 1)),
+            patch.object(finance_page.st, "radio", return_value="入库批次"),
+            patch.object(finance_page.st, "spinner", return_value=spinner),
+            patch.object(finance_page, "load_inventory_finance_month", return_value=empty) as finance,
+            patch.object(finance_page, "load_pending_cost_batches", return_value=empty) as pending,
+            patch.object(finance_page, "load_inventory_value_snapshot") as snapshot,
+            patch.object(finance_page, "load_missing_inventory_cost_lots") as missing,
+            patch.object(finance_page, "load_container_finance_month") as containers,
+            patch.object(finance_page, "_render_inbound_batches") as render,
+        ):
+            finance_page.render_finance_page(object())
+        finance.assert_called_once()
+        pending.assert_called_once()
+        render.assert_called_once()
+        snapshot.assert_not_called()
+        missing.assert_not_called()
+        containers.assert_not_called()
 
     def test_stocktake_batches_are_not_reported_as_purchase_inbound(self):
         rows = pd.DataFrame([

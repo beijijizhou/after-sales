@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 
 from db.inventory.container.tables import normalize_container_rows
@@ -134,28 +137,8 @@ def load_container_dimensions(supabase):
 
 
 def create_inventory_containers(supabase, df, operated_by="system"):
-    records = []
     cleaned_df = normalize_container_rows(df)
-    for row in cleaned_df.to_dict("records"):
-        records.append({
-            "container_key": row["货柜记录ID"],
-            "shipped_date": row["发货日期"].isoformat(),
-            "expected_arrival_date": row["预计到货日期"].isoformat(),
-            "container_no": row["货柜号"] or None,
-            "department": row["部门"],
-            "category": row["品类"] or None,
-            "brand": row["品牌"],
-            "material": row["材质"],
-            "color": row["颜色"],
-            "size": row["尺码"],
-            "quantity": int(row["数量"]),
-            "unit_cost": float(row["成本"] or 0),
-            "品牌": row["品牌"],
-            "材质": row["材质"],
-            "成本": float(row["成本"] or 0),
-            "status": row["状态"],
-            "note": row["备注"] or None,
-        })
+    records = _container_records(cleaned_df)
     if not records:
         return []
     response = supabase.table("inventory_container_imports").insert(records).execute()
@@ -173,3 +156,92 @@ def create_inventory_containers(supabase, df, operated_by="system"):
         })
     supabase.table("inventory_container_events").insert(events).execute()
     return response.data
+
+
+def append_inventory_container_items(
+    supabase, container_key, df, operated_by="system"
+):
+    """Append audited SKU rows to one editable business container batch."""
+    existing = (
+        supabase.table("inventory_container_imports")
+        .select(
+            "container_key,container_no,status,shipped_date,"
+            "expected_arrival_date,department,category,brand,material,color,size"
+        )
+        .eq("container_key", container_key)
+        .execute().data or []
+    )
+    if not existing:
+        raise ValueError("未找到货柜记录")
+    if any(
+        str(row.get("status") or "") not in {"未到货", "在途", "延迟", "已到柜"}
+        for row in existing
+    ):
+        raise ValueError("货柜已入库或取消，不能追加明细")
+
+    cleaned_df = normalize_container_rows(df)
+    if cleaned_df.empty:
+        return []
+    if set(cleaned_df["货柜记录ID"].astype(str)) != {str(container_key)}:
+        raise ValueError("追加明细必须属于当前货柜")
+    current_keys = {_container_item_key(row) for row in existing}
+    new_keys = [_container_item_key(row) for row in _container_records(cleaned_df)]
+    if len(set(new_keys)) != len(new_keys) or current_keys.intersection(new_keys):
+        raise ValueError("货柜中已存在相同 SKU 明细")
+
+    records = _container_records(cleaned_df)
+    inserted = (
+        supabase.table("inventory_container_imports")
+        .insert(records).execute().data or []
+    )
+    first = existing[0]
+    try:
+        supabase.table("inventory_container_events").insert({
+            "container_key": container_key,
+            "container_no": first.get("container_no"),
+            "event_type": "明细补充",
+            "effective_date": datetime.now(
+                ZoneInfo("America/New_York")
+            ).date().isoformat(),
+            "previous_status": first.get("status"),
+            "new_status": first.get("status"),
+            "operated_by": operated_by,
+            "note": f"新增正式 SKU 货柜明细 {len(inserted)} 行",
+        }).execute()
+    except Exception:
+        inserted_ids = [row.get("id") for row in inserted if row.get("id")]
+        if inserted_ids:
+            (
+                supabase.table("inventory_container_imports")
+                .delete().in_("id", inserted_ids).execute()
+            )
+        raise
+    return inserted
+
+
+def _container_records(cleaned_df):
+    return [{
+        "container_key": row["货柜记录ID"],
+        "shipped_date": row["发货日期"].isoformat(),
+        "expected_arrival_date": row["预计到货日期"].isoformat(),
+        "container_no": row["货柜号"] or None,
+        "department": row["部门"],
+        "category": row["品类"] or None,
+        "brand": row["品牌"],
+        "material": row["材质"],
+        "color": row["颜色"],
+        "size": row["尺码"],
+        "quantity": int(row["数量"]),
+        "unit_cost": float(row["成本"] or 0),
+        "品牌": row["品牌"],
+        "材质": row["材质"],
+        "成本": float(row["成本"] or 0),
+        "status": row["状态"],
+        "note": row["备注"] or None,
+    } for row in cleaned_df.to_dict("records")]
+
+
+def _container_item_key(row):
+    return tuple(str(row.get(column) or "").strip().casefold() for column in (
+        "department", "category", "brand", "material", "color", "size"
+    ))
