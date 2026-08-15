@@ -339,9 +339,21 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(normalize_s2b_account("uv"), "UV")
 
     def test_3d_department_exposes_independent_s2b_account(self):
-        self.assertIn("S2B", PLATFORMS_BY_DEPARTMENT["3D"])
+        self.assertEqual(
+            PLATFORMS_BY_DEPARTMENT["3D"], ("S2B", "3D热转印")
+        )
         self.assertEqual(production_data_key("3D", "S2B"), "3D::S2B")
         self.assertEqual(normalize_s2b_account("3d"), "3D")
+
+    def test_3d_secret_template_has_s2b_factory_and_qa_sections(self):
+        template = (
+            Path(__file__).resolve().parents[1]
+            / ".streamlit" / "secrets.example.toml"
+        ).read_text()
+
+        self.assertIn('[logistics_s2b_accounts."3D"]', template)
+        self.assertIn('[factory_credentials."3D热转印"]', template)
+        self.assertIn('[qa_credentials."3D热转印"]', template)
 
     def test_usps_usage_event_records_user_without_tenant_code(self):
         supabase = Mock()

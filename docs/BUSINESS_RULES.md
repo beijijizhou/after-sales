@@ -394,6 +394,9 @@ forecast as an estimate.
 - Logistics acquisition reuses the production-data department and platform
   catalog. Users select department first and then a platform belonging to that
   department; do not maintain a separate hard-coded platform list.
+- The current 3D department scope contains only its independent S2B account and
+  the SDS `3D热转印` profile. Do not expose other ERP platforms under 3D until
+  the business explicitly enables them.
 - The initial logistics module is a pre-production shipping-label compliance
   review, not long-term delivery tracking.
 - A pending-acceptance shipment is an ERP order that already has a tracking

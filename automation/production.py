@@ -52,7 +52,7 @@ PRODUCTION_PLATFORM_NAMES = (
 PRODUCTION_DEPARTMENTS = ("DTF", "3D", "UV")
 PLATFORMS_BY_DEPARTMENT = {
     "DTF": DTF_PRODUCTION_PLATFORMS,
-    "3D": ("S2B", "一朵云", "方果", "3D热转印"),
+    "3D": ("S2B", "3D热转印"),
     "UV": (
         "S2B", "汉森", "一朵云", "方果", "SDS1", "SDS2", "忆点万象",
     ),

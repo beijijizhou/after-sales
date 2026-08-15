@@ -18,7 +18,9 @@ The logistics page requires:
 - `USPS_CLIENT_ID` and `USPS_CLIENT_SECRET`;
 - SDS factory and QA credentials for each enabled production line;
 - `logistics_s2b_accounts.UV.token` and/or
-  `logistics_s2b_accounts.DTF.token` when those accounts are enabled.
+  `logistics_s2b_accounts.DTF.token` when those accounts are enabled;
+- for the 3D department, `logistics_s2b_accounts."3D".token` plus both
+  `factory_credentials."3D热转印"` and `qa_credentials."3D热转印"`.
 
 The Fangguo platform-finance tab uses
 `factory_credentials."方果"`. Configure `username`, `password`, `tenant_id`,
