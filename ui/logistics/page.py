@@ -13,8 +13,10 @@ def render_logistics_page(supabase, selected_view="review"):
     can_manage = has_permission("can_manage_logistics")
 
     st.title("物流单号追踪")
-    st.caption(
-        "从ERP实时获取物流关系，并通过USPS接口核查Tracking Events与始发地点。"
+    st.markdown(
+        "- ERP + USPS：获取订单物流关系，核查物流事件和始发地点。\n"
+        "- :red[**OCR**]：USPS不提供完整寄件地址和重量时，识别面单PDF或图片，"
+        "辅助发现可疑面单。"
     )
     if selected_view == "review":
         _render_review_tab(supabase, can_manage)
