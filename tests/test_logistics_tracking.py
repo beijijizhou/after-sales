@@ -106,7 +106,7 @@ from ui.logistics.tracking.query import (
 from ui.logistics.usps_usage import summarize_usps_usage
 from ui.logistics.summary.detail import build_platform_activity_detail
 from ui.logistics.summary.model import build_daily_platform_summary
-from utils.auth.constants import ROLE_PERMISSIONS
+from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
@@ -799,8 +799,8 @@ class LogisticsTrackingTests(unittest.TestCase):
 
     def test_supervisor_logistics_page_hides_erp_and_ocr_workbench(self):
         with patch("ui.logistics.page.has_permission", return_value=False), patch(
-            "ui.logistics.page.st.sidebar.radio", return_value="review"
-        ), patch("ui.logistics.page.render_sync") as render_sync, patch(
+            "ui.logistics.page.render_sync"
+        ) as render_sync, patch(
             "ui.logistics.page.render_tracking_lookup"
         ) as render_lookup, patch(
             "ui.logistics.page.render_logistics_summary"
@@ -815,23 +815,29 @@ class LogisticsTrackingTests(unittest.TestCase):
 
     def test_logistics_sidebar_only_loads_selected_summary(self):
         with patch("ui.logistics.page.has_permission", return_value=True), patch(
-            "ui.logistics.page.st.sidebar.radio", return_value="summary"
-        ) as navigation, patch(
             "ui.logistics.page.render_sync"
         ) as render_sync, patch(
             "ui.logistics.page.render_tracking_lookup"
         ) as render_lookup, patch(
             "ui.logistics.page.render_logistics_summary"
         ) as render_summary:
-            render_logistics_page(Mock())
+            render_logistics_page(Mock(), selected_view="summary")
 
-        labels = navigation.call_args.kwargs["format_func"]
-        self.assertEqual(labels("review"), "物流单号获取与USPS核查")
-        self.assertEqual(labels("summary"), "物流数据总结")
         render_sync.assert_not_called()
         render_lookup.assert_not_called()
         render_summary.assert_called_once()
         self.assertTrue(render_summary.call_args.args[1])
+
+    def test_logistics_navigation_is_a_real_sidebar_group(self):
+        section = next(
+            items for title, items in NAV_SECTIONS
+            if title == "物流单号追踪"
+        )
+
+        self.assertEqual(
+            [item[1] for item in section],
+            ["物流单号获取与USPS核查", "物流数据总结", "审核规则"],
+        )
 
     def test_usps_oauth_token_is_reused_within_expiry_window(self):
         USPSClient._TOKEN_CACHE.clear()

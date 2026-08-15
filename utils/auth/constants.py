@@ -118,6 +118,8 @@ PAGE_ACCESS = {
     "platform": "can_view_platform",
     "production_data": "can_view_production_data",
     "logistics": "can_view_logistics",
+    "logistics_summary": "can_view_logistics",
+    "logistics_rules": "can_view_logistics",
     "inventory": "can_view_inventory",
     "customer_sales": "can_view_inventory",
     "inventory_transfer": "can_view_inventory",
@@ -142,7 +144,20 @@ NAV_SECTIONS = [
         ("hotstamp", "烫印", "pages/2_烫印.py"),
         ("platform", "平台", "pages/3_平台.py"),
         ("production_data", "生产数据", "pages/7_生产数据.py"),
-        ("logistics", "物流单号追踪", "pages/11_物流追踪.py"),
+    ]),
+    ("物流单号追踪", [
+        (
+            "logistics", "物流单号获取与USPS核查",
+            "pages/11_物流追踪.py",
+        ),
+        (
+            "logistics_summary", "物流数据总结",
+            "pages/15_物流数据总结.py",
+        ),
+        (
+            "logistics_rules", "审核规则",
+            "pages/16_物流审核规则.py",
+        ),
     ]),
     ("库存", [
         ("inventory_dashboard", "库存总结", "pages/4_库存总结.py"),

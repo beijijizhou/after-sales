@@ -9,12 +9,8 @@ from ui.logistics.tracking import render_tracking_lookup
 from utils.auth import has_permission
 
 
-LOGISTICS_VIEWS = ("review", "summary", "rules")
-
-
-def render_logistics_page(supabase):
+def render_logistics_page(supabase, selected_view="review"):
     can_manage = has_permission("can_manage_logistics")
-    selected_view = _render_sidebar_navigation(can_manage)
 
     st.title("物流单号追踪")
     st.caption(
@@ -26,26 +22,6 @@ def render_logistics_page(supabase):
         render_logistics_summary(supabase, can_manage)
     else:
         _render_rules()
-
-
-def _render_sidebar_navigation(can_manage):
-    labels = {
-        "review": (
-            "物流单号获取与USPS核查"
-            if can_manage else "USPS物流查询"
-        ),
-        "summary": "物流数据总结",
-        "rules": "审核规则",
-    }
-    st.sidebar.divider()
-    st.sidebar.subheader("物流单号追踪")
-    return st.sidebar.radio(
-        "功能菜单",
-        LOGISTICS_VIEWS,
-        format_func=labels.get,
-        key="logistics_subpage",
-        label_visibility="collapsed",
-    )
 
 
 def _render_review_tab(supabase, can_manage):
