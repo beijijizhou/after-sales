@@ -464,7 +464,10 @@ class InventoryDashboardTests(unittest.TestCase):
             patch(
                 "automation.sync.daily_flow_preview."
                 "build_colored_platform_audit",
-                return_value=(sources, {"missing_platforms": ["S2B"]}),
+                return_value=(sources, {
+                    "included_platforms": ["汉森", "S2B", "SDS1", "SDS2"],
+                    "missing_platforms": ["Haloo"],
+                }),
             ),
         ):
             result = _load_flow_preview(
@@ -476,7 +479,7 @@ class InventoryDashboardTests(unittest.TestCase):
         self.assertEqual(result.source_quantity, 637)
         self.assertEqual(result.unresolved_quantity, 89)
         self.assertIn("89 件", result.message)
-        self.assertIn("S2B", result.message)
+        self.assertIn("Haloo", result.message)
 
     def test_colored_preview_allows_valid_partial_deduction(self):
         colored = AUTOMATIC_DAILY_FLOWS[0]
@@ -523,8 +526,10 @@ class InventoryDashboardTests(unittest.TestCase):
             {"平台": "S2B", "原始生产件数": 50},
         ])
         metadata = {
-            "included_platforms": ["汉森", "S2B", "SDS1", "SDS2"],
-            "missing_platforms": ["Haloo", "隆丰"],
+            "included_platforms": [
+                "汉森", "S2B", "SDS1", "SDS2", "Haloo", "隆丰",
+            ],
+            "missing_platforms": ["一朵云", "方果"],
             "is_complete": False,
         }
         with (
@@ -571,7 +576,9 @@ class InventoryDashboardTests(unittest.TestCase):
                 "automation.sync.dtf_colored_inventory."
                 "load_daily_colored_production_source",
                 return_value=(pd.DataFrame(), {
-                    "included_platforms": ["汉森", "S2B", "SDS1", "SDS2"]
+                    "included_platforms": [
+                        "汉森", "S2B", "SDS1", "SDS2", "Haloo", "隆丰",
+                    ]
                 }),
             ),
         ):
@@ -583,7 +590,9 @@ class InventoryDashboardTests(unittest.TestCase):
         adjustment = apply_rows.call_args.args[3]
         reason = adjustment.iloc[0]["备注"]
         self.assertTrue(reason.startswith(colored_partial_reason(movement_date)))
-        self.assertIn("来源 汉森、S2B、SDS1、SDS2", reason)
+        self.assertIn(
+            "来源 汉森、S2B、SDS1、SDS2、Haloo、隆丰", reason
+        )
         self.assertIn(
             f"映射规则 {COLORED_MAPPING_RULE_VERSION}", reason
         )

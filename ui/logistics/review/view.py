@@ -5,8 +5,13 @@ import sys
 import pandas as pd
 import streamlit as st
 
+from db.logistics import (
+    ensure_tracking_context_shipments,
+    save_reviewed_ocr_results,
+)
 from ui.logistics.review.model import (
     carrier_filter_name,
+    database_error,
     label_ocr_candidates,
     review_selection_defaults,
 )
@@ -16,7 +21,7 @@ from ui.logistics.review.state import (
     render_label_archive_download,
     store_review_ocr_results,
 )
-from utils.auth import has_permission
+from utils.auth import get_current_operator_name, has_permission
 
 
 CARRIER_NAMES = (
@@ -25,7 +30,7 @@ CARRIER_NAMES = (
 )
 
 
-def render_carrier_review(show_empty=False):
+def render_carrier_review(supabase, show_empty=False):
     rows = st.session_state.get(
         "logistics_carrier_review_rows",
         st.session_state.get("s2b_carrier_review_rows", []),
@@ -47,7 +52,7 @@ def render_carrier_review(show_empty=False):
     ]
     selected_rows = _render_selection_table(filtered, selected_carriers)
     if selected_rows is not None:
-        _render_ocr_actions(rows, selected_rows)
+        _render_ocr_actions(supabase, rows, selected_rows)
     st.caption(
         "CBS（GOFO揽收）和CBT（TikTok指定物流商揽收）可单独筛选；"
         "它们不会进入普通USPS核查候选。"
@@ -127,7 +132,7 @@ def _render_selection_table(rows, selected_carriers):
     ]
 
 
-def _render_ocr_actions(reviewed, selected_rows):
+def _render_ocr_actions(supabase, reviewed, selected_rows):
     available = label_ocr_candidates(selected_rows)
     missing_count = len(selected_rows) - len(available)
     columns = st.columns([2, 1, 2, 2])
@@ -152,6 +157,19 @@ def _render_ocr_actions(reviewed, selected_rows):
             available, "物流识别核对", max_labels=None,
             ocr_workers=workers, ordinary_usps_only=False,
         )
+        try:
+            reviewer = get_current_operator_name()
+            shipments = ensure_tracking_context_shipments(
+                supabase,
+                [item.get("row", item) for item in selected_rows],
+                reviewer,
+            )
+            saved = save_reviewed_ocr_results(
+                supabase, selected_rows, shipments, reviewer
+            )
+            st.caption(f"OCR审计已保存 {saved:,} 条。")
+        except Exception as error:
+            st.error(database_error(error))
         store_review_ocr_results(reviewed, summary)
         st.rerun()
     render_label_archive_download(columns[3], reviewed)

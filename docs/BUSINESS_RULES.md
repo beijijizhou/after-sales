@@ -275,6 +275,12 @@ production total, the quantity mapped to deductible inventory, and the
 unresolved difference. A missing platform or a nonzero difference blocks the
 daily deduction so an incomplete day cannot be recorded as complete.
 
+Colored T-shirt quick backfill requires `汉森`, `S2B`, `SDS1`, `SDS2`,
+`Haloo`, and `隆丰`. Haloo and Longfeng use their configured Humbird Open API
+keys through the shared production adapter. Other low-volume platforms do not
+block quick backfill; the production-data page remains responsible for the
+complete all-platform reconciliation.
+
 S2B production is read from the authenticated factory bill API, not from an
 Excel export. The query uses the factory page's `production_at` field and a
 New York business-day boundary from 00:00:00 through 23:59:59, reads every
@@ -431,6 +437,17 @@ forecast as an estimate.
   carrier, label URL/file reference, label content hash, extracted return
   address, extracted weight, USPS scan result, rule version, compliance result,
   reviewer decision, and synchronization metadata.
+- Every successful ERP logistics read and validated manual order/tracking import
+  persists the order-to-tracking relationship immediately, including department,
+  platform, ERP account and every available primary or backup label PDF URL.
+  A USPS query keeps a many-to-many source snapshot so one provider request is
+  counted once even when its tracking number belongs to multiple ERP orders.
+- The logistics data summary is batch-first by New York business date,
+  department, platform and ERP account. It shows ERP orders, distinct tracking
+  numbers, USPS query counts, PDF coverage and OCR coverage before users select
+  one summary row to inspect order-level activity. OCR attempts are append-only
+  review records containing the source PDF, content hash, extracted address,
+  ounce weight, engine version, operator, status, error and timestamp.
 - USPS checks are database-first because provider requests have a cost. Reuse a
   sufficiently fresh review-time result for the same tracking number, but
   revalidate when its cache expires, the label/tracking changes, the label hash

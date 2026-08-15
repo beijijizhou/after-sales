@@ -115,9 +115,9 @@ class ProductionSyncModelTests(unittest.TestCase):
                     "主要平台快速补录",
                     extra_metadata={
                         "included_platforms": [
-                            "汉森", "S2B", "SDS1", "SDS2",
+                            "汉森", "S2B", "SDS1", "SDS2", "Haloo", "隆丰",
                         ],
-                        "missing_platforms": ["Haloo"],
+                        "missing_platforms": ["一朵云"],
                         "is_complete": False,
                         "colored_primary_complete": True,
                     },

@@ -32,6 +32,7 @@ class ModularityContractTests(unittest.TestCase):
         expected = {
             "ui/logistics": 5,
             "ui/logistics/review": 5,
+            "ui/logistics/summary": 5,
             "ui/logistics/tracking": 5,
         }
         for relative, maximum in expected.items():

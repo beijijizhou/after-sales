@@ -70,11 +70,12 @@ an activity log.
 | Sales parties and invoice signing | `ui/inventory/sales/customer_section.py`, `invoice_review.py` | Sales pages compose customer selection and preview-before-signing; inventory validation remains shared. |
 | Production platform catalog | `automation/production.py` | Logistics and production pages reuse the same department/platform ownership. |
 | ERP product normalization | `utils/erp/` | Source adapters feed shared normalized records; do not normalize the same platform in UI code. |
-| Humbird official production and logistics API | `automation/api/humbird/open_client.py`, `automation/logistics/humbird.py` | Haloo and Longfeng production and waybill acquisition share the official Open Platform client; keep API-key auth, product/SKU hydration and order-level waybill lookup out of UI code. |
+| Humbird official production and logistics API | `humbird_erp/`, `automation/api/humbird/`, `automation/logistics/humbird.py` | The publishable package owns API-key transport, pagination, product hydration and waybill lookup. Application adapters own credentials, legacy fallback, normalization and persistence; keep all of these out of UI code. |
 | Daily usage model | `utils/daily_usage_model.py` | Inventory and consumable planning reuse common daily-rate calculations where units and semantics match. |
 | Google Sheets returned-range matching | `utils/google_sheets.py` | All Sheets batch readers use the shared normalized range lookup. |
 | Logistics carrier/label review | `ui/logistics/review/` | Compose model, OCR runner, state and view; keep `page.py` as controller only. |
 | USPS tracking input/query/results | `ui/logistics/tracking/` | Reuse input normalization, cache/query, label and origin components. |
+| Logistics daily platform summary | `db/logistics/summary.py`, `ui/logistics/summary_model.py`, `summary_detail.py`, `summary_view.py` | Persist ERP relationships first, associate USPS checks through `logistics_tracking_check_sources`, then present date/platform batches before order-level PDF and OCR detail. |
 | S2B visible page actions | `automation/playwright/s2b/page_actions.py` | Browser workflows reuse shared visible exact-text interaction. |
 | Barcode search candidates and previews | `utils/barcode_patterns.py` | Exact and fuzzy search strategies reuse canonical candidate-to-input and preview schemas; UI only composes them. |
 

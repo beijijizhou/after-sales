@@ -187,14 +187,17 @@ def _apply_results(candidates, cache):
             f"{cached.get('stage') or 'OCR'}失败："
             f"{cached.get('error') or '未找到寄件地址'}"
         )
-        _set_result(item, address, fields.get("extracted_weight_oz"), status)
+        _set_result(
+            item, address, fields.get("extracted_weight_oz"), status, fields
+        )
 
 
-def _set_result(item, address, weight_oz, status):
+def _set_result(item, address, weight_oz, status, fields=None):
     row = item["row"]
     row.update({
         "ocr_address": address, "ocr_weight_oz": weight_oz,
         "ocr_weight_lb": weight_lb(weight_oz), "ocr_status": status,
+        "_ocr_fields": dict(fields or {}),
     })
     item.update({
         "OCR寄件地址": address, "OCR重量（oz）": weight_oz,

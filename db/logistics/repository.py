@@ -119,15 +119,31 @@ def load_latest_label_reviews(supabase, shipment_ids):
     return frame.drop_duplicates("shipment_id", keep="first")
 
 
-def save_label_review(supabase, shipment_id, fields, reviewer):
+def save_label_review(
+    supabase, shipment_id, fields, reviewer, label_url=None,
+    ocr_status="已识别", ocr_error="", engine_version="rapidocr-v4",
+):
+    fields = dict(fields or {})
     reasons = [
         f"OCR confidence: {fields.pop('ocr_confidence', 0):.4f}",
         "寄件地址和重量来自ERP面单PDF，不来自USPS Tracking API",
     ]
+    if ocr_error:
+        reasons.append(str(ocr_error))
+    stored_fields = {
+        key: fields.get(key) for key in (
+            "label_content_hash", "extracted_street", "extracted_city",
+            "extracted_state", "extracted_postal_code", "extracted_weight_oz",
+        )
+    }
     payload = {
         "shipment_id": shipment_id,
-        **fields,
-        "automatic_result": "OCR已识别",
+        **stored_fields,
+        "label_url": label_url,
+        "ocr_status": ocr_status,
+        "ocr_error": ocr_error or None,
+        "ocr_engine_version": engine_version,
+        "automatic_result": "OCR已识别" if ocr_status == "已识别" else "OCR失败",
         "automatic_reasons": reasons,
         "reviewed_by": reviewer,
     }

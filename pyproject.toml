@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "humbird-erp"
+version = "0.1.0"
+description = "Python client for the official Humbird ERP Open Platform"
+readme = "HUMBIRD_LIBRARY.md"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+[tool.setuptools]
+packages = ["humbird_erp"]
+
+[tool.setuptools.package-data]
+humbird_erp = ["py.typed"]

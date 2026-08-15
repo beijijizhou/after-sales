@@ -39,7 +39,9 @@ refactors, not after every small feature.
   `ui/logistics/`; page orchestration lives in `ui/logistics/page.py`, ERP
   source selection in `sync_view.py` and `source_gateway.py`, carrier and
   label review in `ui/logistics/review/`, and USPS lookup in
-  `ui/logistics/tracking/`.
+  `ui/logistics/tracking/`. Daily platform summaries and order-level drill-down
+  live in `ui/logistics/summary_*.py`, backed by `db/logistics/summary.py` and
+  the persisted USPS-to-shipment source association.
 - Finance: `db/finance/` and `ui/finance/`; provider order-fee acquisition
   lives in provider adapters such as `automation/api/fangguo/finance.py`.
 - Finance persistence is separated into inventory reporting
@@ -48,6 +50,9 @@ refactors, not after every small feature.
   (`cost_maintenance.py`).
 - Production summaries: `utils/production/` and `ui/production/`
 - ERP normalization: `utils/erp/`
+- Publishable Humbird Open Platform client: `humbird_erp/`; project credential,
+  legacy-token fallback, normalization, and persistence adapters remain under
+  `automation/api/humbird/`.
 - Shared Google Sheets response normalization: `utils/google_sheets.py`
 - Shared S2B browser interactions: `automation/playwright/s2b/page_actions.py`
 - Inventory localization runtime and static catalog:

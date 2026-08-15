@@ -12,6 +12,7 @@ from automation.production import (
     PRODUCTION_DEPARTMENTS,
     SDS_PLATFORM_PROFILES,
 )
+from db.logistics import backfill_tracking_check_sources, upsert_shipments
 from ui.logistics.review.model import (
     classify_carrier_rows,
     default_logistics_platforms,
@@ -40,27 +41,27 @@ ORDER_STAGES = {
 def render_sync(supabase):
     auto_tab, upload_tab = st.tabs(["从ERP自动读取", "复制粘贴订单物流"])
     with auto_tab:
-        _render_erp_sync()
+        _render_erp_sync(supabase)
     with upload_tab:
-        _render_upload_sync()
+        _render_upload_sync(supabase)
     st.divider()
-    render_carrier_review(True)
+    render_carrier_review(supabase, True)
 
 
-def _render_erp_sync():
+def _render_erp_sync(supabase):
     st.subheader("从ERP读取订单与物流单号")
     columns = st.columns(2)
     department = columns[0].selectbox(
         "部门", PRODUCTION_DEPARTMENTS, key="logistics_department"
     )
     platforms = tuple(PLATFORMS_BY_DEPARTMENT.get(department, ()))
+    connected = [item for item in platforms if item in CONNECTED_PLATFORMS]
+    pending = [item for item in platforms if item not in CONNECTED_PLATFORMS]
     selected = columns[1].multiselect(
-        "生产平台", platforms,
+        "生产平台（仅显示已接入物流接口）", connected,
         default=default_logistics_platforms(platforms, CONNECTED_PLATFORMS),
         key=f"logistics_platforms_{department}",
     )
-    connected = [item for item in platforms if item in CONNECTED_PLATFORMS]
-    pending = [item for item in platforms if item not in CONNECTED_PLATFORMS]
     st.caption(
         f"{department} 已配置平台：{'、'.join(platforms) or '暂无'}｜"
         f"已接入物流接口：{'、'.join(connected) or '暂无'}｜"
@@ -81,10 +82,14 @@ def _render_erp_sync():
     if not has_permission("can_manage_logistics"):
         st.error("当前账号没有同步物流数据的权限。")
         return
-    _load_selected_sources(selected, department, stage, start_date, end_date)
+    _load_selected_sources(
+        supabase, selected, department, stage, start_date, end_date
+    )
 
 
-def _load_selected_sources(selected, department, stage, start_date, end_date):
+def _load_selected_sources(
+    supabase, selected, department, stage, start_date, end_date,
+):
     all_rows, errors, reviewed_rows = [], [], []
     progress = st.progress(0)
     for index, source in enumerate(selected, start=1):
@@ -97,6 +102,8 @@ def _load_selected_sources(selected, department, stage, start_date, end_date):
                     "local_acceptance_status": stage,
                     "department": department,
                 })
+            saved_shipments = pd.DataFrame(upsert_shipments(supabase, rows))
+            backfill_tracking_check_sources(supabase, saved_shipments)
             reviewed = classify_carrier_rows(rows)
             reviewed_rows.extend(reviewed)
             usps_rows = [
@@ -116,16 +123,30 @@ def _load_selected_sources(selected, department, stage, start_date, end_date):
     st.session_state["logistics_carrier_review_rows"] = reviewed_rows
     reset_review_selection()
     if all_rows:
-        st.success(f"本次读取到 {len(all_rows):,} 条普通 USPS；结果未写入数据库。")
+        st.success(
+            f"本次读取到 {len(all_rows):,} 条普通 USPS；"
+            "订单、物流单号、平台账号和面单链接已保存。"
+        )
     if errors:
         st.warning("；".join(errors))
 
 
-def _render_upload_sync():
+def _render_upload_sync(supabase):
     st.subheader("复制粘贴订单与物流单号")
     st.caption(
         "在Excel里复制两列，点击下方第一格后直接粘贴；"
         "第一列订单号，第二列物流单号。"
+    )
+    scope = st.columns(3)
+    department = scope[0].selectbox(
+        "部门", PRODUCTION_DEPARTMENTS,
+        key="logistics_manual_department",
+    )
+    platform = scope[1].text_input(
+        "平台", value="手工输入", key="logistics_manual_platform"
+    )
+    account = scope[2].text_input(
+        "ERP账号", value="manual", key="logistics_manual_account"
     )
     entry = st.data_editor(
         pd.DataFrame([{"订单号": "", "物流单号": ""}]),
@@ -135,7 +156,11 @@ def _render_upload_sync():
             "物流单号": st.column_config.TextColumn("物流单号", required=False),
         }, key="logistics_order_tracking_paste",
     )
-    rows, issues = parse_logistics_frame(entry)
+    rows, issues = parse_logistics_frame(entry, defaults={
+        "department": department,
+        "erp_platform": platform.strip() or "手工输入",
+        "erp_account": account.strip() or "manual",
+    })
     if not rows and not issues:
         st.info("填写后会先校验并进入“物流识别核对”，不会直接查询USPS。")
     if issues:
@@ -151,6 +176,12 @@ def _render_upload_sync():
     if not has_permission("can_manage_logistics"):
         st.error("当前账号没有导入物流数据的权限。")
         return
+    try:
+        saved_shipments = pd.DataFrame(upsert_shipments(supabase, rows))
+        backfill_tracking_check_sources(supabase, saved_shipments)
+    except Exception as error:
+        st.error(database_error(error))
+        return
     reviewed = classify_carrier_rows(rows)
     st.session_state["logistics_carrier_review_rows"] = reviewed
     st.session_state["logistics_usps_candidates"] = order_tracking_pairs([
@@ -159,6 +190,6 @@ def _render_upload_sync():
     reset_review_selection()
     usps_count = sum(is_target_usps_review(item) for item in reviewed)
     st.success(
-        f"已导入 {len(rows):,} 条｜普通USPS {usps_count:,} 条｜"
+        f"已保存 {len(rows):,} 条｜普通USPS {usps_count:,} 条｜"
         f"其他物流 {len(rows) - usps_count:,} 条"
     )

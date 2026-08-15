@@ -27,7 +27,9 @@ from automation.sync.state import (
 )
 
 
-COLORED_PRIMARY_PLATFORMS = ("汉森", "S2B", "SDS1", "SDS2")
+COLORED_PRIMARY_PLATFORMS = (
+    "汉森", "S2B", "SDS1", "SDS2", "Haloo", "隆丰",
+)
 
 
 def sync_missing_days(

@@ -22,6 +22,10 @@ def order_tracking_pairs(rows):
             "面单PDF": row.get("label_url"),
             "备用面单PDF": row.get("backup_label_url"),
             "ERP平台": row.get("erp_platform"),
+            "ERP账号": row.get("erp_account"),
+            "部门": row.get("department"),
+            "商户订单号": row.get("merchant_order_id"),
+            "物流商": row.get("carrier"),
             "面单OCR地址": row.get("ocr_address"),
             "重量（oz）": row.get("ocr_weight_oz"),
             "重量（lb）": row.get("ocr_weight_lb"),
@@ -115,12 +119,10 @@ def carrier_filter_name(row):
 
 
 def default_logistics_platforms(platforms, connected_platforms):
-    if "S2B" in platforms:
-        return ["S2B"]
     return [
         platform for platform in platforms
         if platform in connected_platforms
-    ][:1]
+    ]
 
 
 def erp_time_range(start_date, end_date):
@@ -153,7 +155,10 @@ def database_error(error):
     if "logistics_usps_usage_events" in detail and missing_relation:
         return "USPS用量统计表尚未初始化，请运行 sql/logistics/02_usps_usage.sql。"
     if "logistics_" in detail and missing_relation:
-        return "物流数据库尚未初始化，请先运行 sql/logistics/01_shipping_label_review.sql。"
+        return (
+            "物流数据库尚未初始化，请先运行 sql/logistics/01_shipping_label_review.sql，"
+            "再运行 sql/logistics/03_tracking_sources_and_ocr.sql。"
+        )
     return f"物流数据库操作失败：{error}"
 
 

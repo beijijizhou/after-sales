@@ -18,7 +18,7 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 | `inventory/imports/` | 可重复检查的数据导入脚本 | 4 |
 | `inventory/data_fixes/` | 有明确目标的一次性数据修复 | 2 |
 | `consumables/` | 耗材表、流水、撤销和验证 | 4 |
-| `logistics/` | 物流审查结构 | 1 |
+| `logistics/` | 物流审查、USPS用量、查询来源与OCR审计 | 3 |
 
 ## 维护规则
 

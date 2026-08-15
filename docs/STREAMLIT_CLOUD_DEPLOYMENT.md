@@ -105,3 +105,8 @@ After saving Secrets, reboot the app and verify with an `after_sales` account:
 3. A forced USPS test returns tracking events.
 4. SDS synchronization works for each configured line.
 5. S2B synchronization works for each configured account.
+
+Run `sql/logistics/03_tracking_sources_and_ocr.sql` after the existing logistics
+01 and 02 migrations before enabling the logistics data-summary tab. It stores
+USPS query-to-ERP source relationships and the PDF/OCR audit fields used by the
+daily platform summary and order detail.

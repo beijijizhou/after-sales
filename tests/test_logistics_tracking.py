@@ -51,6 +51,8 @@ from automation.logistics.diy19 import (
     _normalize_record as _normalize_diy19_record,
 )
 from db.logistics.repository import _merge_shipment_rows
+from db.logistics.repository import save_label_review
+from db.logistics.tracking_sources import save_tracking_check_sources
 from db.logistics.usps_usage import record_usps_usage
 from ui.logistics.page import render_logistics_page
 from ui.logistics.review.model import (
@@ -102,10 +104,122 @@ from ui.logistics.tracking.query import (
     tracking_query_plan as _tracking_query_plan,
 )
 from ui.logistics.usps_usage import summarize_usps_usage
+from ui.logistics.summary.detail import build_platform_activity_detail
+from ui.logistics.summary.model import build_daily_platform_summary
 from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
+    def test_daily_logistics_summary_groups_erp_usps_pdf_and_ocr(self):
+        shipments, checks, sources, reviews = _logistics_summary_frames()
+
+        result = build_daily_platform_summary(
+            shipments, checks, sources, reviews
+        ).iloc[0]
+
+        self.assertEqual(result["日期"].isoformat(), "2026-08-13")
+        self.assertEqual(result["部门"], "DTF")
+        self.assertEqual(result["平台"], "Haloo")
+        self.assertEqual(result["ERP订单数"], 1)
+        self.assertEqual(result["物流单号数"], 1)
+        self.assertEqual(result["PDF面单数"], 1)
+        self.assertEqual(result["OCR记录数"], 1)
+        self.assertEqual(result["USPS查询次数"], 1)
+        self.assertEqual(result["USPS查询单号"], 1)
+
+    def test_logistics_summary_detail_keeps_order_pdf_and_ocr(self):
+        shipments, checks, sources, reviews = _logistics_summary_frames()
+        selected = build_daily_platform_summary(
+            shipments, checks, sources, reviews
+        ).iloc[0].to_dict()
+
+        detail = build_platform_activity_detail(
+            selected, shipments, checks, sources, reviews
+        )
+
+        self.assertEqual(set(detail["记录类型"]), {"ERP读取", "USPS查询"})
+        self.assertEqual(set(detail["ERP订单号"]), {"ORDER-1"})
+        self.assertEqual(set(detail["面单PDF"]), {"https://labels.test/1.pdf"})
+        self.assertEqual(set(detail["OCR状态"]), {"已识别"})
+        self.assertEqual(set(detail["OCR地址"]), {"25 Ranic Rd NY 11788"})
+
+    def test_unassigned_historical_usps_check_remains_visible(self):
+        checks = pd.DataFrame([{
+            "id": "check-old", "tracking_number": "92000",
+            "checked_at": "2026-08-13T15:00:00Z",
+            "provider_status": "Shipping Label Created",
+            "has_postal_record": True, "error_code": "", "created_by": "Andy",
+        }])
+
+        result = build_daily_platform_summary(
+            pd.DataFrame(), checks, pd.DataFrame(), pd.DataFrame()
+        ).iloc[0]
+
+        self.assertEqual(result["平台"], "未归属")
+        self.assertEqual(result["USPS查询单号"], 1)
+
+    def test_label_review_persists_pdf_ocr_status_and_supported_fields(self):
+        supabase = Mock()
+        supabase.table.return_value.insert.return_value.execute.return_value.data = []
+
+        save_label_review(
+            supabase, "shipment-1", {
+                "extracted_street": "25 Ranic Rd",
+                "extracted_city": "Hauppauge",
+                "extracted_state": "NY",
+                "extracted_postal_code": "11788",
+                "extracted_weight_oz": 4,
+                "extracted_weight_lb": 0.25,
+                "label_content_hash": "hash",
+                "ocr_confidence": 0.98,
+            }, "Andy", label_url="https://labels.test/1.pdf",
+            ocr_status="已识别", engine_version="rapidocr-v4",
+        )
+
+        payload = supabase.table.return_value.insert.call_args.args[0]
+        self.assertEqual(payload["label_url"], "https://labels.test/1.pdf")
+        self.assertEqual(payload["ocr_status"], "已识别")
+        self.assertEqual(payload["extracted_weight_oz"], 4)
+        self.assertNotIn("extracted_weight_lb", payload)
+
+    def test_logistics_persistence_migration_is_focused(self):
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "sql" / "logistics" / "03_tracking_sources_and_ocr.sql"
+        )
+        sql = script.read_text()
+        self.assertLess(len(sql.splitlines()), 200)
+        self.assertIn("logistics_tracking_check_sources", sql)
+        self.assertIn("ocr_engine_version", sql)
+
+    def test_usps_check_source_keeps_order_platform_account_and_pdf(self):
+        supabase = Mock()
+        execute = (
+            supabase.table.return_value.upsert.return_value.execute
+        )
+        execute.return_value.data = [{"id": "source-1"}]
+        shipments = pd.DataFrame([{
+            "id": "shipment-1", "tracking_number": "92001",
+            "department": "DTF", "erp_platform": "Haloo",
+            "erp_account": "Haloo", "external_order_id": "ORDER-1",
+            "merchant_order_id": "SHOP-1",
+            "label_url": "https://labels.test/1.pdf",
+            "backup_label_url": None,
+        }])
+
+        saved = save_tracking_check_sources(
+            supabase,
+            [{"id": "check-1", "tracking_number": "92001"}],
+            shipments,
+        )
+
+        payload = supabase.table.return_value.upsert.call_args.args[0][0]
+        self.assertEqual(saved, [{"id": "source-1"}])
+        self.assertEqual(payload["external_order_id"], "ORDER-1")
+        self.assertEqual(payload["erp_platform"], "Haloo")
+        self.assertEqual(payload["erp_account"], "Haloo")
+        self.assertEqual(payload["label_url"], "https://labels.test/1.pdf")
+
     def test_logistics_gateway_imports_humbird_adapter_directly(self):
         self.assertIs(gateway_humbird, fetch_humbird_shipments)
 
@@ -684,18 +798,40 @@ class LogisticsTrackingTests(unittest.TestCase):
                 )
 
     def test_supervisor_logistics_page_hides_erp_and_ocr_workbench(self):
-        tabs = (MagicMock(), MagicMock())
         with patch("ui.logistics.page.has_permission", return_value=False), patch(
-            "ui.logistics.page.st.tabs", return_value=tabs
+            "ui.logistics.page.st.sidebar.radio", return_value="review"
         ), patch("ui.logistics.page.render_sync") as render_sync, patch(
             "ui.logistics.page.render_tracking_lookup"
         ) as render_lookup, patch(
+            "ui.logistics.page.render_logistics_summary"
+        ) as render_summary, patch(
             "ui.logistics.page.st.session_state", new_callable=dict
         ):
             render_logistics_page(Mock())
 
         render_sync.assert_not_called()
         self.assertIsNone(render_lookup.call_args.args[2])
+        render_summary.assert_not_called()
+
+    def test_logistics_sidebar_only_loads_selected_summary(self):
+        with patch("ui.logistics.page.has_permission", return_value=True), patch(
+            "ui.logistics.page.st.sidebar.radio", return_value="summary"
+        ) as navigation, patch(
+            "ui.logistics.page.render_sync"
+        ) as render_sync, patch(
+            "ui.logistics.page.render_tracking_lookup"
+        ) as render_lookup, patch(
+            "ui.logistics.page.render_logistics_summary"
+        ) as render_summary:
+            render_logistics_page(Mock())
+
+        labels = navigation.call_args.kwargs["format_func"]
+        self.assertEqual(labels("review"), "物流单号获取与USPS核查")
+        self.assertEqual(labels("summary"), "物流数据总结")
+        render_sync.assert_not_called()
+        render_lookup.assert_not_called()
+        render_summary.assert_called_once()
+        self.assertTrue(render_summary.call_args.args[1])
 
     def test_usps_oauth_token_is_reused_within_expiry_window(self):
         USPSClient._TOKEN_CACHE.clear()
@@ -910,7 +1046,7 @@ class LogisticsTrackingTests(unittest.TestCase):
             default_logistics_platforms(
                 ("汉森", "S2B", "SDS2"), CONNECTED_PLATFORMS
             ),
-            ["S2B"],
+            ["S2B", "SDS2"],
         )
 
     def test_logistics_platform_default_falls_back_when_s2b_is_unavailable(self):
@@ -918,7 +1054,7 @@ class LogisticsTrackingTests(unittest.TestCase):
             default_logistics_platforms(
                 ("汉森", "SDS1", "SDS2"), CONNECTED_PLATFORMS
             ),
-            ["SDS1"],
+            ["SDS1", "SDS2"],
         )
 
     @patch("automation.logistics.humbird.HumbirdOpenApiClient")
@@ -1231,6 +1367,37 @@ class LogisticsTrackingTests(unittest.TestCase):
 
         self.assertTrue(result["has_postal_record"])
         self.assertTrue(result["has_pre_scan"])
+
+
+def _logistics_summary_frames():
+    shipments = pd.DataFrame([{
+        "id": "shipment-1", "department": "DTF", "erp_platform": "Haloo",
+        "erp_account": "Haloo", "external_order_id": "ORDER-1",
+        "merchant_order_id": "SHOP-1", "tracking_number": "92001",
+        "carrier": "USPS", "erp_status": "已发货",
+        "label_url": "https://labels.test/1.pdf", "backup_label_url": None,
+        "last_seen_at": "2026-08-13T15:00:00Z",
+    }])
+    checks = pd.DataFrame([{
+        "id": "check-1", "tracking_number": "92001",
+        "checked_at": "2026-08-13T16:00:00Z",
+        "provider_status": "Shipping Label Created",
+        "has_postal_record": True, "error_code": "", "created_by": "Andy",
+    }])
+    sources = pd.DataFrame([{
+        "check_id": "check-1", "shipment_id": "shipment-1",
+        "department": "DTF", "erp_platform": "Haloo",
+        "erp_account": "Haloo", "external_order_id": "ORDER-1",
+        "merchant_order_id": "SHOP-1",
+        "label_url": "https://labels.test/1.pdf", "backup_label_url": None,
+    }])
+    reviews = pd.DataFrame([{
+        "shipment_id": "shipment-1", "ocr_status": "已识别",
+        "automatic_result": "OCR已识别", "extracted_street": "25 Ranic Rd",
+        "extracted_city": "", "extracted_state": "NY",
+        "extracted_postal_code": "11788", "extracted_weight_oz": 4,
+    }])
+    return shipments, checks, sources, reviews
 
 
 if __name__ == "__main__":

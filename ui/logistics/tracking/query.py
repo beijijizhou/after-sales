@@ -11,12 +11,18 @@ from automation.logistics import (
     classify_usps_response,
     load_usps_credentials,
 )
-from db.logistics import load_latest_tracking_checks, save_tracking_checks
+from db.logistics import (
+    load_latest_tracking_checks,
+    save_tracking_checks,
+    save_tracking_check_sources,
+)
 from db.logistics.usps_usage import record_usps_usage
 from utils.auth import get_current_operator_name
 
 
-def query_usps(numbers, supabase=None, database_error=None):
+def query_usps(
+    numbers, supabase=None, database_error=None, source_shipments=None,
+):
     if not numbers:
         return []
     batches = []
@@ -37,7 +43,9 @@ def query_usps(numbers, supabase=None, database_error=None):
             failed_tracking_row(number, "USPS_NO_RESPONSE")
             for number in numbers if number not in returned
         )
-        _save_tracking_results(supabase, rows, database_error)
+        _save_tracking_results(
+            supabase, rows, database_error, source_shipments
+        )
         failed_count = sum(bool(row.get("error_code")) for row in rows)
         _record_usage(
             supabase, len(numbers), len(batches),
@@ -49,7 +57,9 @@ def query_usps(numbers, supabase=None, database_error=None):
             failed_tracking_row(number, type(error).__name__)
             for number in numbers
         ]
-        _save_tracking_results(supabase, failure_rows, database_error)
+        _save_tracking_results(
+            supabase, failure_rows, database_error, source_shipments
+        )
         _record_usage(
             supabase, len(numbers), len(batches), 0, len(numbers), database_error
         )
@@ -95,11 +105,16 @@ def split_tracking_cache(numbers, latest, force_usps=False):
     return fresh, pending
 
 
-def _save_tracking_results(supabase, rows, database_error=None):
+def _save_tracking_results(
+    supabase, rows, database_error=None, source_shipments=None,
+):
     if supabase is None or not rows:
         return
     try:
-        save_tracking_checks(supabase, rows, get_current_operator_name())
+        saved = save_tracking_checks(
+            supabase, rows, get_current_operator_name()
+        )
+        save_tracking_check_sources(supabase, saved, source_shipments)
     except Exception as error:
         st.warning("USPS查询已完成，但Tracking响应未能写入数据库。")
         if database_error:

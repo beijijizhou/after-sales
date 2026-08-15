@@ -3,6 +3,8 @@
 import pandas as pd
 import streamlit as st
 
+from db.logistics import ensure_tracking_context_shipments
+
 from ui.logistics.tracking.input import (
     normalize_suggested_rows,
     parse_order_tracking_table,
@@ -19,6 +21,7 @@ from ui.logistics.tracking.origin_view import (
 )
 from ui.logistics.tracking.query import query_usps, tracking_query_plan
 from ui.logistics.usps_usage import render_usps_usage
+from utils.auth import get_current_operator_name
 
 
 def render_tracking_lookup(supabase, database_error, suggested_numbers=None):
@@ -86,10 +89,20 @@ def _render_tracking_editor(disabled):
 
 
 def _execute_lookup(supabase, database_error, context, numbers, force_usps):
+    try:
+        source_shipments = ensure_tracking_context_shipments(
+            supabase, context.to_dict("records"), get_current_operator_name()
+        )
+    except Exception as error:
+        st.error(database_error(error))
+        return
     cached, pending = tracking_query_plan(
         supabase, numbers, force_usps, database_error
     )
-    fresh_rows = query_usps(pending, supabase, database_error)
+    fresh_rows = query_usps(
+        pending, supabase, database_error,
+        source_shipments=source_shipments,
+    )
     render_usps_usage(supabase, database_error)
     if fresh_rows is None and cached.empty:
         return
