@@ -89,20 +89,20 @@ def _render_tracking_editor(disabled):
 
 
 def _execute_lookup(supabase, database_error, context, numbers, force_usps):
-    try:
-        source_shipments = ensure_tracking_context_shipments(
-            supabase, context.to_dict("records"), get_current_operator_name()
-        )
-    except Exception as error:
-        st.error(database_error(error))
-        return
     cached, pending = tracking_query_plan(
         supabase, numbers, force_usps, database_error
     )
-    fresh_rows = query_usps(
-        pending, supabase, database_error,
-        source_shipments=source_shipments,
-    )
+    fresh_rows = query_usps(pending, supabase, database_error)
+    if fresh_rows is not None or not cached.empty:
+        try:
+            ensure_tracking_context_shipments(
+                supabase,
+                context.to_dict("records"),
+                get_current_operator_name(),
+            )
+        except Exception as error:
+            st.warning("USPS结果已返回，但订单物流关系未能保存。")
+            st.caption(database_error(error))
     render_usps_usage(supabase, database_error)
     if fresh_rows is None and cached.empty:
         return

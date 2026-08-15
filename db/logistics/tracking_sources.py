@@ -1,5 +1,6 @@
 import pandas as pd
 
+from automation.integrations.carriers import is_ordinary_usps_shipment
 from db.logistics.repository import (
     load_all_shipments_by_tracking,
     upsert_shipments,
@@ -12,24 +13,54 @@ SOURCE_COLUMNS = (
 )
 
 
-def ensure_tracking_context_shipments(supabase, context_rows, created_by):
+def ensure_tracking_context_shipments(
+    supabase,
+    context_rows,
+    created_by,
+):
     normalized = [_normalize_context(row, created_by) for row in context_rows]
-    normalized = [row for row in normalized if row["tracking_number"]]
+    normalized = [
+        row for row in normalized
+        if row["tracking_number"] and is_ordinary_usps_shipment(
+            row.get("carrier"), row["tracking_number"],
+            row.get("source_payload"),
+        )
+    ]
     if not normalized:
         return pd.DataFrame()
     numbers = list(dict.fromkeys(row["tracking_number"] for row in normalized))
+    official_checks = _load_checks_by_tracking(supabase, numbers)
+    checked_numbers = {
+        _text(row.get("tracking_number"))
+        for row in official_checks
+        if _text(row.get("provider")) == "USPS"
+    }
+    normalized = [
+        row for row in normalized
+        if row["tracking_number"] in checked_numbers
+    ]
+    if not normalized:
+        return pd.DataFrame()
+    numbers = list(dict.fromkeys(
+        row["tracking_number"] for row in normalized
+    ))
     existing = load_all_shipments_by_tracking(supabase, numbers)
     missing = [
         row for row in normalized
         if not _matching_shipments(existing, row)
     ]
-    created = pd.DataFrame(upsert_shipments(supabase, missing)) if missing else pd.DataFrame()
+    created = (
+        pd.DataFrame(upsert_shipments(supabase, missing))
+        if missing else pd.DataFrame()
+    )
     if existing.empty:
         result = created
     elif created.empty:
         result = existing
     else:
-        result = pd.concat([existing, created], ignore_index=True).drop_duplicates("id")
+        result = pd.concat(
+            [existing, created], ignore_index=True
+        ).drop_duplicates("id")
     backfill_tracking_check_sources(supabase, result)
     return result
 
@@ -102,7 +133,8 @@ def _load_checks_by_tracking(supabase, tracking_numbers):
         for offset in range(0, 10000, 1000):
             page = (
                 supabase.table("logistics_tracking_checks")
-                .select("id,tracking_number").in_("tracking_number", chunk)
+                .select("id,tracking_number,provider")
+                .in_("tracking_number", chunk)
                 .range(offset, offset + 999).execute().data
             )
             rows.extend(page)

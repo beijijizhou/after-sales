@@ -77,8 +77,9 @@ an activity log.
 | Provider-neutral integration contracts | `automation/integrations/` | ERP providers reuse carrier classification and workflow-stage semantics without importing page or logistics-controller packages. |
 | Daily usage model | `utils/daily_usage_model.py` | Inventory and consumable planning reuse common daily-rate calculations where units and semantics match. |
 | Google Sheets returned-range matching | `utils/google_sheets.py` | All Sheets batch readers use the shared normalized range lookup. |
-| Logistics carrier/label review | `ui/logistics/review/` | Compose model, OCR runner, state and view; keep `page.py` as controller only. |
+| Logistics carrier/label review | `automation/integrations/carriers.py`, `ui/logistics/review/` | Compose shared carrier classification with the review model, OCR runner, state and view; only ordinary USPS relationships backed by an official USPS check are persisted. Keep `page.py` as controller only. |
 | ERP logistics business stages | `automation/logistics/stages.py` | All connectors map their own codes to 未接单、已接单（生产中）、已发货; 已发货 means production and QA completed, not merely label creation. UI pages reuse these labels and codes. |
+| ERP logistics platform concurrency | `ui/logistics/sync_view.py` | Users choose one to eight ERP platform workers, default four. The setting excludes OCR; live status remains one stable row per platform and completed reads are persisted in completion order. |
 | USPS tracking input/query/results | `ui/logistics/tracking/` | Reuse input normalization, cache/query, label and origin components. |
 | Logistics daily platform summary | `db/logistics/summary.py`, `ui/logistics/summary_model.py`, `summary_detail.py`, `summary_view.py` | Persist ERP relationships first, associate USPS checks through `logistics_tracking_check_sources`, then present date/platform batches before order-level PDF and OCR detail. |
 | S2B visible page actions | `automation/playwright/s2b/page_actions.py` | Browser workflows reuse shared visible exact-text interaction. |

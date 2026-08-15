@@ -16,7 +16,6 @@ from automation.production import (
     PRODUCTION_DEPARTMENTS,
     SDS_PLATFORM_PROFILES,
 )
-from db.logistics import backfill_tracking_check_sources, upsert_shipments
 from ui.logistics.review.model import (
     classify_carrier_rows,
     default_logistics_platforms,
@@ -80,6 +79,15 @@ def _render_erp_sync(supabase):
     )
     end_date = dates[1].date_input("结束日期", value=date.today())
     st.caption("默认仅读取当天数据；需要历史核查时再手动扩大日期范围。")
+    worker_count = st.select_slider(
+        "ERP平台并行线程数",
+        options=tuple(range(1, 9)),
+        value=4,
+        help=(
+            "仅控制ERP订单、物流单号和面单链接读取，不运行OCR。"
+            "网络较慢时可尝试6–8线程；遇到接口限流时请降低。"
+        ),
+    )
     render_s2b_connection_status(selected)
     if set(selected) & HUMBIRD_OPEN_LOGISTICS_PLATFORMS:
         st.caption(
@@ -95,12 +103,24 @@ def _render_erp_sync(supabase):
         st.error("当前账号没有同步物流数据的权限。")
         return
     _load_selected_sources(
-        supabase, selected, department, stage, start_date, end_date
+        supabase,
+        selected,
+        department,
+        stage,
+        start_date,
+        end_date,
+        worker_count=worker_count,
     )
 
 
 def _load_selected_sources(
-    supabase, selected, department, stage, start_date, end_date,
+    supabase,
+    selected,
+    department,
+    stage,
+    start_date,
+    end_date,
+    worker_count=4,
 ):
     all_rows, errors, reviewed_rows = [], [], []
     total = len(selected)
@@ -123,21 +143,20 @@ def _load_selected_sources(
     _render_platform_states(state_table, platform_states)
     fetched = _fetch_selected_sources(
         selected, department, ORDER_STAGES[stage], start_date, end_date,
-        status, progress, state_table, platform_states,
+        status, progress, state_table, platform_states, worker_count,
     )
-    for index, source in enumerate(selected, start=1):
+    for index, (source, result) in enumerate(fetched.items(), start=1):
         status.update(
             label=f"{source}：正在处理读取结果（{index}/{total}）",
             state="running", expanded=True,
         )
         try:
-            result = fetched[source]
             if isinstance(result, Exception):
                 raise result
             rows = result
             _update_platform_state(
                 state_table, platform_states, source,
-                f"已获取 {len(rows):,} 条，正在保存",
+                f"已获取 {len(rows):,} 条，正在识别普通USPS",
                 读取=len(rows),
             )
             for row in rows:
@@ -145,18 +164,16 @@ def _load_selected_sources(
                     "local_acceptance_status": stage,
                     "department": department,
                 })
-            saved_shipments = pd.DataFrame(upsert_shipments(supabase, rows))
-            backfill_tracking_check_sources(supabase, saved_shipments)
-            _update_platform_state(
-                state_table, platform_states, source,
-                "数据已保存，正在识别物流商",
-            )
             reviewed = classify_carrier_rows(rows)
             reviewed_rows.extend(reviewed)
             usps_rows = [
                 item["row"] for item in reviewed
                 if is_target_usps_review(item)
             ]
+            _update_platform_state(
+                state_table, platform_states, source,
+                "普通USPS已准备，等待官方API核查后保存",
+            )
             all_rows.extend(usps_rows)
             label_count = len(label_ocr_candidates(reviewed))
             _update_platform_state(
@@ -178,7 +195,7 @@ def _load_selected_sources(
     if all_rows:
         st.success(
             f"本次读取到 {len(all_rows):,} 条普通 USPS；"
-            "订单、物流单号、平台账号和面单链接已保存。"
+            "本阶段不写数据库，提交USPS官方API核查后才会保存。"
         )
     if errors:
         st.warning("；".join(errors))
@@ -205,6 +222,7 @@ def _fetch_selected_sources(
     progress,
     state_table=None,
     platform_states=None,
+    worker_count=4,
 ):
     platform_states = platform_states or {
         source: {"平台": source, "最新状态": "等待开始"}
@@ -233,8 +251,12 @@ def _fetch_selected_sources(
             progress.progress(1.0)
             return {source: error}
 
+    workers = resolve_erp_workers(worker_count, len(selected))
     status.update(
-        label=f"正在并行读取 {len(selected):,} 个ERP平台（最多4线程）",
+        label=(
+            f"正在读取 {len(selected):,} 个ERP平台"
+            f"（当前 {workers} 线程，不含OCR）"
+        ),
         state="running", expanded=True,
     )
     messages = Queue()
@@ -252,7 +274,7 @@ def _fetch_selected_sources(
         _update_platform_state(
             state_table, platform_states, source, "正在连接ERP",
         )
-    with ThreadPoolExecutor(max_workers=min(4, len(selected))) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         pending = {pool.submit(worker, source): source for source in selected}
         while pending:
             completed, _ = wait(
@@ -277,6 +299,14 @@ def _fetch_selected_sources(
                 progress.progress(len(results) / len(selected))
         _drain_progress_messages(messages, state_table, platform_states)
     return results
+
+
+def resolve_erp_workers(requested, platform_count):
+    try:
+        workers = int(requested)
+    except (TypeError, ValueError):
+        workers = 4
+    return max(1, min(8, workers, max(1, int(platform_count))))
 
 
 def _drain_progress_messages(messages, state_table, platform_states):
@@ -378,19 +408,22 @@ def _render_upload_sync(supabase):
         st.error("当前账号没有导入物流数据的权限。")
         return
     try:
-        saved_shipments = pd.DataFrame(upsert_shipments(supabase, rows))
-        backfill_tracking_check_sources(supabase, saved_shipments)
+        reviewed = classify_carrier_rows(rows)
+        usps_rows = [
+            item["row"] for item in reviewed
+            if is_target_usps_review(item)
+        ]
     except Exception as error:
         st.error(database_error(error))
         return
-    reviewed = classify_carrier_rows(rows)
     st.session_state["logistics_carrier_review_rows"] = reviewed
-    st.session_state["logistics_usps_candidates"] = order_tracking_pairs([
-        item["row"] for item in reviewed if is_target_usps_review(item)
-    ])
+    st.session_state["logistics_usps_candidates"] = order_tracking_pairs(
+        usps_rows
+    )
     reset_review_selection()
     usps_count = sum(is_target_usps_review(item) for item in reviewed)
     st.success(
-        f"已保存 {len(rows):,} 条｜普通USPS {usps_count:,} 条｜"
-        f"其他物流 {len(rows) - usps_count:,} 条"
+        f"已准备普通USPS {usps_count:,} 条｜"
+        f"已过滤其他物流 {len(rows) - usps_count:,} 条｜"
+        "提交官方API核查后才会保存"
     )

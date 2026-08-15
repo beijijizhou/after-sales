@@ -7,6 +7,7 @@ from automation.logistics.carriers import (
     classify_carrier,
     classify_usps_subtype,
     extract_service_provider,
+    is_ordinary_usps_shipment,
     is_usps_shipment,
     usps_pickup_name,
 )
@@ -42,7 +43,7 @@ __all__ = [
     "S2BAuthenticationError", "S2BLocalLoginRequired",
     "local_login_available", "refresh_local_s2b_token",
     "classify_carrier", "classify_usps_subtype", "extract_service_provider",
-    "is_usps_shipment", "usps_pickup_name",
+    "is_ordinary_usps_shipment", "is_usps_shipment", "usps_pickup_name",
     "parse_logistics_upload",
     "parse_logistics_paste",
     "parse_logistics_frame",

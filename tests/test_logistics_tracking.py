@@ -67,7 +67,10 @@ from automation.logistics.diy19 import (
 )
 from db.logistics.repository import _merge_shipment_rows
 from db.logistics.repository import save_label_review
-from db.logistics.tracking_sources import save_tracking_check_sources
+from db.logistics.tracking_sources import (
+    ensure_tracking_context_shipments,
+    save_tracking_check_sources,
+)
 from db.logistics.usps_usage import record_usps_usage
 from ui.logistics.page import render_logistics_page
 from ui.logistics.review.model import (
@@ -94,6 +97,7 @@ from ui.logistics.sync_view import (
     CONNECTED_PLATFORMS,
     _fetch_selected_sources,
     _load_selected_sources,
+    resolve_erp_workers,
 )
 from ui.logistics.source_gateway import (
     fetch_humbird_shipments_with_fallback as gateway_humbird,
@@ -162,6 +166,30 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(set(detail["OCR状态"]), {"已识别"})
         self.assertEqual(set(detail["OCR地址"]), {"25 Ranic Rd NY 11788"})
 
+    def test_logistics_summary_hides_historical_non_ordinary_usps(self):
+        shipments, checks, sources, reviews = _logistics_summary_frames()
+        excluded = shipments.iloc[0].copy()
+        excluded.update({
+            "id": "shipment-gofo",
+            "external_order_id": "ORDER-GOFO",
+            "tracking_number": "GFUS1234567890",
+            "carrier": "GOFO",
+            "label_url": "https://labels.test/gofo.pdf",
+        })
+        shipments = pd.concat([
+            shipments, pd.DataFrame([excluded])
+        ], ignore_index=True)
+
+        selected = build_daily_platform_summary(
+            shipments, checks, sources, reviews
+        ).iloc[0].to_dict()
+        detail = build_platform_activity_detail(
+            selected, shipments, checks, sources, reviews
+        )
+
+        self.assertEqual(selected["ERP订单数"], 1)
+        self.assertNotIn("ORDER-GOFO", set(detail["ERP订单号"]))
+
     def test_unassigned_historical_usps_check_remains_visible(self):
         checks = pd.DataFrame([{
             "id": "check-old", "tracking_number": "92000",
@@ -210,6 +238,55 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertLess(len(sql.splitlines()), 200)
         self.assertIn("logistics_tracking_check_sources", sql)
         self.assertIn("ocr_engine_version", sql)
+
+    def test_official_usps_cleanup_removes_unchecked_and_non_usps_rows(self):
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "sql" / "logistics" / "04_official_usps_only.sql"
+        )
+        sql = script.read_text()
+        self.assertLess(len(sql.splitlines()), 100)
+        self.assertIn("logistics_shipments_to_remove", sql)
+        self.assertIn("check_record.provider = 'USPS'", sql)
+        self.assertIn("logistics_label_reviews", sql)
+
+    @patch("db.logistics.tracking_sources.backfill_tracking_check_sources")
+    @patch("db.logistics.tracking_sources.upsert_shipments")
+    @patch("db.logistics.tracking_sources.load_all_shipments_by_tracking")
+    @patch("db.logistics.tracking_sources._load_checks_by_tracking")
+    def test_tracking_context_requires_official_usps_check_before_insert(
+        self, load_checks, load_existing, upsert, _backfill,
+    ):
+        context = [{
+            "订单号": "ORDER-1",
+            "物流单号": "9200190417705008519077",
+            "物流商": "USPS",
+        }]
+        load_checks.return_value = []
+
+        missing = ensure_tracking_context_shipments(
+            Mock(), context, "Andy"
+        )
+
+        self.assertTrue(missing.empty)
+        upsert.assert_not_called()
+
+        load_checks.return_value = [{
+            "id": "check-1",
+            "tracking_number": "9200190417705008519077",
+            "provider": "USPS",
+        }]
+        load_existing.return_value = pd.DataFrame()
+        upsert.return_value = [{
+            "id": "shipment-1",
+            "tracking_number": "9200190417705008519077",
+        }]
+
+        saved = ensure_tracking_context_shipments(
+            Mock(), context, "Andy"
+        )
+
+        self.assertEqual(saved.iloc[0]["id"], "shipment-1")
 
     def test_usps_check_source_keeps_order_platform_account_and_pdf(self):
         supabase = Mock()
@@ -1147,11 +1224,6 @@ class LogisticsTrackingTests(unittest.TestCase):
         with patch(
             "ui.logistics.sync_view.fetch_source", return_value=[row]
         ), patch(
-            "ui.logistics.sync_view.upsert_shipments",
-            return_value=[{"id": "shipment-1"}],
-        ), patch(
-            "ui.logistics.sync_view.backfill_tracking_check_sources"
-        ), patch(
             "ui.logistics.sync_view.classify_carrier_rows",
             return_value=reviewed,
         ), patch(
@@ -1181,8 +1253,8 @@ class LogisticsTrackingTests(unittest.TestCase):
             for call in state_table.dataframe.call_args_list
         )
         self.assertIn("正在请求订单和面单数据", states)
-        self.assertIn("正在保存", states)
-        self.assertIn("正在识别物流商", states)
+        self.assertIn("正在识别普通USPS", states)
+        self.assertIn("等待官方API核查后保存", states)
         final = state_table.dataframe.call_args.args[0]
         self.assertEqual(final.iloc[0]["平台"], "隆丰")
         self.assertEqual(final.iloc[0]["最新状态"], "处理完成")
@@ -1195,6 +1267,39 @@ class LogisticsTrackingTests(unittest.TestCase):
             "已准备 1 条普通USPS待核查数据",
             status.update.call_args.kwargs["label"],
         )
+
+    def test_erp_sync_does_not_persist_before_official_usps_query(self):
+        usps = {
+            "external_order_id": "USPS-1",
+            "tracking_number": "9200190417705008519077",
+            "carrier": "USPS",
+        }
+        gofo = {
+            "external_order_id": "GOFO-1",
+            "tracking_number": "GFUS1234567890",
+            "carrier": "GOFO",
+        }
+        status, state_table, supabase = Mock(), Mock(), Mock()
+        with patch(
+            "ui.logistics.sync_view.fetch_source", return_value=[usps, gofo]
+        ), patch(
+            "ui.logistics.sync_view.reset_review_selection"
+        ), patch(
+            "ui.logistics.sync_view.st.status", return_value=status
+        ), patch(
+            "ui.logistics.sync_view.st.progress"
+        ), patch(
+            "ui.logistics.sync_view.st.empty", return_value=state_table
+        ), patch(
+            "ui.logistics.sync_view.st.session_state", new_callable=dict
+        ):
+            _load_selected_sources(
+                supabase, ["隆丰"], "DTF", "未接单",
+                datetime(2026, 8, 15).date(),
+                datetime(2026, 8, 15).date(),
+            )
+
+        supabase.table.assert_not_called()
 
     @patch("automation.api.humbird.shipments.HumbirdOpenApiClient")
     def test_humbird_waybill_uses_shared_shipment_shape(self, client_type):
@@ -1305,7 +1410,15 @@ class LogisticsTrackingTests(unittest.TestCase):
 
         self.assertEqual(set(result), {"Haloo", "隆丰"})
         self.assertEqual(fetch.call_count, 2)
-        self.assertIn("并行读取", status.update.call_args.kwargs["label"])
+        label = status.update.call_args.kwargs["label"]
+        self.assertIn("当前 2 线程", label)
+        self.assertIn("不含OCR", label)
+
+    def test_erp_worker_setting_is_bounded_by_platforms_and_limit(self):
+        self.assertEqual(resolve_erp_workers(8, 3), 3)
+        self.assertEqual(resolve_erp_workers(1, 7), 1)
+        self.assertEqual(resolve_erp_workers(99, 10), 8)
+        self.assertEqual(resolve_erp_workers("invalid", 2), 2)
 
     @patch("automation.api.humbird.shipments.fetch_humbird_shipments_legacy")
     @patch("automation.api.humbird.shipments.fetch_humbird_shipments")
@@ -1713,16 +1826,17 @@ class LogisticsTrackingTests(unittest.TestCase):
 
 
 def _logistics_summary_frames():
+    tracking_number = "9200190417705008519077"
     shipments = pd.DataFrame([{
         "id": "shipment-1", "department": "DTF", "erp_platform": "Haloo",
         "erp_account": "Haloo", "external_order_id": "ORDER-1",
-        "merchant_order_id": "SHOP-1", "tracking_number": "92001",
+        "merchant_order_id": "SHOP-1", "tracking_number": tracking_number,
         "carrier": "USPS", "erp_status": "已发货",
         "label_url": "https://labels.test/1.pdf", "backup_label_url": None,
         "last_seen_at": "2026-08-13T15:00:00Z",
     }])
     checks = pd.DataFrame([{
-        "id": "check-1", "tracking_number": "92001",
+        "id": "check-1", "tracking_number": tracking_number,
         "checked_at": "2026-08-13T16:00:00Z",
         "provider_status": "Shipping Label Created",
         "has_postal_record": True, "error_code": "", "created_by": "Andy",

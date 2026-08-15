@@ -1,20 +1,23 @@
 from datetime import datetime, timedelta
+import threading
 
 import extra_streamlit_components as stx
 import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 
 AUTH_COOKIE_NAME = "after_sales_auth"
 COOKIE_LIFETIME_DAYS = 30
 PENDING_COOKIE_ACTION = "pending_auth_cookie_action"
 AUTH_COOKIE_CACHE = "auth_cookie_cached_value"
+_COOKIE_READER_LOCAL = threading.local()
 
 
 def read_auth_cookie():
     cached = st.session_state.get(AUTH_COOKIE_CACHE)
     if cached:
         return cached
-    manager = stx.CookieManager(key="auth_cookie_reader")
+    manager = _cookie_reader_manager()
     value = None
     try:
         value = manager.get(AUTH_COOKIE_NAME)
@@ -63,7 +66,7 @@ def render_pending_auth_cookie():
 
 
 def _write_auth_cookie(token):
-    manager = stx.CookieManager(key="auth_cookie_manager")
+    manager = stx.CookieManager(key="auth_cookie_writer")
     manager.set(
         AUTH_COOKIE_NAME,
         token,
@@ -76,6 +79,20 @@ def _write_auth_cookie(token):
 
 
 def _delete_auth_cookie():
-    manager = stx.CookieManager(key="auth_cookie_manager")
+    manager = stx.CookieManager(key="auth_cookie_deleter")
     manager.delete(AUTH_COOKIE_NAME, key="delete_after_sales_auth")
     st.session_state[AUTH_COOKIE_CACHE] = None
+
+
+def _cookie_reader_manager():
+    context = get_script_run_ctx()
+    if (
+        context is not None
+        and getattr(_COOKIE_READER_LOCAL, "context", None) is context
+    ):
+        return _COOKIE_READER_LOCAL.manager
+    manager = stx.CookieManager(key="auth_cookie_reader")
+    if context is not None:
+        _COOKIE_READER_LOCAL.context = context
+        _COOKIE_READER_LOCAL.manager = manager
+    return manager

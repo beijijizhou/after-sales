@@ -402,8 +402,16 @@ forecast as an estimate.
   platform steps into one chronological text log.
 - ERP logistics dates default to the current day for both start and end. Users
   may widen the range for historical review. Independent selected platforms
-  are fetched concurrently with at most four workers; database persistence and
-  result normalization remain deterministic after each fetch completes.
+  are fetched concurrently with a user-selected one-to-eight workers, default
+  four. This control does not run OCR. After the selected reads finish,
+  persistence follows fetch-completion order instead of platform selection
+  order.
+- ERP logistics classifies carrier and USPS pickup subtype before persistence.
+  ERP acquisition and OCR never create shipment rows. Only ordinary USPS
+  relationships whose tracking number has an official USPS Tracking API check
+  are stored in `logistics_shipments`. GOFO, CBS, CBT and other carriers remain
+  available for the current carrier review but are not persisted or included
+  in logistics summary details.
 - ERP logistics uses three shared business stages: `未接单` means no production
   batch exists, `已接单（生产中）` means a batch exists, and `已发货` means the
   order completed production and quality inspection; an ERP may label the same

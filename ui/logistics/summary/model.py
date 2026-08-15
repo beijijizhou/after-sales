@@ -2,6 +2,8 @@
 
 import pandas as pd
 
+from automation.integrations.carriers import is_ordinary_usps_shipment
+
 
 SCOPE_COLUMNS = ["日期", "部门", "平台", "ERP账号"]
 COUNT_COLUMNS = [
@@ -75,6 +77,15 @@ def _tracking_summary(checks, sources):
 
 def _shipment_scope(shipments):
     frame = shipments.copy()
+    ordinary_usps = frame.apply(
+        lambda row: is_ordinary_usps_shipment(
+            row.get("carrier"),
+            row.get("tracking_number"),
+            row.get("source_payload"),
+        ),
+        axis=1,
+    )
+    frame = frame.loc[ordinary_usps].copy()
     frame["日期"] = _ny_dates(frame["last_seen_at"])
     frame["部门"] = frame["department"].fillna("").replace("", "未设置")
     frame["平台"] = frame["erp_platform"].fillna("").replace("", "未设置")

@@ -5,6 +5,17 @@ def is_usps_shipment(carrier, tracking_number):
     return classify_carrier(carrier, tracking_number) == "USPS"
 
 
+def is_ordinary_usps_shipment(
+    carrier, tracking_number, source_payload=None,
+):
+    return (
+        classify_carrier(carrier, tracking_number) == "USPS"
+        and classify_usps_subtype(
+            carrier, tracking_number, source_payload
+        ) == "普通USPS"
+    )
+
+
 def classify_carrier(carrier, tracking_number):
     carrier_text = str(carrier or "").casefold()
     tracking = re.sub(r"\s+", "", str(tracking_number or "")).upper()
