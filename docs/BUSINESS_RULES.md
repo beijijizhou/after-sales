@@ -394,6 +394,28 @@ forecast as an estimate.
 - Logistics acquisition reuses the production-data department and platform
   catalog. Users select department first and then a platform belonging to that
   department; do not maintain a separate hard-coded platform list.
+- ERP logistics synchronization must show live, platform-specific progress for
+  connection, order/label retrieval, persistence, carrier classification, and
+  USPS candidate preparation; a completion-only summary is not sufficient.
+  Concurrent platforms must each keep one stable row in the progress table and
+  update only their own latest status and result metrics. Do not interleave
+  platform steps into one chronological text log.
+- ERP logistics dates default to the current day for both start and end. Users
+  may widen the range for historical review. Independent selected platforms
+  are fetched concurrently with at most four workers; database persistence and
+  result normalization remain deterministic after each fetch completes.
+- ERP logistics uses three shared business stages: `未接单` means no production
+  batch exists, `已接单（生产中）` means a batch exists, and `已发货` means the
+  order completed production and quality inspection; an ERP may label the same
+  state `已生产`. A shipping label can exist before this stage and is not the
+  stage definition. Connector-specific status codes must map into these terms;
+  Humbird `status=9` maps to the completed `已生产/已发货` stage.
+- S2B logistics date scope must be sent to the ERP and verified again after the
+  response. Use assignment time for `未接单`, confirmation/production-plan time
+  for `已接单（生产中）`, and production-completion time for `已发货`. Never
+  treat all historical rows in an order status as the selected date range.
+  S2B accepts 1,000 orders per page, so the connector uses that verified page
+  size instead of issuing ten 100-row calls for the same data.
 - The current 3D department scope contains only its independent S2B account and
   the SDS `3D热转印` profile. Do not expose other ERP platforms under 3D until
   the business explicitly enables them.

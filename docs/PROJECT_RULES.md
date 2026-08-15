@@ -44,6 +44,10 @@
   folder, but prefer clear ownership over an arbitrary file count.
 - Centralize reusable helpers instead of copying logic between QA, hotstamp,
   inventory, containers, and production pages.
+- Group external ERP code by provider under `automation/api/<provider>/`.
+  Authentication, requests, payloads, production and logistics endpoints, and
+  provider-specific parsing share that provider boundary. Put only genuinely
+  provider-neutral contracts and utilities in shared integration modules.
 - Keep SQL grouped by domain and purpose. Do not combine unrelated platform
   maintenance functions into one oversized SQL script.
 

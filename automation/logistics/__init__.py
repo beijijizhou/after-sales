@@ -10,28 +10,28 @@ from automation.logistics.carriers import (
     is_usps_shipment,
     usps_pickup_name,
 )
-from automation.logistics.s2b import (
+from automation.api.s2b import (
     S2BAuthenticationError,
     fetch_s2b_pending_shipments,
 )
-from automation.logistics.s2b_local_auth import (
+from automation.api.s2b import (
     S2BLocalLoginRequired,
     local_login_available,
     refresh_local_s2b_token,
 )
-from automation.logistics.s2b_workbook import parse_s2b_logistics_workbook
+from automation.api.s2b import parse_s2b_logistics_workbook
 from automation.logistics.imports import (
     parse_logistics_frame,
     parse_logistics_paste,
     parse_logistics_upload,
 )
-from automation.logistics.sds import fetch_sds_pending_shipments
-from automation.logistics.diy19 import (
+from automation.api.sds import fetch_sds_pending_shipments
+from automation.api.diy19 import (
     fetch_diy19_shipments,
     load_diy19_logistics_credentials,
 )
 from automation.logistics.usps import USPSClient, classify_usps_response
-from automation.logistics.humbird import fetch_humbird_shipments
+from automation.api.humbird import fetch_humbird_shipments
 
 __all__ = [
     "USPSClient", "classify_usps_response", "fetch_s2b_pending_shipments",

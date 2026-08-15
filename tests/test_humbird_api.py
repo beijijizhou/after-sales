@@ -1,6 +1,7 @@
 from datetime import date, datetime
 import hashlib
 import hmac
+import json
 import unittest
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -17,6 +18,7 @@ from automation.api.humbird.http_client import (
     HumbirdAuthenticationError,
     _response_data,
     _signed_headers,
+    fetch_humbird_order_details_http,
     fetch_humbird_production_records_http,
 )
 from automation.api.humbird.open_client import (
@@ -178,6 +180,78 @@ class HumbirdApiTests(unittest.TestCase):
         call = session_type.return_value.post.call_args
         self.assertIn('"page":1', call.kwargs["data"])
         self.assertNotIn("content", call.kwargs)
+
+    @patch("automation.api.humbird.http_client.requests.Session")
+    def test_fresh_browser_token_skips_redundant_refresh(self, session_type):
+        response = session_type.return_value.post.return_value
+        response.status_code = 200
+        response.json.return_value = {
+            "result_code": "200",
+            "data": {"list": [], "total": 0},
+        }
+
+        rows = fetch_humbird_production_records_http(
+            "隆丰",
+            date(2026, 8, 15),
+            date(2026, 8, 15),
+            {"token": "captured", "token_just_captured": True},
+        )
+
+        self.assertEqual(rows, [])
+        session_type.return_value.put.assert_not_called()
+
+    @patch("automation.api.humbird.http_client.requests.Session")
+    def test_database_token_reads_order_tracking_details(self, session_type):
+        refresh = session_type.return_value.put.return_value
+        refresh.status_code = 200
+        refresh.json.return_value = {"result_code": "200", "data": True}
+        response = session_type.return_value.post.return_value
+        response.status_code = 200
+        response.json.return_value = {
+            "result_code": "200",
+            "data": [{
+                "id": "11",
+                "third_detail": {
+                    "track_number_list": ["9400111122223333444455"],
+                },
+            }],
+        }
+
+        rows = fetch_humbird_order_details_http(
+            "Haloo", ["11"], {"token": "database-token"}
+        )
+
+        self.assertEqual(rows[0]["id"], "11")
+        call = session_type.return_value.post.call_args
+        self.assertIn('"order_ids":[11]', call.kwargs["data"])
+        self.assertIn(
+            '"query_field_list":["third_detail"]', call.kwargs["data"]
+        )
+
+    @patch("automation.api.humbird.http_client.requests.Session")
+    def test_order_detail_batches_respect_200_id_limit(self, session_type):
+        refresh = session_type.return_value.put.return_value
+        refresh.status_code = 200
+        refresh.json.return_value = {"result_code": "200", "data": True}
+        response = session_type.return_value.post.return_value
+        response.status_code = 200
+        response.json.return_value = {
+            "result_code": "200", "data": [],
+        }
+
+        fetch_humbird_order_details_http(
+            "Haloo",
+            range(1, 202),
+            {"token": "database-token"},
+        )
+
+        calls = session_type.return_value.post.call_args_list
+        self.assertEqual(len(calls), 2)
+        sizes = [
+            len(json.loads(call.kwargs["data"])["order_ids"])
+            for call in calls
+        ]
+        self.assertEqual(sizes, [200, 1])
 
     @patch("automation.production.fetch_humbird_production_records_http")
     def test_humbird_platform_uses_direct_http_api(self, fetch):

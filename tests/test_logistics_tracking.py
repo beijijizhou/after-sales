@@ -2,6 +2,7 @@ import unittest
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Barrier
 from zipfile import ZipFile
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -9,7 +10,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pandas as pd
 
-from automation.logistics.s2b import (
+from automation.api.s2b.shipments import (
     PENDING_STATUS,
     S2BAuthenticationError,
     _normalize_order,
@@ -38,9 +39,23 @@ from automation.logistics.label_cache import (
     clear_label_cache,
 )
 from automation.logistics.label_downloads import build_label_archive
-from automation.logistics.sds import _qa_token
-from automation.logistics.sds import _parcel_rows as _sds_parcel_rows
-from automation.logistics.humbird import fetch_humbird_shipments
+from automation.api.sds.shipments import _qa_token
+from automation.api.sds.shipments import _parcel_rows as _sds_parcel_rows
+from automation.api.humbird.shipments import (
+    HumbirdBrowserRefreshRequired,
+    _stage_items,
+    fetch_humbird_shipments,
+    fetch_humbird_shipments_legacy,
+    fetch_humbird_shipments_with_fallback,
+)
+from automation.api.humbird.open_client import HumbirdOpenApiError
+from automation.logistics.stages import (
+    IN_PRODUCTION,
+    SHIPPED,
+    STAGE_CODES,
+    STAGE_OPTIONS,
+    UNACCEPTED,
+)
 from automation.logistics.imports import (
     parse_logistics_frame,
     parse_logistics_paste,
@@ -75,9 +90,13 @@ from ui.logistics.review.ocr_format import (
 from ui.logistics.review.state import (
     store_review_ocr_results as _store_review_ocr_results,
 )
-from ui.logistics.sync_view import CONNECTED_PLATFORMS
+from ui.logistics.sync_view import (
+    CONNECTED_PLATFORMS,
+    _fetch_selected_sources,
+    _load_selected_sources,
+)
 from ui.logistics.source_gateway import (
-    fetch_humbird_shipments as gateway_humbird,
+    fetch_humbird_shipments_with_fallback as gateway_humbird,
     fetch_source,
 )
 from ui.logistics.tracking.input import (
@@ -221,10 +240,12 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(payload["label_url"], "https://labels.test/1.pdf")
 
     def test_logistics_gateway_imports_humbird_adapter_directly(self):
-        self.assertIs(gateway_humbird, fetch_humbird_shipments)
+        self.assertIs(gateway_humbird, fetch_humbird_shipments_with_fallback)
 
     @patch("ui.logistics.source_gateway.load_humbird_credentials")
-    @patch("ui.logistics.source_gateway.fetch_humbird_shipments")
+    @patch(
+        "ui.logistics.source_gateway.fetch_humbird_shipments_with_fallback"
+    )
     def test_longfeng_routes_through_shared_humbird_logistics_adapter(
         self, fetch, credentials
     ):
@@ -277,7 +298,7 @@ class LogisticsTrackingTests(unittest.TestCase):
                     load_s2b_account({}, "DTF")["token"], "saved-token"
                 )
 
-    @patch("automation.logistics.s2b.requests.Session")
+    @patch("automation.api.s2b.shipments.requests.Session")
     def test_s2b_http_auth_failure_requests_browser_refresh(self, session):
         response = session.return_value.post.return_value
         response.status_code = 401
@@ -344,6 +365,43 @@ class LogisticsTrackingTests(unittest.TestCase):
         )
         self.assertEqual(production_data_key("3D", "S2B"), "3D::S2B")
         self.assertEqual(normalize_s2b_account("3d"), "3D")
+
+    def test_logistics_business_stage_terms_are_shared(self):
+        self.assertEqual(
+            STAGE_OPTIONS, ("未接单", "已接单（生产中）", "已发货")
+        )
+        self.assertEqual(STAGE_CODES["未接单"], UNACCEPTED)
+        self.assertEqual(STAGE_CODES["已接单（生产中）"], IN_PRODUCTION)
+        self.assertEqual(STAGE_CODES["已发货"], SHIPPED)
+
+    def test_humbird_completed_stage_uses_production_status(self):
+        client = Mock()
+
+        def production_items(_start, _end, statuses):
+            if statuses == (1, 5):
+                return [
+                    {"code": "accepted", "status": 1},
+                    {"code": "shipped-5", "status": 5, "delivery_time": 10},
+                ]
+            return [
+                {"code": "produced", "status": 9},
+                {"code": "shipped-9", "status": 9, "delivery_time": 20},
+            ]
+
+        client.production_items.side_effect = production_items
+        start = datetime(2026, 8, 14).date()
+
+        in_production = _stage_items(client, start, start, IN_PRODUCTION)
+        shipped = _stage_items(client, start, start, SHIPPED)
+
+        self.assertEqual(
+            {item["code"] for item in in_production},
+            {"accepted", "shipped-5"},
+        )
+        self.assertEqual(
+            {item["code"] for item in shipped},
+            {"produced", "shipped-9"},
+        )
 
     def test_3d_secret_template_has_s2b_factory_and_qa_sections(self):
         template = (
@@ -1075,7 +1133,70 @@ class LogisticsTrackingTests(unittest.TestCase):
             ["SDS1", "SDS2"],
         )
 
-    @patch("automation.logistics.humbird.HumbirdOpenApiClient")
+    def test_erp_logistics_sync_keeps_one_latest_status_row_per_platform(self):
+        row = {
+            "external_order_id": "ORDER-1",
+            "tracking_number": "92001",
+            "label_url": "label.pdf",
+        }
+        reviewed = [{
+            "row": row, "系统判断": "USPS", "USPS子类型": "普通USPS",
+        }]
+        status = Mock()
+        state_table = Mock()
+        with patch(
+            "ui.logistics.sync_view.fetch_source", return_value=[row]
+        ), patch(
+            "ui.logistics.sync_view.upsert_shipments",
+            return_value=[{"id": "shipment-1"}],
+        ), patch(
+            "ui.logistics.sync_view.backfill_tracking_check_sources"
+        ), patch(
+            "ui.logistics.sync_view.classify_carrier_rows",
+            return_value=reviewed,
+        ), patch(
+            "ui.logistics.sync_view.is_target_usps_review", return_value=True
+        ), patch(
+            "ui.logistics.sync_view.label_ocr_candidates", return_value=[row]
+        ), patch(
+            "ui.logistics.sync_view.order_tracking_pairs", return_value=[]
+        ), patch(
+            "ui.logistics.sync_view.reset_review_selection"
+        ), patch(
+            "ui.logistics.sync_view.st.status", return_value=status
+        ), patch(
+            "ui.logistics.sync_view.st.progress"
+        ), patch(
+            "ui.logistics.sync_view.st.empty", return_value=state_table
+        ), patch(
+            "ui.logistics.sync_view.st.session_state", new_callable=dict
+        ):
+            _load_selected_sources(
+                Mock(), ["隆丰"], "DTF", "未接单",
+                datetime(2026, 8, 14).date(), datetime(2026, 8, 15).date(),
+            )
+
+        states = "｜".join(
+            call.args[0].iloc[0]["最新状态"]
+            for call in state_table.dataframe.call_args_list
+        )
+        self.assertIn("正在请求订单和面单数据", states)
+        self.assertIn("正在保存", states)
+        self.assertIn("正在识别物流商", states)
+        final = state_table.dataframe.call_args.args[0]
+        self.assertEqual(final.iloc[0]["平台"], "隆丰")
+        self.assertEqual(final.iloc[0]["最新状态"], "处理完成")
+        self.assertEqual(final.iloc[0]["读取"], 1)
+        self.assertEqual(final.iloc[0]["普通USPS"], 1)
+        self.assertEqual(
+            status.update.call_args.kwargs["state"], "complete"
+        )
+        self.assertIn(
+            "已准备 1 条普通USPS待核查数据",
+            status.update.call_args.kwargs["label"],
+        )
+
+    @patch("automation.api.humbird.shipments.HumbirdOpenApiClient")
     def test_humbird_waybill_uses_shared_shipment_shape(self, client_type):
         client = client_type.return_value
         client.production_items.return_value = [{
@@ -1106,7 +1227,156 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(rows[0]["external_order_id"], "ORDER-1")
         self.assertEqual(rows[0]["tracking_number"], "9400111122223333444455")
         self.assertEqual(rows[0]["label_url"], "https://labels.test/ORDER-1.pdf")
-        self.assertEqual(rows[0]["erp_status"], "已发货")
+        self.assertEqual(rows[0]["erp_status"], "已生产/已发货")
+
+    @patch("automation.api.humbird.shipments.fetch_humbird_shipments_legacy")
+    @patch("automation.api.humbird.shipments.fetch_humbird_shipments")
+    def test_humbird_rate_limit_switches_to_database_token(
+        self, official, legacy,
+    ):
+        official.side_effect = RuntimeError("蜂鸟开放平台接口限流")
+        legacy.return_value = [{"tracking_number": "9400"}]
+        progress = []
+        day = datetime(2026, 8, 12).date()
+
+        rows = fetch_humbird_shipments_with_fallback(
+            "Haloo",
+            {"api_key": "official", "token": "database-token"},
+            day,
+            day,
+            report_progress=progress.append,
+        )
+
+        self.assertEqual(rows, [{"tracking_number": "9400"}])
+        legacy.assert_called_once()
+        self.assertTrue(any("切换数据库" in item for item in progress))
+
+    @patch("automation.api.humbird.shipments.fetch_humbird_shipments_legacy")
+    @patch("automation.api.humbird.shipments.fetch_humbird_shipments")
+    def test_humbird_rate_limit_backoff_avoids_immediate_retry(
+        self, official, legacy,
+    ):
+        from automation.api.humbird import shipments
+
+        shipments._OFFICIAL_BACKOFF_UNTIL.clear()
+        official.side_effect = HumbirdOpenApiError(
+            "蜂鸟开放平台接口限流，请稍后重试"
+        )
+        legacy.return_value = []
+        credentials = {"api_key": "official", "token": "database-token"}
+        day = datetime(2026, 8, 12).date()
+        progress = []
+        try:
+            fetch_humbird_shipments_with_fallback(
+                "隆丰", credentials, day, day,
+                report_progress=progress.append,
+            )
+            fetch_humbird_shipments_with_fallback(
+                "隆丰", credentials, day, day,
+                report_progress=progress.append,
+            )
+        finally:
+            shipments._OFFICIAL_BACKOFF_UNTIL.clear()
+
+        self.assertEqual(official.call_count, 1)
+        self.assertEqual(legacy.call_count, 2)
+        self.assertTrue(any("不再重复请求" in item for item in progress))
+
+    @patch("ui.logistics.sync_view._attach_script_context")
+    @patch("ui.logistics.sync_view._script_context", return_value=None)
+    @patch("ui.logistics.sync_view.fetch_source")
+    def test_multiple_erp_platforms_are_fetched_in_parallel(
+        self, fetch, _context, _attach,
+    ):
+        barrier = Barrier(2)
+
+        def read(source, *_args, **_kwargs):
+            barrier.wait(timeout=1)
+            return [{"erp_platform": source}]
+
+        fetch.side_effect = read
+        status, progress = Mock(), Mock()
+        day = datetime(2026, 8, 15).date()
+
+        result = _fetch_selected_sources(
+            ["Haloo", "隆丰"], "DTF", SHIPPED,
+            day, day, status, progress,
+        )
+
+        self.assertEqual(set(result), {"Haloo", "隆丰"})
+        self.assertEqual(fetch.call_count, 2)
+        self.assertIn("并行读取", status.update.call_args.kwargs["label"])
+
+    @patch("automation.api.humbird.shipments.fetch_humbird_shipments_legacy")
+    @patch("automation.api.humbird.shipments.fetch_humbird_shipments")
+    def test_humbird_zero_rows_does_not_trigger_fallback(
+        self, official, legacy,
+    ):
+        official.return_value = []
+        day = datetime(2026, 8, 12).date()
+
+        rows = fetch_humbird_shipments_with_fallback(
+            "Haloo",
+            {"api_key": "official", "token": "database-token"},
+            day,
+            day,
+        )
+
+        self.assertEqual(rows, [])
+        legacy.assert_not_called()
+
+    @patch("automation.api.humbird.shipments.fetch_humbird_shipments")
+    def test_humbird_missing_database_token_requests_browser_refresh(
+        self, official,
+    ):
+        official.side_effect = RuntimeError("蜂鸟开放平台接口限流")
+        day = datetime(2026, 8, 12).date()
+
+        with self.assertRaises(HumbirdBrowserRefreshRequired):
+            fetch_humbird_shipments_with_fallback(
+                "Haloo", {"api_key": "official"}, day, day
+            )
+
+    @patch(
+        "automation.api.humbird.shipments.fetch_humbird_order_details_http"
+    )
+    @patch(
+        "automation.api.humbird.shipments.fetch_humbird_production_records_http"
+    )
+    def test_humbird_database_token_normalizes_order_tracking_relation(
+        self, production, details,
+    ):
+        production.return_value = [{
+            "code": "ITEM-1",
+            "rel_id": 11,
+            "order_no": "ORDER-1",
+            "order_third_id": "SHOP-1",
+            "status": 9,
+            "delivery_time": 1786590000000,
+        }]
+        details.return_value = [{
+            "id": 11,
+            "third_detail": {
+                "track_number_list": [{
+                    "tracking_no": "9400111122223333444455",
+                    "logistics_name": "USPS",
+                    "waybill_url": "https://labels.test/ORDER-1.pdf",
+                }],
+            },
+        }]
+        day = datetime(2026, 8, 12).date()
+
+        rows = fetch_humbird_shipments_legacy(
+            "Haloo", {"token": "database-token"}, day, day,
+            status=SHIPPED,
+        )
+
+        self.assertEqual(rows[0]["external_order_id"], "ORDER-1")
+        self.assertEqual(rows[0]["tracking_number"], "9400111122223333444455")
+        self.assertEqual(rows[0]["carrier"], "USPS")
+        self.assertEqual(
+            rows[0]["label_url"], "https://labels.test/ORDER-1.pdf"
+        )
 
     def test_live_usps_workflow_does_not_require_database_rows(self):
         display = pd.DataFrame([classify_usps_response({
@@ -1328,11 +1598,66 @@ class LogisticsTrackingTests(unittest.TestCase):
 
         self.assertEqual(payload["status"], PENDING_STATUS)
         self.assertEqual(payload["page"], 3)
-        self.assertEqual(payload["per_page"], 100)
+        self.assertEqual(payload["per_page"], 1000)
 
     def test_s2b_payload_accepts_production_and_shipped_stages(self):
         self.assertEqual(_order_payload(1, 2)["status"], 2)
         self.assertEqual(_order_payload(1, 6)["status"], 6)
+
+    def test_s2b_shipped_payload_uses_production_completion_dates(self):
+        payload = _order_payload(
+            1,
+            SHIPPED,
+            start_date=datetime(2026, 8, 14).date(),
+            end_date=datetime(2026, 8, 15).date(),
+        )
+
+        self.assertEqual(
+            payload["produced_time_before"], "2026-08-14 00:00:00"
+        )
+        self.assertEqual(
+            payload["produced_time_after"], "2026-08-15 23:59:59"
+        )
+        self.assertNotIn("delivery_time_before", payload)
+
+    @patch("automation.api.s2b.shipments.requests.Session")
+    def test_s2b_verifies_selected_dates_after_api_response(self, session):
+        response = session.return_value.post.return_value
+        response.status_code = 200
+        response.json.return_value = {
+            "data": {
+                "data": [
+                    {"order_data": {
+                        "order_code": "IN-RANGE",
+                        "logisticss_track_number": "94001",
+                        "produced_time": "2026-08-15 12:00:00",
+                    }},
+                    {"order_data": {
+                        "order_code": "OLD",
+                        "logisticss_track_number": "94002",
+                        "produced_time": "2026-08-10 12:00:00",
+                    }},
+                ],
+                "total": 2,
+                "last_page": 1,
+            },
+        }
+        start = datetime(2026, 8, 14).date()
+        end = datetime(2026, 8, 15).date()
+
+        rows = fetch_s2b_pending_shipments(
+            "3D",
+            {"token": "saved"},
+            status=SHIPPED,
+            start_date=start,
+            end_date=end,
+        )
+
+        self.assertEqual(
+            [row["external_order_id"] for row in rows], ["IN-RANGE"]
+        )
+        payload = session.return_value.post.call_args.kwargs["json"]
+        self.assertEqual(payload["produced_time_before"], "2026-08-14 00:00:00")
 
     def test_multi_item_order_merges_into_one_shipment(self):
         common = {

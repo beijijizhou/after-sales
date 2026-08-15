@@ -84,6 +84,11 @@ refactors, not after every small feature.
   `dtf_colored_inventory.py`.
 - Production collection: `automation/api/`, `automation/playwright/`, and
   `automation/sync/`
+- ERP provider ownership: `automation/api/<provider>/` contains each
+  provider's authentication, production API, logistics API, payloads and
+  provider-specific response handling. `automation/logistics/` owns shared
+  workflow composition, OCR, USPS and compatibility concerns only; provider-
+  neutral carrier and stage contracts live in `automation/integrations/`.
 - Phone-case image and dieline logic: `utils/image_tools/`,
   `ui/image_tools/`, and `assets/dielines/`
 - Database scripts: `sql/`, grouped by business domain; inventory scripts are

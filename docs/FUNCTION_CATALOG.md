@@ -70,10 +70,15 @@ an activity log.
 | Sales parties and invoice signing | `ui/inventory/sales/customer_section.py`, `invoice_review.py` | Sales pages compose customer selection and preview-before-signing; inventory validation remains shared. |
 | Production platform catalog | `automation/production.py` | Logistics and production pages reuse the same department/platform ownership. |
 | ERP product normalization | `utils/erp/` | Source adapters feed shared normalized records; do not normalize the same platform in UI code. |
-| Humbird official production and logistics API | `humbird_erp/`, `automation/api/humbird/`, `automation/logistics/humbird.py` | The publishable package owns API-key transport, pagination, product hydration and waybill lookup. Application adapters own credentials, legacy fallback, normalization and persistence; keep all of these out of UI code. |
+| Humbird official production and logistics API | `humbird_erp/`, `automation/api/humbird/` | The publishable package owns API-key transport, pagination, product hydration and waybill lookup. The provider package owns credentials, rate-limit backoff, request-header token capture, the three-level fallback, production and shipment adapters; compatibility modules contain no logic. |
+| SDS production and logistics API | `automation/api/sds/` | Authentication, production reads and parcel/label reads share the SDS provider package; workflows import its public facade. |
+| S2B production and logistics API | `automation/api/s2b/` | Production records, production parsing, 1,000-row paged order/tracking reads and label calls share the S2B provider package; browser login remains a replaceable authentication fallback. |
+| 19DIY production and logistics API | `automation/api/diy19/` | 七创 and 一朵云 share provider authentication, production reads, shipment reads and provider response normalization. |
+| Provider-neutral integration contracts | `automation/integrations/` | ERP providers reuse carrier classification and workflow-stage semantics without importing page or logistics-controller packages. |
 | Daily usage model | `utils/daily_usage_model.py` | Inventory and consumable planning reuse common daily-rate calculations where units and semantics match. |
 | Google Sheets returned-range matching | `utils/google_sheets.py` | All Sheets batch readers use the shared normalized range lookup. |
 | Logistics carrier/label review | `ui/logistics/review/` | Compose model, OCR runner, state and view; keep `page.py` as controller only. |
+| ERP logistics business stages | `automation/logistics/stages.py` | All connectors map their own codes to 未接单、已接单（生产中）、已发货; 已发货 means production and QA completed, not merely label creation. UI pages reuse these labels and codes. |
 | USPS tracking input/query/results | `ui/logistics/tracking/` | Reuse input normalization, cache/query, label and origin components. |
 | Logistics daily platform summary | `db/logistics/summary.py`, `ui/logistics/summary_model.py`, `summary_detail.py`, `summary_view.py` | Persist ERP relationships first, associate USPS checks through `logistics_tracking_check_sources`, then present date/platform batches before order-level PDF and OCR detail. |
 | S2B visible page actions | `automation/playwright/s2b/page_actions.py` | Browser workflows reuse shared visible exact-text interaction. |

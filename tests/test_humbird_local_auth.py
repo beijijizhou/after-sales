@@ -118,6 +118,53 @@ class HumbirdLocalAuthTest(unittest.TestCase):
             self.assertEqual(profiles["莆田"]["token"], "putian-token")
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
 
+    @patch("automation.api.humbird.local_auth.save_humbird_credentials")
+    @patch("automation.api.humbird.local_auth._save_token")
+    @patch("automation.api.humbird.local_auth.find_erp_page")
+    @patch("automation.api.humbird.local_auth.connect_debug_chrome")
+    @patch("automation.api.humbird.local_auth.chrome_is_connectable")
+    @patch("automation.api.humbird.local_auth.local_humbird_login_available")
+    def test_browser_refresh_writes_new_token_to_database(
+        self, available, connectable, connect, find_page, save_local, save_db,
+    ):
+        available.return_value = True
+        connectable.return_value = True
+        page = find_page.return_value
+        page.url = "https://haloopod.merchant.hihumbird.com/factory"
+        page.on.side_effect = lambda _event, callback: callback(type(
+            "Request", (), {
+                "url": "https://apigw.hihumbird.com/production/list",
+                "headers": {"authorization": "Bearer fresh-token"},
+            }
+        )())
+        secrets = {"SUPABASE_KEY": "key"}
+        database = object()
+
+        with patch.dict("sys.modules", {
+            "playwright.sync_api": type("Module", (), {
+                "sync_playwright": lambda: _PlaywrightContext(),
+            })
+        }):
+            result = local_auth.refresh_local_humbird_token(
+                "Haloo", secrets, supabase=database, updated_by="admin"
+            )
+
+        save_local.assert_called_once_with("Haloo", "fresh-token")
+        save_db.assert_called_once_with(
+            secrets, "Haloo", "fresh-token",
+            supabase=database, updated_by="admin",
+        )
+        self.assertTrue(result["database_saved"])
+        page.evaluate.assert_not_called()
+
+
+class _PlaywrightContext:
+    def __enter__(self):
+        return object()
+
+    def __exit__(self, *_args):
+        return None
+
 
 if __name__ == "__main__":
     unittest.main()

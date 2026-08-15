@@ -34,6 +34,19 @@ that duplication in the same tested change instead of adding a third version.
 Keep `docs/FUNCTION_CATALOG.md` current when page ownership or shared
 capabilities change.
 
+Group every external ERP integration by provider before grouping it by page or
+workflow. Authentication, HTTP requests, payloads, pagination, provider
+response handling, production endpoints, logistics endpoints, and provider-
+specific parsing for Humbird, SDS, S2B, or another ERP belong under that
+provider's package in `automation/api/<provider>/`. Pages and shared workflows
+must import the provider package's public facade, not a deep implementation
+module. Keep genuinely provider-neutral behavior—business-day ranges, shared
+normalized record contracts, carrier classification, workflow stages, retry
+primitives, and audit interfaces—in shared modules and compose it from each
+provider. Do not create a second provider implementation under a page,
+`automation/logistics/`, or `utils/`; compatibility modules may only re-export
+an existing provider implementation and must contain no business logic.
+
 Treat UI modularity as seriously as code modularity. Group related functions
 in the same page area, and separate distinct workflows with tabs or focused
 views instead of stacking multiple full tables and forms on one screen.

@@ -16,8 +16,10 @@ from db.automation_credentials import (
 
 API_BASE = "https://apigw.hihumbird.com"
 PRODUCTION_PATH = "/production/v1/production/order/item/page"
+ORDER_DETAILS_PATH = "/oc/v2/orders/list"
 REFRESH_PATH = "/uc/v1/users/actions/refresh_token"
-PAGE_SIZE = 5000
+PAGE_SIZE = 10000
+ORDER_BATCH_SIZE = 200
 
 
 class HumbirdAuthenticationError(RuntimeError):
@@ -36,15 +38,18 @@ def fetch_humbird_production_records_http(
     if not token:
         raise ValueError(f"{platform} 生产 API 缺少 token")
     session = requests.Session()
-    report(f"1/3 正在验证 {platform} API token（不打开网页）")
-    try:
-        refreshed_token = _refresh_token(session, token, platform) or token
-    except HumbirdAuthenticationError as error:
-        _record_error(credentials, platform, error, expired=True)
-        raise
-    if refreshed_token != token:
-        _persist_refreshed_token(credentials, platform, refreshed_token)
-        token = refreshed_token
+    if (credentials or {}).get("token_just_captured"):
+        report(f"1/3 正在使用刚捕获的 {platform} token 直接请求 API")
+    else:
+        report(f"1/3 正在验证 {platform} API token（不打开网页）")
+        try:
+            refreshed_token = _refresh_token(session, token, platform) or token
+        except HumbirdAuthenticationError as error:
+            _record_error(credentials, platform, error, expired=True)
+            raise
+        if refreshed_token != token:
+            _persist_refreshed_token(credentials, platform, refreshed_token)
+            token = refreshed_token
 
     records = []
     expected_total = None
@@ -61,7 +66,11 @@ def fetch_humbird_production_records_http(
             headers=_signed_headers("POST", body, token),
             timeout=60,
         )
-        result = _response_data(response, platform)
+        try:
+            result = _response_data(response, platform)
+        except HumbirdAuthenticationError as error:
+            _record_error(credentials, platform, error, expired=True)
+            raise
         rows = list(result.get("list") or [])
         expected_total = int(result.get("total") or 0)
         records.extend(rows)
@@ -83,6 +92,65 @@ def fetch_humbird_production_records_http(
     return records
 
 
+def fetch_humbird_order_details_http(
+    platform,
+    order_ids,
+    credentials,
+    report_progress=None,
+    validate_token=True,
+):
+    """Read order tracking details with the shared database token."""
+    report = report_progress or (lambda _message: None)
+    token = str((credentials or {}).get("token") or "").strip()
+    if not token:
+        raise HumbirdAuthenticationError(
+            f"{platform} 数据库中没有可用的备用 API token"
+        )
+    session = requests.Session()
+    if validate_token:
+        report(f"正在验证 {platform} 数据库备用 token（不打开网页）")
+        try:
+            refreshed_token = _refresh_token(session, token, platform) or token
+        except HumbirdAuthenticationError as error:
+            _record_error(credentials, platform, error, expired=True)
+            raise
+        if refreshed_token != token:
+            _persist_refreshed_token(credentials, platform, refreshed_token)
+            token = refreshed_token
+    else:
+        report(f"正在复用本次已验证的 {platform} token 读取订单详情")
+
+    identifiers = list(dict.fromkeys(
+        _order_identifier(value)
+        for value in order_ids if str(value).strip()
+    ))
+    details = []
+    total_batches = max(
+        1, (len(identifiers) + ORDER_BATCH_SIZE - 1) // ORDER_BATCH_SIZE
+    )
+    for offset in range(0, len(identifiers), ORDER_BATCH_SIZE):
+        batch = identifiers[offset:offset + ORDER_BATCH_SIZE]
+        body = _json_body({
+            "order_ids": batch,
+            "query_field_list": ["third_detail"],
+        })
+        response = session.post(
+            f"{API_BASE}{ORDER_DETAILS_PATH}",
+            data=body,
+            headers=_signed_headers("POST", body, token),
+            timeout=60,
+        )
+        data = _response_data(response, platform, allow_collection=True)
+        details.extend(_collection_rows(data))
+        current = offset // ORDER_BATCH_SIZE + 1
+        report(
+            f"备用接口订单详情：{current:,}/{total_batches:,} 批，"
+            f"累计 {len(details):,} 个订单"
+        )
+    _record_used(credentials, platform)
+    return details
+
+
 def _refresh_token(session, token, platform):
     response = session.put(
         f"{API_BASE}{REFRESH_PATH}",
@@ -98,6 +166,8 @@ def _refresh_token(session, token, platform):
 
 
 def _persist_refreshed_token(credentials, platform, token):
+    if isinstance(credentials, dict):
+        credentials["token"] = token
     store = (credentials or {}).get("credential_store")
     secret = (credentials or {}).get("encryption_secret")
     if store is not None and secret:
@@ -152,7 +222,9 @@ def _signed_headers(method, body, token):
     }
 
 
-def _response_data(response, platform, allow_scalar=False):
+def _response_data(
+    response, platform, allow_scalar=False, allow_collection=False,
+):
     if response.status_code in {401, 403}:
         raise HumbirdAuthenticationError(
             f"{platform} API token 已失效，请重新登录并更新 token"
@@ -168,11 +240,26 @@ def _response_data(response, platform, allow_scalar=False):
             )
         raise RuntimeError(f"{platform} API 返回错误：{message}")
     data = payload.get("data")
-    if allow_scalar:
+    if allow_scalar or allow_collection:
         return data
     if not isinstance(data, dict):
         raise RuntimeError(f"{platform} API 生产列表格式异常")
     return data
+
+
+def _collection_rows(data):
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("list", "rows", "orders"):
+            if isinstance(data.get(key), list):
+                return data[key]
+    return []
+
+
+def _order_identifier(value):
+    text = str(value).strip()
+    return int(text) if text.isdigit() else text
 
 
 def _json_body(payload):

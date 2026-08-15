@@ -2,14 +2,29 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from automation.api.fangguo import fetch_fangguo_production_records
-from automation.api.hansen import fetch_hansen_production_records
-from automation.api.humbird.http_client import (
-    fetch_humbird_production_records_http,
+from automation.api.fangguo import (
+    fetch_fangguo_production_records,
+    parse_fangguo_records,
 )
-from automation.api.humbird.open_client import fetch_open_production_records
-from automation.api.diy19 import DIY19_BASE_URLS, fetch_diy19_production_summary
-from automation.api.sds import fetch_sds_production_records
+from automation.api.hansen import (
+    fetch_hansen_production_records,
+    parse_hansen_records,
+)
+from automation.api.humbird import (
+    fetch_humbird_production_records_http,
+    fetch_open_production_records,
+    parse_humbird_records,
+)
+from automation.api.diy19 import (
+    DIY19_BASE_URLS,
+    fetch_diy19_production_summary,
+    parse_diy19_records,
+)
+from automation.api.sds import (
+    fetch_sds_production_records,
+    normalize_sds_platform_catalog,
+    parse_sds_records,
+)
 from automation.api.s2b import (
     fetch_s2b_production_records,
     parse_s2b_production_records,
@@ -19,13 +34,7 @@ from automation.playwright.haloo import DIAGNOSTIC_PATH, ERP_PLATFORM_NAMES
 from automation.playwright.haloo.workflow import download_production_workbook
 from automation.playwright.s2b import download_s2b_workbook
 from utils.erp import parse_platform_workbook
-from utils.erp.fangguo_parser import parse_fangguo_records
-from utils.erp.hansen_parser import parse_hansen_records
-from utils.erp.humbird_parser import parse_humbird_records
-from utils.erp.diy19_parser import parse_diy19_records
-from utils.erp.sds_parser import parse_sds_records
 from utils.erp.time_range import filter_production_time
-from utils.erp.sds_catalog import normalize_sds_platform_catalog
 
 
 SDS_PLATFORM_PROFILES = {
