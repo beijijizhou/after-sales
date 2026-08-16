@@ -1,9 +1,9 @@
 import streamlit as st
 
+from db.batches import BatchKind, BatchReference, reverse_batch
 from db.inventory.sales import (
     build_sales_invoice_pdf,
     load_invoice_detail,
-    void_sales_invoice,
 )
 from utils.auth import get_current_operator_name
 
@@ -76,8 +76,10 @@ def _render_void_invoice(supabase, invoice_id, invoice_number):
     ):
         return
     try:
-        void_sales_invoice(
-            supabase, invoice_id, get_current_operator_name()
+        reverse_batch(
+            supabase,
+            BatchReference(BatchKind.SALES_INVOICE, invoice_id),
+            get_current_operator_name(),
         )
         st.session_state["inventory_saved_message"] = (
             f"Invoice {invoice_number} 已作废，库存已生成反向批次。"

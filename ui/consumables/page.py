@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 import streamlit as st
 
@@ -14,6 +17,7 @@ from ui.consumables.operations import (
     render_movement_entry,
     render_reversals,
 )
+from ui.consumables.completion import render_consumable_completion
 from ui.consumables.planning import (
     render_consumable_consumption_model,
     render_consumable_reorder_forecast,
@@ -95,14 +99,32 @@ def _render_department_workspace(
         st.info("请确认 sql/consumables 中的文件已经依次运行。")
         return
 
-    filtered_items = _render_item_filters(items)
-    filtered_batches, filtered_movements = _filter_history(
-        batches, movements, filtered_items
-    )
     show_cost = is_admin()
     can_edit = has_permission("can_edit_consumables")
     can_report = can_edit or has_permission("can_report_consumables")
     can_manage_sku = has_permission("can_manage_consumable_sku")
+    makeup_date = render_consumable_completion(
+        batches, datetime.now(ZoneInfo("America/New_York")).date(),
+        can_report,
+    )
+
+    if makeup_date:
+        with st.container(border=True):
+            header, action = st.columns([3, 1])
+            header.markdown(f"#### 补录 {makeup_date:%m/%d} 耗材出库")
+            if action.button(
+                "取消补录", width="stretch", key="cancel_consumable_makeup",
+                on_click=_cancel_consumable_makeup,
+            ):
+                pass
+            render_daily_issue_table(
+                supabase, department_code, items, can_report
+            )
+
+    filtered_items = _render_item_filters(items)
+    filtered_batches, filtered_movements = _filter_history(
+        batches, movements, filtered_items
+    )
     latest_costs = build_latest_costs(movements)
 
     (
@@ -120,9 +142,12 @@ def _render_department_workspace(
             filtered_items, filtered_batches, filtered_movements
         )
     with issue_tab:
-        render_daily_issue_table(
-            supabase, department_code, filtered_items, can_report
-        )
+        if makeup_date:
+            st.info(f"{makeup_date:%m/%d} 的补录表已在本页上方展开。")
+        else:
+            render_daily_issue_table(
+                supabase, department_code, filtered_items, can_report
+            )
     with inbound_tab:
         render_movement_entry(
             supabase, department_code, filtered_items, can_edit,
@@ -156,6 +181,10 @@ def _render_department_filter(departments):
         format_func=lambda code: labels.get(code, code),
         key="consumable_department",
     )
+
+
+def _cancel_consumable_makeup():
+    st.session_state.pop("consumable_makeup_date", None)
 
 
 def _render_item_filters(items):

@@ -123,6 +123,18 @@ class InventoryDashboardTests(unittest.TestCase):
         self.assertEqual(result["uv"], {date(2026, 8, 4)})
         self.assertEqual(result["consumables"], {date(2026, 8, 2)})
 
+    def test_consumable_completion_accepts_audited_no_change_acknowledgement(self):
+        consumables = pd.DataFrame([{
+            "id": "ack-1", "movement_type": "adjustment",
+            "movement_date": "2026-08-09",
+            "source_file_name": "completion_ack",
+            "reversal_of_batch_id": None,
+        }])
+
+        result = build_daily_completion_dates(pd.DataFrame(), consumables)
+
+        self.assertEqual(result["consumables"], {date(2026, 8, 9)})
+
     def test_completion_table_lists_missing_dates_and_action(self):
         completed = {
             "black_white": {date(2026, 8, 3)},

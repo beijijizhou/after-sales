@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
+from db.batches import BatchKind, BatchReference, reverse_batch
 from db.inventory.warehouses import (
     TRANSFER_STATUS_LABELS,
     build_transfer_line_editor,
@@ -10,7 +11,6 @@ from db.inventory.warehouses import (
     dispatch_transfer,
     normalize_transfer_execution_lines,
     receive_transfer,
-    reverse_transfer,
 )
 from utils.auth import get_current_operator_name
 
@@ -164,8 +164,10 @@ def render_reversal(supabase, order, status):
             action, disabled=not confirmed,
             key=f"reverse_transfer_{order['id']}",
         ):
-            reverse_transfer(
-                supabase, order["id"], get_current_operator_name()
+            reverse_batch(
+                supabase,
+                BatchReference(BatchKind.WAREHOUSE_TRANSFER, order["id"]),
+                get_current_operator_name(),
             )
             _saved(f"{action}已完成。")
 

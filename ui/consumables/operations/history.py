@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from db.consumables import reverse_consumable_batch
+from db.batches import BatchKind, BatchReference, reverse_batch
 from ui.consumables.units import entry_unit, to_entry_quantity
 from utils.auth import get_current_operator_name
 
@@ -58,8 +58,10 @@ def render_reversals(
                 disabled=not confirmed,
             ):
                 try:
-                    reverse_consumable_batch(
-                        supabase, selected_id, get_current_operator_name()
+                    reverse_batch(
+                        supabase,
+                        BatchReference(BatchKind.CONSUMABLE, selected_id),
+                        get_current_operator_name(),
                     )
                 except Exception as error:
                     st.error(f"撤销失败：{error}")
@@ -89,8 +91,13 @@ def _render_batch_selector(batch_df, key):
             created_at.tz_convert("America/New_York").strftime("%Y-%m-%d %H:%M")
             if not pd.isna(created_at) else ""
         )
+        type_label = (
+            "耗材扣减核对（无库存变动）"
+            if row.get("source_file_name") == "completion_ack"
+            else TYPE_LABELS.get(row["movement_type"], row["movement_type"])
+        )
         labels[str(row["id"])] = (
-            f"{entered}｜{TYPE_LABELS.get(row['movement_type'], row['movement_type'])}"
+            f"{entered}｜{type_label}"
             f"｜{row['movement_date']}｜{row['created_by']}"
         )
     options = list(labels)

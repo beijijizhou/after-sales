@@ -1,6 +1,6 @@
 """Pure daily inventory-completion models."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -11,6 +11,7 @@ DAILY_FLOW_LABELS = {
     "black_white": "黑白短袖", "consumables": "DTF 耗材",
     "colored": "彩色短袖", "uv": "UV 生产库存",
 }
+DAILY_COMPLETION_START_DATE = date(2026, 8, 1)
 
 
 def build_daily_completion_dates(movements, consumable_batches):
@@ -118,7 +119,13 @@ def active_consumable_issue_dates(batches):
         return set()
     result = batches.copy()
     reversed_ids = set(result.get("reversal_of_batch_id", pd.Series(dtype=str)).dropna().astype(str))
-    result = result[result["movement_type"].eq("issue")]
+    source_names = result.get(
+        "source_file_name", pd.Series(index=result.index, dtype=str)
+    ).fillna("").astype(str)
+    result = result[
+        result["movement_type"].eq("issue")
+        | source_names.eq("completion_ack")
+    ]
     if "id" in result and reversed_ids:
         result = result[~result["id"].astype(str).isin(reversed_ids)]
     return set(pd.to_datetime(result["movement_date"], errors="coerce").dropna().dt.date)

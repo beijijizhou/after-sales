@@ -4,9 +4,9 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from db.batches import BatchKind, BatchReference, reverse_batch
 from db.inventory.operations.adjustments import (
     apply_adjustment_rows,
-    reverse_inventory_batch,
 )
 
 EDITABLE_STATUSES = {"未到货", "在途", "延迟", "已到柜"}
@@ -190,9 +190,13 @@ def correct_posted_container_quantities(
             }).eq("id", row["id"]).execute()
         if applied:
             try:
-                reverse_inventory_batch(
-                    supabase, batch_id, rows[0]["department"],
-                    rows[0]["category"], operated_by,
+                reverse_batch(
+                    supabase,
+                    BatchReference(
+                        BatchKind.INVENTORY, batch_id,
+                        rows[0]["department"], rows[0]["category"],
+                    ),
+                    operated_by,
                 )
             except Exception:
                 pass

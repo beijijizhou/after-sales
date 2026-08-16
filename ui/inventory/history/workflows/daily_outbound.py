@@ -3,11 +3,16 @@
 import pandas as pd
 import streamlit as st
 
+from db.batches import (
+    BatchKind,
+    BatchReference,
+    DailyOutboundReplacement,
+    replace_batch,
+)
 from db.inventory import normalize_adjustment_rows
 from db.inventory.operations.daily_outbound_versions import (
     build_daily_outbound_edit_rows as build_versioned_outbound_edit_rows,
     load_daily_outbound_revision_by_inventory_batch,
-    save_daily_outbound_revision,
 )
 from db.inventory.operations.outbound_audit import (
     DAILY_OUTBOUND_REASONS,
@@ -171,11 +176,19 @@ def _save_correction(supabase, batch_id, complete, corrected, versioned,
     row = complete.iloc[0]
     try:
         if versioned:
-            save_daily_outbound_revision(
-                supabase, row["department"], row["category"], movement_date,
-                corrected, get_current_operator_name(),
-                daily_outbound_batch_id=versioned["daily_outbound_batch_id"],
-                note=f"修改每日出库：{original_total} → {corrected_total}",
+            replace_batch(
+                supabase,
+                BatchReference(
+                    BatchKind.DAILY_OUTBOUND,
+                    versioned["daily_outbound_batch_id"],
+                    row["department"], row["category"],
+                ),
+                DailyOutboundReplacement(
+                    movement_date,
+                    corrected.to_dict("records"),
+                    f"修改每日出库：{original_total} → {corrected_total}",
+                ),
+                get_current_operator_name(),
             )
             passed, mismatches = True, pd.DataFrame()
         else:

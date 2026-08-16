@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pandas as pd
 
 
@@ -45,6 +47,26 @@ def create_consumable_item(supabase, values):
         .insert(values)
         .execute()
         .data
+    )
+
+
+def acknowledge_consumable_completion(
+    supabase, department_id, movement_date, note, created_by,
+):
+    """Record an audited no-stock-change acknowledgement for one day."""
+    return (
+        supabase.table("consumable_movement_batches")
+        .insert({
+            "id": str(uuid4()),
+            "department_id": str(department_id),
+            "movement_type": "adjustment",
+            "movement_date": movement_date.isoformat(),
+            "total_quantity": 0,
+            "note": str(note or "").strip(),
+            "source_file_name": "completion_ack",
+            "created_by": str(created_by or "system").strip() or "system",
+        })
+        .execute().data
     )
 
 

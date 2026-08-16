@@ -6,10 +6,9 @@ import streamlit as st
 from db.inventory.container.repository import (
     load_posted_container_by_inventory_batch,
 )
-from db.inventory.operations.adjustments import reverse_inventory_batch
+from db.batches import BatchKind, BatchReference, reverse_batch
 from db.inventory.operations.daily_outbound_versions import (
     load_daily_outbound_revision_by_inventory_batch,
-    void_daily_outbound_revision,
 )
 from db.inventory.operations.outbound_audit import load_outbound_inventory
 from ui.inventory.container.item_editor import (
@@ -125,16 +124,23 @@ def render_movement_undo(supabase, selected, reversed_ids):
             daily_batch = daily_revision.get(
                 "inventory_daily_outbound_batches"
             ) or {}
-            void_daily_outbound_revision(
+            reverse_batch(
                 supabase,
-                daily_revision["daily_outbound_batch_id"],
-                daily_batch.get("department") or row["department"],
-                daily_batch.get("category") or row["category"],
+                BatchReference(
+                    BatchKind.DAILY_OUTBOUND,
+                    daily_revision["daily_outbound_batch_id"],
+                    daily_batch.get("department") or row["department"],
+                    daily_batch.get("category") or row["category"],
+                ),
                 get_current_operator_name(),
             )
         else:
-            reverse_inventory_batch(
-                supabase, batch_id, row["department"], row["category"],
+            reverse_batch(
+                supabase,
+                BatchReference(
+                    BatchKind.INVENTORY, batch_id,
+                    row["department"], row["category"],
+                ),
                 get_current_operator_name(),
             )
     except Exception as error:

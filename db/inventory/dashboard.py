@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pandas as pd
 
@@ -9,6 +9,7 @@ from db.consumables import (
 from db.inventory.core.pagination import fetch_range_pages
 from db.inventory.dashboard_overview import load_inventory_overview
 from db.inventory.dashboard_completion import (
+    DAILY_COMPLETION_START_DATE,
     DAILY_FLOW_LABELS,
     active_consumable_issue_dates as _active_consumable_issue_dates,
     active_inventory_movements as _active_inventory_movements,
@@ -18,9 +19,6 @@ from db.inventory.dashboard_completion import (
     build_today_completion_status,
     build_today_completion_table,
 )
-
-
-DAILY_COMPLETION_START_DATE = date(2026, 8, 1)
 
 
 def load_daily_completion_summary(supabase, today, lookback_days=7):

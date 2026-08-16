@@ -2,6 +2,7 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from db.batches import BatchKind, BatchReference, reverse_batch
 from db.inventory.container.workflow.state import (
     STATE_ARRIVED,
     STATE_IN_TRANSIT,
@@ -53,10 +54,14 @@ def _undo_posting(supabase, container_key, current, operated_by, note):
 
     _update_container(supabase, container_key, {"status": previous})
     try:
-        supabase.rpc(
-            "reverse_inventory_movement_batch",
-            {"p_batch_id": batch_id, "p_created_by": operated_by},
-        ).execute()
+        reverse_batch(
+            supabase,
+            BatchReference(
+                BatchKind.INVENTORY, batch_id,
+                current.get("department"), current.get("category"),
+            ),
+            operated_by,
+        )
     except Exception:
         _update_container(
             supabase, container_key, {"status": current["status"]}
@@ -118,7 +123,8 @@ def _load_current_container(supabase, container_key):
     rows = (
         supabase.table("inventory_container_imports")
         .select(
-            "container_no,status,actual_arrival_date,actual_arrival_at"
+            "container_no,status,actual_arrival_date,actual_arrival_at,"
+            "department,category"
         )
         .eq("container_key", container_key)
         .execute()

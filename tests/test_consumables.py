@@ -1,8 +1,10 @@
 import unittest
+from datetime import date
 
 import pandas as pd
 
 from ui.consumables.operations.entry import _normalize_entry_rows
+from ui.consumables.completion import build_consumable_missing_dates
 from ui.consumables.operations.stock_tables import _normalize_initialization
 from ui.consumables.stock import build_latest_costs, filter_items
 from ui.consumables.page import CONSUMABLE_TABS
@@ -11,6 +13,33 @@ from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class ConsumableInventoryTests(unittest.TestCase):
+    def test_missing_dates_use_same_active_issue_batches_as_inventory(self):
+        batches = pd.DataFrame([
+            {
+                "id": "issue-1", "movement_type": "issue",
+                "movement_date": "2026-08-15", "reversal_of_batch_id": None,
+            },
+            {
+                "id": "issue-2", "movement_type": "issue",
+                "movement_date": "2026-08-15", "reversal_of_batch_id": None,
+            },
+            {
+                "id": "old-issue", "movement_type": "issue",
+                "movement_date": "2026-08-14", "reversal_of_batch_id": None,
+            },
+            {
+                "id": "reversal", "movement_type": "reversal",
+                "movement_date": "2026-08-15",
+                "reversal_of_batch_id": "old-issue",
+            },
+        ])
+
+        result = build_consumable_missing_dates(
+            batches, date(2026, 8, 16), start_date=date(2026, 8, 14)
+        )
+
+        self.assertEqual(result, [date(2026, 8, 14)])
+
     def test_page_exposes_inbound_and_audit_as_primary_tabs(self):
         self.assertEqual(CONSUMABLE_TABS, [
             "当前库存", "点货预测", "消耗模型", "每日耗材出库",

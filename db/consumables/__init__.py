@@ -1,4 +1,5 @@
 from db.consumables.repository import (
+    acknowledge_consumable_completion,
     create_consumable_item,
     load_consumable_batches,
     load_consumable_items,
@@ -16,6 +17,7 @@ from db.consumables.service import (
 )
 
 __all__ = [
+    "acknowledge_consumable_completion",
     "apply_consumable_batch",
     "build_consumable_consumption_model",
     "build_consumable_reorder_forecast",

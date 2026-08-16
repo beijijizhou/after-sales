@@ -76,14 +76,16 @@ class ContainerReversalTests(unittest.TestCase):
     @patch("db.inventory.container.workflow.reversal._update_container")
     @patch("db.inventory.container.workflow.reversal._load_latest_event")
     @patch("db.inventory.container.workflow.reversal._load_current_container")
+    @patch("db.inventory.container.workflow.reversal.reverse_batch")
     def test_undo_posting_reverses_linked_inventory_batch(
-        self, load_current, load_event, update, insert,
+        self, reverse, load_current, load_event, update, insert,
     ):
         batch_id = "11111111-2222-3333-4444-555555555555"
         load_current.return_value = {
             "container_no": "11柜", "status": "已入库",
             "actual_arrival_date": "2026-08-05",
             "actual_arrival_at": None,
+            "department": "DTF", "category": "黑白短袖",
         }
         load_event.return_value = {
             "previous_status": "已到柜",
@@ -96,12 +98,11 @@ class ContainerReversalTests(unittest.TestCase):
         )
 
         update.assert_called_once_with(client, "11柜", {"status": "已到柜"})
-        self.assertEqual(
-            client.calls,
-            [("reverse_inventory_movement_batch", {
-                "p_batch_id": batch_id, "p_created_by": "Andy",
-            })],
-        )
+        reference = reverse.call_args.args[1]
+        self.assertEqual(reference.batch_id, batch_id)
+        self.assertEqual(reference.department, "DTF")
+        self.assertEqual(reference.category, "黑白短袖")
+        self.assertEqual(reverse.call_args.args[2], "Andy")
         self.assertEqual(insert.call_args.args[1]["event_type"], "撤销入库")
         self.assertEqual(result["batch_id"], batch_id)
 
