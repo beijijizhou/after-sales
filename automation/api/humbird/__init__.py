@@ -11,7 +11,9 @@ from automation.api.humbird.open_client import (
     fetch_open_production_records,
 )
 from automation.api.humbird.shipments import (
+    HUMBIRD_LOGISTICS_PLATFORMS,
     HUMBIRD_OPEN_LOGISTICS_PLATFORMS,
+    HUMBIRD_TOKEN_LOGISTICS_PLATFORMS,
     HumbirdBrowserRefreshRequired,
     fetch_humbird_shipments,
     fetch_humbird_shipments_legacy,
@@ -29,7 +31,9 @@ __all__ = [
     "HumbirdOpenApiClient",
     "HumbirdOpenApiError",
     "fetch_open_production_records",
+    "HUMBIRD_LOGISTICS_PLATFORMS",
     "HUMBIRD_OPEN_LOGISTICS_PLATFORMS",
+    "HUMBIRD_TOKEN_LOGISTICS_PLATFORMS",
     "HumbirdBrowserRefreshRequired",
     "fetch_humbird_shipments",
     "fetch_humbird_shipments_legacy",

@@ -1,5 +1,7 @@
 import pandas as pd
 
+from db.inventory.operations.adjustments import reverse_inventory_batch
+
 
 def save_daily_outbound_revision(
     supabase,
@@ -39,6 +41,73 @@ def save_daily_outbound_revision(
         },
     ).execute()
     return response.data or {}
+
+
+def void_daily_outbound_revision(
+    supabase, daily_outbound_batch_id, department, category, created_by,
+    note="撤销每日出库",
+):
+    """Void the current logical revision and restore its inventory impact."""
+    batch = (
+        supabase.table("inventory_daily_outbound_batches")
+        .select("id,current_revision,status")
+        .eq("id", str(daily_outbound_batch_id)).single().execute().data
+    )
+    if not batch:
+        raise ValueError("没有找到每日出库业务批次")
+    if batch.get("status") == "voided":
+        return {"daily_outbound_batch_id": batch["id"], "status": "voided"}
+    current = (
+        supabase.table("inventory_daily_outbound_revisions")
+        .select("id,inventory_batch_id")
+        .eq("daily_outbound_batch_id", batch["id"])
+        .eq("revision_number", int(batch["current_revision"]))
+        .single().execute().data
+    )
+    if not current:
+        raise ValueError("没有找到每日出库当前版本")
+    inventory_batch_id = current.get("inventory_batch_id")
+    reversal_batch_id = None
+    if inventory_batch_id:
+        reversal_batch_id = reverse_inventory_batch(
+            supabase, inventory_batch_id, department, category, created_by
+        )
+    next_revision = int(batch["current_revision"]) + 1
+    try:
+        revision = (
+            supabase.table("inventory_daily_outbound_revisions").insert({
+                "daily_outbound_batch_id": batch["id"],
+                "revision_number": next_revision,
+                "action": "void",
+                "inventory_batch_id": None,
+                "reversal_inventory_batch_id": reversal_batch_id,
+                "requested_total": 0,
+                "applied_total": 0,
+                "shortage_total": 0,
+                "note": note,
+                "created_by": created_by,
+            }).execute().data
+        )
+        (
+            supabase.table("inventory_daily_outbound_batches").update({
+                "current_revision": next_revision,
+                "status": "voided",
+                "updated_by": created_by,
+            }).eq("id", batch["id"]).execute()
+        )
+    except Exception:
+        if reversal_batch_id:
+            reverse_inventory_batch(
+                supabase, reversal_batch_id, department, category, created_by
+            )
+        raise
+    return {
+        "daily_outbound_batch_id": batch["id"],
+        "revision_id": revision[0]["id"] if revision else None,
+        "revision_number": next_revision,
+        "reversal_inventory_batch_id": reversal_batch_id,
+        "status": "voided",
+    }
 
 
 def load_daily_outbound_revisions(

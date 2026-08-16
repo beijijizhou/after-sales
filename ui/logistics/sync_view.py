@@ -4,13 +4,17 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date
 from queue import Empty, Queue
 import threading
+from time import perf_counter
 
 import pandas as pd
 import streamlit as st
 
 from automation.logistics import parse_logistics_frame
 from automation.logistics.stages import STAGE_CODES, STAGE_OPTIONS
-from automation.api.humbird import HUMBIRD_OPEN_LOGISTICS_PLATFORMS
+from automation.api.humbird import (
+    HUMBIRD_LOGISTICS_PLATFORMS,
+    HUMBIRD_OPEN_LOGISTICS_PLATFORMS,
+)
 from automation.production import (
     PLATFORMS_BY_DEPARTMENT,
     PRODUCTION_DEPARTMENTS,
@@ -33,7 +37,7 @@ from utils.auth import has_permission
 
 
 CONNECTED_PLATFORMS = {
-    *HUMBIRD_OPEN_LOGISTICS_PLATFORMS,
+    *HUMBIRD_LOGISTICS_PLATFORMS,
     "S2B", "七创", "一朵云", *SDS_PLATFORM_PROFILES,
 }
 ORDER_STAGES = STAGE_CODES
@@ -68,7 +72,10 @@ def _render_erp_sync(supabase):
         f"已接入物流接口：{'、'.join(connected) or '暂无'}｜"
         f"尚未接入物流接口：{'、'.join(pending) or '无'}"
     )
-    stage = st.selectbox("订单阶段", STAGE_OPTIONS)
+    stage = st.selectbox(
+        "订单阶段", STAGE_OPTIONS,
+        index=STAGE_OPTIONS.index("已发货"),
+    )
     st.caption(
         "未接单＝尚未形成批次｜已接单（生产中）＝批次已生成｜"
         "已发货＝生产完成并通过质检（ERP也可能显示“已生产”）"
@@ -79,15 +86,7 @@ def _render_erp_sync(supabase):
     )
     end_date = dates[1].date_input("结束日期", value=date.today())
     st.caption("默认仅读取当天数据；需要历史核查时再手动扩大日期范围。")
-    worker_count = st.select_slider(
-        "ERP平台并行线程数",
-        options=tuple(range(1, 9)),
-        value=4,
-        help=(
-            "仅控制ERP订单、物流单号和面单链接读取，不运行OCR。"
-            "网络较慢时可尝试6–8线程；遇到接口限流时请降低。"
-        ),
-    )
+    worker_count = _render_erp_worker_setting(selected)
     render_s2b_connection_status(selected)
     if set(selected) & HUMBIRD_OPEN_LOGISTICS_PLATFORMS:
         st.caption(
@@ -136,6 +135,7 @@ def _load_selected_sources(
             "普通USPS": None,
             "面单": None,
             "已过滤": None,
+            "读取耗时": None,
         }
         for source in selected
     }
@@ -176,8 +176,13 @@ def _load_selected_sources(
             )
             all_rows.extend(usps_rows)
             label_count = len(label_ocr_candidates(reviewed))
+            final_message = "处理完成"
+            if not rows:
+                final_message = "接口成功：本阶段没有物流号"
+            elif not usps_rows:
+                final_message = "处理完成：没有普通USPS"
             _update_platform_state(
-                state_table, platform_states, source, "处理完成",
+                state_table, platform_states, source, final_message,
                 读取=len(rows),
                 普通USPS=len(usps_rows),
                 面单=label_count,
@@ -230,6 +235,7 @@ def _fetch_selected_sources(
     }
     if len(selected) == 1:
         source = selected[0]
+        started_at = perf_counter()
         status.update(
             label=f"{source}：正在连接ERP（1/1）",
             state="running", expanded=True,
@@ -244,6 +250,11 @@ def _fetch_selected_sources(
                 report_progress=lambda message: _update_platform_state(
                     state_table, platform_states, source, message,
                 ),
+            )
+            _update_platform_state(
+                state_table, platform_states, source,
+                f"获取完成：{len(rows):,} 条，等待整理",
+                读取耗时=_format_elapsed(perf_counter() - started_at),
             )
             progress.progress(1.0)
             return {source: rows}
@@ -270,12 +281,16 @@ def _fetch_selected_sources(
         )
 
     results = {}
+    started_at = {}
     for source in selected:
         _update_platform_state(
             state_table, platform_states, source, "正在连接ERP",
         )
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        pending = {pool.submit(worker, source): source for source in selected}
+        pending = {}
+        for source in selected:
+            started_at[source] = perf_counter()
+            pending[pool.submit(worker, source)] = source
         while pending:
             completed, _ = wait(
                 pending, timeout=0.25, return_when=FIRST_COMPLETED
@@ -288,13 +303,16 @@ def _fetch_selected_sources(
                 try:
                     results[source] = future.result()
                     message = (
-                        f"获取完成：{len(results[source]):,} 条，等待保存"
+                        f"获取完成：{len(results[source]):,} 条，等待整理"
                     )
                 except Exception as error:
                     results[source] = error
                     message = f"读取失败：{error}"
                 _update_platform_state(
                     state_table, platform_states, source, message,
+                    读取耗时=_format_elapsed(
+                        perf_counter() - started_at[source]
+                    ),
                 )
                 progress.progress(len(results) / len(selected))
         _drain_progress_messages(messages, state_table, platform_states)
@@ -305,8 +323,38 @@ def resolve_erp_workers(requested, platform_count):
     try:
         workers = int(requested)
     except (TypeError, ValueError):
-        workers = 4
-    return max(1, min(8, workers, max(1, int(platform_count))))
+        workers = max(1, int(platform_count))
+    return max(1, min(workers, max(1, int(platform_count))))
+
+
+def _render_erp_worker_setting(selected):
+    """Default to one worker for every selected ERP platform."""
+    count = max(1, len(selected))
+    signature = tuple(selected)
+    signature_key = "logistics_erp_worker_platforms"
+    widget_key = "logistics_erp_worker_count"
+    if st.session_state.get(signature_key) != signature:
+        st.session_state[signature_key] = signature
+        st.session_state[widget_key] = count
+    elif st.session_state.get(widget_key) not in range(1, count + 1):
+        st.session_state[widget_key] = count
+    return st.select_slider(
+        "ERP平台并行线程数",
+        options=tuple(range(1, count + 1)),
+        key=widget_key,
+        help=(
+            "默认等于当前勾选的平台数，一个平台对应一个读取线程；"
+            "这里只读取ERP订单、物流单号和面单链接，不运行OCR。"
+            "遇到单个平台接口限流时可手动降低。"
+        ),
+    )
+
+
+def _format_elapsed(seconds):
+    if seconds < 60:
+        return f"{seconds:.1f}秒"
+    minutes, remainder = divmod(int(seconds), 60)
+    return f"{minutes}分{remainder:02d}秒"
 
 
 def _drain_progress_messages(messages, state_table, platform_states):
@@ -343,6 +391,7 @@ def _render_platform_states(state_table, platform_states):
             ),
             "面单": st.column_config.NumberColumn("面单", format="%d"),
             "已过滤": st.column_config.NumberColumn("已过滤", format="%d"),
+            "读取耗时": st.column_config.TextColumn("读取耗时"),
         },
     )
 

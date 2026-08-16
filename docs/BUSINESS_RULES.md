@@ -306,6 +306,14 @@ A warehouse daily-outbound batch has exactly one business date. Users choose
 templates must not repeat the same date on every SKU row. The selected batch
 date is applied to every saved movement in that batch.
 
+When warehouse daily outbound is transcribed from a photo or paper record,
+the source review and saved batch input must preserve the original numbered
+top-to-bottom row order. Show each source row with its package count,
+units-per-package calculation, normalized target SKU, and final pieces before
+confirmation so an operator can compare the system one line at a time against
+the photo. Inventory summaries may still use the shared material, color, and
+size display order after the source-order audit has been preserved.
+
 Warehouse daily outbound must not write negative inventory. When an existing
 SKU has insufficient stock, the outbound page may create a separate temporary
 inventory-adjustment batch for the exact shortage and then keep the outbound
@@ -402,10 +410,29 @@ forecast as an estimate.
   platform steps into one chronological text log.
 - ERP logistics dates default to the current day for both start and end. Users
   may widen the range for historical review. Independent selected platforms
-  are fetched concurrently with a user-selected one-to-eight workers, default
-  four. This control does not run OCR. After the selected reads finish,
-  persistence follows fetch-completion order instead of platform selection
+  are fetched concurrently. The worker control defaults to the number of
+  currently selected platforms, so each platform can start independently;
+  users may lower it when a provider rate-limits. This control does not run
+  OCR. After the selected reads finish,
+  result normalization follows fetch-completion order instead of platform selection
   order.
+- Logistics review defaults to `已发货`, because completed/QA-approved orders
+  are the stage most likely to have tracking numbers. A successful empty ERP
+  response must say that the selected stage has no tracking numbers instead of
+  displaying an ambiguous generic completion message. Each platform row shows
+  its own acquisition duration so the slowest connector is visible.
+- SDS logistics treats the selected dates as New York business dates and
+  converts their boundaries to Asia/Shanghai before calling the domestic SDS
+  API. SDS order and QA-label progress must update its own platform status row.
+- Humbird database-token fallback validates the tracking-number field on its
+  first order-detail batch. If the ERP omits that field, stop immediately and
+  report an integration error; never read every remaining batch or present the
+  missing field as a successful zero-row result.
+- Putian is a connected Humbird logistics source without an official Open API.
+  It reads the encrypted shared database token directly and may use the local
+  login refresh when that token is missing, expired or rejected. Credential
+  failures raised while loading the database row must enter the same browser
+  refresh path as authentication failures returned by the provider API.
 - ERP logistics classifies carrier and USPS pickup subtype before persistence.
   ERP acquisition and OCR never create shipment rows. Only ordinary USPS
   relationships whose tracking number has an official USPS Tracking API check

@@ -1,5 +1,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, time as datetime_time, timedelta
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -10,6 +12,8 @@ from automation.integrations.stages import UNACCEPTED, stage_label
 ORDERS_URL = "https://factory-api.sdspod.com/factory_orders/v2/order/allByEs"
 QA_LOGIN_URL = "https://g-pod-api.sdspod.com/pod/auth/login"
 PARCEL_URL = "https://pod-api.sdspod.com/pod/parcel/qc/{order_id}/detail"
+NEW_YORK = ZoneInfo("America/New_York")
+SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
 def fetch_sds_pending_shipments(
@@ -20,10 +24,21 @@ def fetch_sds_pending_shipments(
     time_range=None,
     platform_name=None,
     department="DTF",
+    report_progress=None,
 ):
+    report = report_progress or (lambda _message: None)
+    platform = platform_name or profile
+    report(f"{platform}：正在登录工厂订单接口。")
     client, token, _factory_id = login_sds_factory(account["factory"])
     records = _fetch_order_records(
-        client, token, max_pages, status=status, time_range=time_range
+        client, token, max_pages, status=status, time_range=time_range,
+        report_progress=report, platform_name=platform,
+    )
+    if not records:
+        report(f"{platform}：本阶段没有工厂订单。")
+        return []
+    report(
+        f"{platform}：已取得 {len(records):,} 条订单，正在登录QA面单接口。"
     )
     qa_token = _login_qa(client, account["qa"])
     rows = _fetch_parcels(
@@ -33,6 +48,7 @@ def fetch_sds_pending_shipments(
         profile,
         platform_name or profile,
         department,
+        report,
     )
     for row in rows:
         row["local_acceptance_status"] = stage_label(status)
@@ -40,8 +56,15 @@ def fetch_sds_pending_shipments(
 
 
 def _fetch_order_records(
-    client, token, max_pages, status=UNACCEPTED, time_range=None,
+    client,
+    token,
+    max_pages,
+    status=UNACCEPTED,
+    time_range=None,
+    report_progress=None,
+    platform_name="SDS",
 ):
+    report = report_progress or (lambda _message: None)
     rows = []
     headers = {"access-token": token, "User-Agent": USER_AGENT}
     for page in range(1, max_pages + 1):
@@ -58,6 +81,10 @@ def _fetch_order_records(
         response.raise_for_status()
         page_rows = response.json().get("records", [])
         rows.extend(page_rows)
+        report(
+            f"{platform_name}订单接口第 {page:,} 页："
+            f"累计 {len(rows):,} 条。"
+        )
         if len(page_rows) < 500:
             break
     return rows
@@ -95,8 +122,15 @@ def _qa_token(payload):
 
 
 def _fetch_parcels(
-    client, qa_token, records, profile, platform_name, department
+    client,
+    qa_token,
+    records,
+    profile,
+    platform_name,
+    department,
+    report_progress=None,
 ):
+    report = report_progress or (lambda _message: None)
     headers = {"access-token": qa_token, "User-Agent": USER_AGENT}
     results = []
     with ThreadPoolExecutor(max_workers=min(12, max(1, len(records)))) as pool:
@@ -112,9 +146,29 @@ def _fetch_parcels(
             ): record
             for record in records if _order_id(record)
         }
-        for future in as_completed(futures):
+        interval = max(1, len(futures) // 10)
+        for completed, future in enumerate(as_completed(futures), start=1):
             results.extend(future.result())
+            if completed == len(futures) or completed % interval == 0:
+                report(
+                    f"{platform_name}面单获取进度："
+                    f"{completed:,}/{len(futures):,}。"
+                )
+    report(f"{platform_name}：已取得 {len(results):,} 条物流关系。")
     return results
+
+
+def sds_time_range(start_date, end_date):
+    start_at = datetime.combine(
+        start_date, datetime_time.min, NEW_YORK
+    ).astimezone(SHANGHAI)
+    end_at = datetime.combine(
+        end_date + timedelta(days=1), datetime_time.min, NEW_YORK
+    ).astimezone(SHANGHAI) - timedelta(seconds=1)
+    return {
+        "startTime": start_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "endTime": end_at.strftime("%Y-%m-%d %H:%M:%S"),
+    }
 
 
 def _parcel_rows(

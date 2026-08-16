@@ -39,11 +39,15 @@ from automation.logistics.label_cache import (
     clear_label_cache,
 )
 from automation.logistics.label_downloads import build_label_archive
-from automation.api.sds.shipments import _qa_token
-from automation.api.sds.shipments import _parcel_rows as _sds_parcel_rows
+from automation.api.sds.shipments import (
+    _parcel_rows as _sds_parcel_rows,
+    _qa_token,
+    sds_time_range,
+)
 from automation.api.humbird.shipments import (
     HumbirdBrowserRefreshRequired,
     _stage_items,
+    _tracking_field_available,
     fetch_humbird_shipments,
     fetch_humbird_shipments_legacy,
     fetch_humbird_shipments_with_fallback,
@@ -72,6 +76,7 @@ from db.logistics.tracking_sources import (
     save_tracking_check_sources,
 )
 from db.logistics.usps_usage import record_usps_usage
+from db.automation_credentials import CredentialExpiredError
 from ui.logistics.page import render_logistics_page
 from ui.logistics.review.model import (
     carrier_filter_name as _carrier_filter_name,
@@ -96,6 +101,7 @@ from ui.logistics.review.state import (
 from ui.logistics.sync_view import (
     CONNECTED_PLATFORMS,
     _fetch_selected_sources,
+    _format_elapsed,
     _load_selected_sources,
     resolve_erp_workers,
 )
@@ -319,6 +325,36 @@ class LogisticsTrackingTests(unittest.TestCase):
     def test_logistics_gateway_imports_humbird_adapter_directly(self):
         self.assertIs(gateway_humbird, fetch_humbird_shipments_with_fallback)
 
+    @patch("ui.logistics.source_gateway.fetch_sds_pending_shipments")
+    @patch("ui.logistics.source_gateway.load_sds_account")
+    def test_sds_logistics_uses_business_date_and_reports_progress(
+        self, load_account, fetch,
+    ):
+        load_account.return_value = {"factory": {}, "qa": {}}
+        fetch.return_value = []
+        day = datetime(2026, 8, 15).date()
+        report = Mock()
+
+        rows = fetch_source(
+            "SDS1", "DTF", SHIPPED, day, day,
+            report_progress=report,
+        )
+
+        self.assertEqual(rows, [])
+        fetch.assert_called_once_with(
+            "1号线",
+            {"factory": {}, "qa": {}},
+            100,
+            status=SHIPPED,
+            time_range={
+                "startTime": "2026-08-15 12:00:00",
+                "endTime": "2026-08-16 11:59:59",
+            },
+            platform_name="SDS1",
+            department="DTF",
+            report_progress=report,
+        )
+
     @patch("ui.logistics.source_gateway.load_humbird_credentials")
     @patch(
         "ui.logistics.source_gateway.fetch_humbird_shipments_with_fallback"
@@ -451,6 +487,29 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(STAGE_CODES["已接单（生产中）"], IN_PRODUCTION)
         self.assertEqual(STAGE_CODES["已发货"], SHIPPED)
 
+    def test_sds_uses_new_york_business_day_in_shanghai_api_time(self):
+        summer = sds_time_range(
+            datetime(2026, 8, 15).date(),
+            datetime(2026, 8, 15).date(),
+        )
+        winter = sds_time_range(
+            datetime(2026, 12, 15).date(),
+            datetime(2026, 12, 15).date(),
+        )
+
+        self.assertEqual(summer, {
+            "startTime": "2026-08-15 12:00:00",
+            "endTime": "2026-08-16 11:59:59",
+        })
+        self.assertEqual(winter, {
+            "startTime": "2026-12-15 13:00:00",
+            "endTime": "2026-12-16 12:59:59",
+        })
+
+    def test_erp_elapsed_time_is_readable(self):
+        self.assertEqual(_format_elapsed(7.25), "7.2秒")
+        self.assertEqual(_format_elapsed(125), "2分05秒")
+
     def test_humbird_completed_stage_uses_production_status(self):
         client = Mock()
 
@@ -479,6 +538,14 @@ class LogisticsTrackingTests(unittest.TestCase):
             {item["code"] for item in shipped},
             {"produced", "shipped-9"},
         )
+
+    def test_humbird_missing_tracking_field_is_not_successful_zero(self):
+        self.assertFalse(_tracking_field_available({
+            "third_detail": {"status": "completed"}
+        }))
+        self.assertTrue(_tracking_field_available({
+            "third_detail": {"track_number_list": []}
+        }))
 
     def test_3d_secret_template_has_s2b_factory_and_qa_sections(self):
         template = (
@@ -1194,7 +1261,8 @@ class LogisticsTrackingTests(unittest.TestCase):
             platform for platform in PLATFORMS_BY_DEPARTMENT["DTF"]
             if platform not in CONNECTED_PLATFORMS
         ]
-        self.assertEqual(dtf_pending, ["莆田", "汉森", "方果"])
+        self.assertEqual(dtf_pending, ["汉森", "方果"])
+        self.assertIn("莆田", CONNECTED_PLATFORMS)
         self.assertEqual(
             default_logistics_platforms(
                 ("汉森", "S2B", "SDS2"), CONNECTED_PLATFORMS
@@ -1417,7 +1485,7 @@ class LogisticsTrackingTests(unittest.TestCase):
     def test_erp_worker_setting_is_bounded_by_platforms_and_limit(self):
         self.assertEqual(resolve_erp_workers(8, 3), 3)
         self.assertEqual(resolve_erp_workers(1, 7), 1)
-        self.assertEqual(resolve_erp_workers(99, 10), 8)
+        self.assertEqual(resolve_erp_workers(99, 10), 10)
         self.assertEqual(resolve_erp_workers("invalid", 2), 2)
 
     @patch("automation.api.humbird.shipments.fetch_humbird_shipments_legacy")
@@ -1437,6 +1505,77 @@ class LogisticsTrackingTests(unittest.TestCase):
 
         self.assertEqual(rows, [])
         legacy.assert_not_called()
+
+    @patch("ui.logistics.source_gateway.load_humbird_credentials")
+    @patch("ui.logistics.source_gateway.fetch_humbird_shipments_legacy")
+    @patch(
+        "ui.logistics.source_gateway.fetch_humbird_shipments_with_fallback"
+    )
+    def test_putian_logistics_uses_database_token_without_official_api(
+        self, official, legacy, load_credentials,
+    ):
+        load_credentials.return_value = {
+            "token": "database-token",
+            "credential_source": "database",
+        }
+        legacy.return_value = [{"tracking_number": "9400"}]
+        progress = []
+        day = datetime(2026, 8, 15).date()
+
+        rows = fetch_source(
+            "莆田", "DTF", SHIPPED, day, day,
+            report_progress=progress.append,
+        )
+
+        self.assertEqual(rows, [{"tracking_number": "9400"}])
+        legacy.assert_called_once()
+        official.assert_not_called()
+        self.assertTrue(any("无官方 API" in item for item in progress))
+
+    @patch("ui.logistics.source_gateway.local_humbird_login_available")
+    @patch("ui.logistics.source_gateway.refresh_local_humbird_token")
+    @patch("ui.logistics.source_gateway.load_humbird_credentials")
+    @patch("ui.logistics.source_gateway.fetch_humbird_shipments_legacy")
+    def test_expired_putian_database_token_opens_local_authorization(
+        self, legacy, load_credentials, refresh, local_available,
+    ):
+        load_credentials.side_effect = [
+            CredentialExpiredError("莆田共享授权已失效"),
+            {"token": "new-token", "credential_source": "database"},
+        ]
+        local_available.return_value = True
+        legacy.return_value = [{"tracking_number": "9400"}]
+        progress = []
+        day = datetime(2026, 8, 15).date()
+
+        rows = fetch_source(
+            "莆田", "DTF", SHIPPED, day, day,
+            report_progress=progress.append,
+        )
+
+        self.assertEqual(rows, [{"tracking_number": "9400"}])
+        refresh.assert_called_once()
+        self.assertTrue(any("启动本地专用 Chrome" in item for item in progress))
+
+    @patch("ui.logistics.source_gateway.refresh_local_humbird_token")
+    @patch("ui.logistics.source_gateway.load_humbird_credentials")
+    @patch(
+        "ui.logistics.source_gateway.fetch_humbird_shipments_with_fallback"
+    )
+    def test_humbird_missing_tracking_field_does_not_open_authorization(
+        self, official, load_credentials, refresh,
+    ):
+        load_credentials.return_value = {
+            "token": "valid-token",
+            "credential_source": "database",
+        }
+        official.side_effect = RuntimeError("备用API订单详情未返回物流号字段")
+        day = datetime(2026, 8, 15).date()
+
+        with self.assertRaisesRegex(RuntimeError, "未返回物流号字段"):
+            fetch_source("Haloo", "DTF", SHIPPED, day, day)
+
+        refresh.assert_not_called()
 
     @patch("automation.api.humbird.shipments.fetch_humbird_shipments")
     def test_humbird_missing_database_token_requests_browser_refresh(
@@ -1490,6 +1629,32 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(
             rows[0]["label_url"], "https://labels.test/ORDER-1.pdf"
         )
+
+    @patch(
+        "automation.api.humbird.shipments.fetch_humbird_order_details_http"
+    )
+    @patch(
+        "automation.api.humbird.shipments.fetch_humbird_production_records_http"
+    )
+    def test_humbird_database_token_stops_when_tracking_field_is_missing(
+        self, production, details,
+    ):
+        production.return_value = [{
+            "code": "ITEM-1", "rel_id": 11,
+            "order_no": "ORDER-1", "status": 9,
+        }]
+        details.return_value = [{
+            "id": 11, "third_detail": {"status": "completed"}
+        }]
+        day = datetime(2026, 8, 12).date()
+
+        with self.assertRaisesRegex(RuntimeError, "不能判定为0条物流"):
+            fetch_humbird_shipments_legacy(
+                "Haloo", {"token": "database-token"}, day, day,
+                status=SHIPPED,
+            )
+
+        details.assert_called_once()
 
     def test_live_usps_workflow_does_not_require_database_rows(self):
         display = pd.DataFrame([classify_usps_response({

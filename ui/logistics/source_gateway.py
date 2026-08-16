@@ -14,8 +14,10 @@ from automation.logistics import (
     refresh_local_s2b_token,
 )
 from automation.api.humbird import (
+    HumbirdAuthenticationError,
     HumbirdBrowserRefreshRequired,
-    HUMBIRD_OPEN_LOGISTICS_PLATFORMS,
+    HUMBIRD_LOGISTICS_PLATFORMS,
+    HUMBIRD_TOKEN_LOGISTICS_PLATFORMS,
     fetch_humbird_shipments_legacy,
     fetch_humbird_shipments_with_fallback,
 )
@@ -24,58 +26,59 @@ from automation.api.humbird.local_auth import (
     local_humbird_login_available,
     refresh_local_humbird_token,
 )
+from automation.api.sds import sds_time_range
 from automation.production import SDS_PLATFORM_PROFILES
 from automation.api.humbird.config import load_humbird_credentials
+from db.automation_credentials import (
+    CredentialDecryptionError,
+    CredentialExpiredError,
+)
 from db.supabase_client import supabase
-from ui.logistics.review.model import erp_time_range
 from utils.auth import get_current_user
 
 
 def fetch_source(
     source, department, status, start_date, end_date, report_progress=None,
 ):
-    if source in HUMBIRD_OPEN_LOGISTICS_PLATFORMS:
+    if source in HUMBIRD_LOGISTICS_PLATFORMS:
+        report = report_progress or (lambda _message: None)
         progress_options = (
             {"report_progress": report_progress} if report_progress else {}
         )
-        credentials = load_humbird_credentials(
-            st.secrets, source, supabase
-        )
+        try:
+            credentials = load_humbird_credentials(
+                st.secrets, source, supabase
+            )
+        except (
+            CredentialDecryptionError,
+            CredentialExpiredError,
+            ValueError,
+        ) as error:
+            return _refresh_humbird_and_fetch(
+                source, department, status, start_date, end_date,
+                error, report_progress,
+            )
         credentials = _database_token_only(credentials)
         try:
+            if source in HUMBIRD_TOKEN_LOGISTICS_PLATFORMS:
+                report(
+                    f"{source}：正在直接读取数据库共享 token（无官方 API）。"
+                )
+                return fetch_humbird_shipments_legacy(
+                    source, credentials, start_date, end_date,
+                    status=status, department=department, **progress_options,
+                )
             return fetch_humbird_shipments_with_fallback(
                 source, credentials, start_date, end_date,
                 status=status, department=department, **progress_options,
             )
-        except HumbirdBrowserRefreshRequired as error:
-            report = report_progress or (lambda _message: None)
-            report(
-                f"第2级数据库 token 不可用（{error}）；"
-                "第3级：准备启动本地专用 Chrome。"
-            )
-            if not local_humbird_login_available():
-                raise HumbirdLocalLoginRequired(
-                    f"{source} 共享 token 已失效；当前云端不能启动浏览器，"
-                    "请管理员在本地打开本系统并同步一次以更新数据库授权"
-                ) from error
-            refresh_local_humbird_token(
-                source,
-                st.secrets,
-                supabase=supabase,
-                updated_by=str(
-                    (get_current_user() or {}).get("username") or "admin"
-                ),
-                report_progress=report_progress,
-            )
-            report("新 token 已加密写入数据库，正在重新请求备用 API。")
-            refreshed = load_humbird_credentials(
-                st.secrets, source, supabase
-            )
-            refreshed = _database_token_only(refreshed)
-            refreshed["token_just_captured"] = True
-            return fetch_humbird_shipments_legacy(
-                source, refreshed, start_date, end_date,
-                status=status, department=department, **progress_options,
+        except (
+            HumbirdBrowserRefreshRequired,
+            HumbirdAuthenticationError,
+        ) as error:
+            return _refresh_humbird_and_fetch(
+                source, department, status, start_date, end_date,
+                error, report_progress,
             )
     if source in {"七创", "一朵云"}:
         return fetch_diy19_shipments(
@@ -86,8 +89,9 @@ def fetch_source(
         profile = SDS_PLATFORM_PROFILES[source]
         return fetch_sds_pending_shipments(
             profile, load_sds_account(st.secrets, profile), 100,
-            status=status, time_range=erp_time_range(start_date, end_date),
+            status=status, time_range=sds_time_range(start_date, end_date),
             platform_name=source, department=department,
+            report_progress=report_progress,
         )
     if source != "S2B":
         raise ValueError(f"{source} 已存在于生产数据平台目录，但尚未接入订单物流接口")
@@ -110,6 +114,47 @@ def fetch_source(
             end_date=end_date,
             report_progress=report_progress,
         )
+
+
+def _refresh_humbird_and_fetch(
+    source,
+    department,
+    status,
+    start_date,
+    end_date,
+    error,
+    report_progress=None,
+):
+    report = report_progress or (lambda _message: None)
+    report(
+        f"数据库 token 不可用（{error}）；"
+        "第3级：准备启动本地专用 Chrome。"
+    )
+    if not local_humbird_login_available():
+        raise HumbirdLocalLoginRequired(
+            f"{source} 共享 token 已失效；当前云端不能启动浏览器，"
+            "请管理员在本地打开本系统并同步一次以更新数据库授权"
+        ) from error
+    refresh_local_humbird_token(
+        source,
+        st.secrets,
+        supabase=supabase,
+        updated_by=str(
+            (get_current_user() or {}).get("username") or "admin"
+        ),
+        report_progress=report_progress,
+    )
+    report("新 token 已加密写入数据库，正在重新请求备用 API。")
+    refreshed = load_humbird_credentials(st.secrets, source, supabase)
+    refreshed = _database_token_only(refreshed)
+    refreshed["token_just_captured"] = True
+    progress_options = (
+        {"report_progress": report_progress} if report_progress else {}
+    )
+    return fetch_humbird_shipments_legacy(
+        source, refreshed, start_date, end_date,
+        status=status, department=department, **progress_options,
+    )
 
 
 def render_s2b_connection_status(selected):

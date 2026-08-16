@@ -6,6 +6,7 @@ import time
 
 from automation.api.humbird.http_client import (
     HumbirdAuthenticationError,
+    ORDER_BATCH_SIZE,
     fetch_humbird_order_details_http,
     fetch_humbird_production_records_http,
 )
@@ -22,6 +23,11 @@ from automation.integrations.stages import (
 
 
 HUMBIRD_OPEN_LOGISTICS_PLATFORMS = frozenset({"Haloo", "隆丰"})
+HUMBIRD_TOKEN_LOGISTICS_PLATFORMS = frozenset({"莆田"})
+HUMBIRD_LOGISTICS_PLATFORMS = (
+    HUMBIRD_OPEN_LOGISTICS_PLATFORMS
+    | HUMBIRD_TOKEN_LOGISTICS_PLATFORMS
+)
 OFFICIAL_BACKOFF_SECONDS = 600
 _OFFICIAL_BACKOFF_UNTIL = {}
 _OFFICIAL_BACKOFF_LOCK = Lock()
@@ -124,13 +130,36 @@ def fetch_humbird_shipments_legacy(
         f"备用 API 已取得 {len(items):,} 个生产项目；"
         f"正在读取 {len(orders):,} 个订单的物流详情。"
     )
+    order_ids = list(orders)
+    sample_ids = order_ids[:ORDER_BATCH_SIZE]
+    report(
+        f"备用 API 正在抽样验证物流字段："
+        f"{len(sample_ids):,}/{len(order_ids):,} 个订单。"
+    )
     details = fetch_humbird_order_details_http(
         platform,
-        orders,
+        sample_ids,
         credentials,
         report_progress,
         validate_token=False,
     )
+    if not details:
+        raise RuntimeError(
+            f"{platform} 备用API没有返回订单详情，不能判定为0条物流"
+        )
+    if not any(_tracking_field_available(detail) for detail in details):
+        raise RuntimeError(
+            f"{platform} 备用API订单详情未返回物流号字段；"
+            "已停止后续读取，不能判定为0条物流"
+        )
+    if len(sample_ids) < len(order_ids):
+        details.extend(fetch_humbird_order_details_http(
+            platform,
+            order_ids[len(sample_ids):],
+            credentials,
+            report_progress,
+            validate_token=False,
+        ))
     detail_map = _map_order_details(details)
     rows = []
     for position, (order_id, order_items) in enumerate(orders.items()):
@@ -313,6 +342,13 @@ def _tracking_entries(detail):
     if isinstance(entries, (str, int)):
         return [entries]
     return list(entries) if isinstance(entries, list) else []
+
+
+def _tracking_field_available(detail):
+    third = detail.get("third_detail") or {}
+    return (
+        isinstance(third, dict) and "track_number_list" in third
+    ) or "track_number_list" in detail
 
 
 def _tracking_number(entry):

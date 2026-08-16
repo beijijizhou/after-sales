@@ -7,6 +7,10 @@ from db.inventory.container.repository import (
     load_posted_container_by_inventory_batch,
 )
 from db.inventory.operations.adjustments import reverse_inventory_batch
+from db.inventory.operations.daily_outbound_versions import (
+    load_daily_outbound_revision_by_inventory_batch,
+    void_daily_outbound_revision,
+)
 from db.inventory.operations.outbound_audit import load_outbound_inventory
 from ui.inventory.container.item_editor import (
     render_posted_container_correction,
@@ -91,7 +95,14 @@ def render_movement_undo(supabase, selected, reversed_ids):
     if batch_id in reversed_ids:
         st.success(t("这笔库存变动已撤销"))
         return
+    daily_revision = None
     if is_editable_daily_outbound(selected):
+        try:
+            daily_revision = load_daily_outbound_revision_by_inventory_batch(
+                supabase, batch_id
+            )
+        except Exception:
+            daily_revision = None
         action = st.segmented_control(
             "处理方式", ["修改并替换", "仅撤销"], default="修改并替换",
             key=f"inventory_batch_action_{batch_id}",
@@ -110,10 +121,22 @@ def render_movement_undo(supabase, selected, reversed_ids):
         return
     row = selected.iloc[0]
     try:
-        reverse_inventory_batch(
-            supabase, batch_id, row["department"], row["category"],
-            get_current_operator_name(),
-        )
+        if daily_revision:
+            daily_batch = daily_revision.get(
+                "inventory_daily_outbound_batches"
+            ) or {}
+            void_daily_outbound_revision(
+                supabase,
+                daily_revision["daily_outbound_batch_id"],
+                daily_batch.get("department") or row["department"],
+                daily_batch.get("category") or row["category"],
+                get_current_operator_name(),
+            )
+        else:
+            reverse_inventory_batch(
+                supabase, batch_id, row["department"], row["category"],
+                get_current_operator_name(),
+            )
     except Exception as error:
         st.error(f"{t('撤销失败')}: {error}")
         return

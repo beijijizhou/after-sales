@@ -7,6 +7,7 @@ import pandas as pd
 from db.inventory.operations.daily_outbound_versions import (
     build_daily_outbound_edit_rows,
     save_daily_outbound_revision,
+    void_daily_outbound_revision,
 )
 from db.inventory.planning.demand_anomaly import (
     _versioned_daily_outbound_history,
@@ -14,6 +15,40 @@ from db.inventory.planning.demand_anomaly import (
 
 
 class DailyOutboundVersionTests(unittest.TestCase):
+    def test_void_restores_inventory_and_marks_logical_batch_voided(self):
+        supabase = Mock()
+        select_execute = (
+            supabase.table.return_value.select.return_value.eq.return_value
+            .single.return_value.execute
+        )
+        second_eq_execute = (
+            supabase.table.return_value.select.return_value.eq.return_value
+            .eq.return_value.single.return_value.execute
+        )
+        select_execute.return_value.data = {
+            "id": "daily-1", "current_revision": 1, "status": "active",
+        }
+        second_eq_execute.return_value.data = {
+            "id": "revision-1", "inventory_batch_id": "inventory-1",
+        }
+        supabase.table.return_value.insert.return_value.execute.return_value.data = [
+            {"id": "void-1"}
+        ]
+
+        with unittest.mock.patch(
+            "db.inventory.operations.daily_outbound_versions.reverse_inventory_batch",
+            return_value="reversal-1",
+        ) as reverse:
+            result = void_daily_outbound_revision(
+                supabase, "daily-1", "DTF", "黑白短袖", "Andy"
+            )
+
+        reverse.assert_called_once_with(
+            supabase, "inventory-1", "DTF", "黑白短袖", "Andy"
+        )
+        self.assertEqual(result["status"], "voided")
+        self.assertEqual(result["revision_number"], 2)
+
     def test_edit_rows_use_declared_quantity_not_applied_quantity(self):
         result = build_daily_outbound_edit_rows({
             "inventory_daily_outbound_batches": {
