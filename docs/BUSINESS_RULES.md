@@ -215,6 +215,15 @@ data-entry sources differ:
 | Colored T-shirts | System reads synchronized production data | Colored-shirt production data |
 | UV production inventory | System reads the configured Google Sheets source | Latest 14 days of valid Google Sheets data |
 
+The colored-shirt 30-day model is database-first. Once synchronized daily
+production has been persisted, local and deployed environments must read the
+same database model and must not require another ERP/API fetch merely because
+the server has no local cache. Local cache is only a resilience fallback and
+must be identified as local-only in the UI. Failure to read platform coverage
+audit metadata must not hide already persisted consumption rows; it may reduce
+the platform-completeness evidence, but the stored daily usage remains usable.
+Live platform refresh is an explicit administrator maintenance action.
+
 DTF consumables now follow the same manager-facing planning pattern as
 production inventory: the consumables page exposes both a `点货预测` view and a
 `消耗模型` view. The consumable consumption model is built only from effective

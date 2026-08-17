@@ -109,6 +109,54 @@ class ColoredPeriodModelTests(unittest.TestCase):
         self.assertEqual(cached.data.iloc[0]["颜色"], "红色")
         self.assertEqual(cached.data.iloc[0]["尺码"], "L")
         self.assertEqual(cached.data.iloc[0]["平台生产日均"], 50)
+        self.assertEqual(cached.source, "local_cache")
+
+    def test_deployment_prefers_persisted_database_model(self):
+        persisted = pd.DataFrame([{
+            "business_date": "2026-08-16", "platform": "S2B",
+            "color": "黄色", "size": "L", "quantity": 300,
+            "record_count": 10,
+        }])
+        with patch(
+            "automation.sync.colored_period.load_daily_platform_consumption",
+            return_value=persisted,
+        ), patch(
+            "automation.sync.colored_period.load_platform_sync_coverage",
+            return_value={"S2B": {date(2026, 8, 16)}},
+        ), patch(
+            "automation.sync.colored_period.load_production_cache"
+        ) as local_cache:
+            model = load_colored_api_period_model(
+                date(2026, 8, 17), days=30, supabase=object()
+            )
+
+        self.assertEqual(model.source, "database")
+        self.assertEqual(model.data.iloc[0]["平台生产日均"], 10)
+        local_cache.assert_not_called()
+
+    def test_coverage_audit_failure_does_not_hide_database_model(self):
+        persisted = pd.DataFrame([{
+            "business_date": "2026-08-16", "platform": "S2B",
+            "color": "黄色", "size": "L", "quantity": 300,
+            "record_count": 10,
+        }])
+        with patch(
+            "automation.sync.colored_period.load_daily_platform_consumption",
+            return_value=persisted,
+        ), patch(
+            "automation.sync.colored_period.load_platform_sync_coverage",
+            side_effect=RuntimeError("coverage table unavailable"),
+        ), patch(
+            "automation.sync.colored_period.load_production_cache"
+        ) as local_cache:
+            model = load_colored_api_period_model(
+                date(2026, 8, 17), days=30, supabase=object()
+            )
+
+        self.assertEqual(model.source, "database")
+        self.assertFalse(model.data.empty)
+        self.assertIn("coverage table", model.storage_error)
+        local_cache.assert_not_called()
 
 
 def _production_row(color, size, quantity, brand):

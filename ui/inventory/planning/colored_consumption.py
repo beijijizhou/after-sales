@@ -46,8 +46,22 @@ def _render_colored_consumption_model(
         "只作备份审计，不参与本模型。"
     )
     model = load_colored_api_period_model(current_date, supabase=supabase)
+    if model.source == "database" and not model.data.empty:
+        st.success(
+            "已从数据库加载最近 30 天彩色短袖生产消耗模型；"
+            "本地和部署环境共用这份数据，无需重新读取平台。"
+        )
+    elif model.source == "local_cache" and not model.data.empty:
+        st.warning(
+            "当前显示的是本机缓存。它不会自动同步到 Streamlit Cloud；"
+            "请刷新一次并确认模型成功保存到数据库。"
+        )
     with st.expander(
-        f"如何读取最近 {LOOKBACK_DAYS} 天平台数据",
+        (
+            f"管理员：重新读取最近 {LOOKBACK_DAYS} 天平台数据"
+            if not model.data.empty
+            else f"如何读取最近 {LOOKBACK_DAYS} 天平台数据"
+        ),
         expanded=model.data.empty,
     ):
         st.markdown(
@@ -57,48 +71,71 @@ def _render_colored_consumption_model(
             "登录过期、平台限制以及模型数据尚未保存。\n"
             "4. 个别平台失败不会清除其他平台已经读取的数据。"
         )
-    if st.button(
-        f"并发读取并更新最近 {LOOKBACK_DAYS} 天平台数据",
-        key="refresh_colored_90_day_api_model",
-    ):
-        progress = st.progress(0, text="准备读取各平台 API")
+        if st.button(
+            f"并发读取并更新最近 {LOOKBACK_DAYS} 天平台数据",
+            key="refresh_colored_90_day_api_model",
+        ):
+            model = _refresh_colored_model(supabase, current_date)
+    _render_colored_model_result(model, visible_sizes)
 
-        def report(done, total, message):
-            progress.progress(
-                done / max(total, 1), text=f"{done}/{total}｜{message}"
-            )
 
-        try:
-            model = refresh_colored_api_period(
-                current_date, st.secrets, report_progress=report,
-                supabase=supabase,
-                operator=get_current_operator_name(),
-            )
-            progress.empty()
-            st.success(
-                f"最近 {LOOKBACK_DAYS} 天统一衣服生产数据已更新。"
-            )
-        except Exception as error:
-            progress.empty()
-            st.error(f"平台数据更新失败：{error}")
+def _refresh_colored_model(supabase, current_date):
+    progress = st.progress(0, text="准备读取各平台 API")
+
+    def report(done, total, message):
+        progress.progress(
+            done / max(total, 1), text=f"{done}/{total}｜{message}"
+        )
+
+    try:
+        model = refresh_colored_api_period(
+            current_date, st.secrets, report_progress=report,
+            supabase=supabase,
+            operator=get_current_operator_name(),
+        )
+    except Exception as error:
+        progress.empty()
+        st.error(f"平台数据更新失败：{error}")
+        return load_colored_api_period_model(
+            current_date, supabase=supabase
+        )
+    progress.empty()
+    st.success(f"最近 {LOOKBACK_DAYS} 天统一衣服生产数据已更新。")
+    return model
+
+
+def _render_colored_model_result(model, visible_sizes=None):
     st.subheader("平台读取状态")
     status = build_colored_platform_status(model)
     st.dataframe(status, hide_index=True, width="stretch")
     incomplete = status[~status["读取状态"].eq("已读取")]
     if model.storage_error:
-        st.error(
-            "生产消耗模型数据库尚未就绪。请依次执行 "
-            "sql/production/consumption/01_tables.sql 和 02_replace_rpc.sql；"
-            "平台缓存仍可显示，不会因此当作凭据失败。"
+        if model.source == "database" and not model.data.empty:
+            st.warning(
+                "生产消耗模型已从数据库加载，但平台覆盖审计暂时不可用；"
+                "这不影响当前日耗和点货计算。"
+            )
+        else:
+            st.error(
+                "生产消耗模型数据库尚未就绪。请依次执行 "
+                "sql/production/consumption/01_tables.sql 和 "
+                "02_replace_rpc.sql；平台缓存仍可显示，不会因此当作凭据失败。"
+            )
+    if not incomplete.empty and model.source == "database":
+        st.caption(
+            "数据库模型已经可用于日耗和点货；平台完整度审计尚未覆盖："
+            + "、".join(incomplete["平台"].astype(str))
+            + "。需要更新模型时再使用上方管理员刷新入口。"
         )
-    if not incomplete.empty:
+    elif not incomplete.empty:
         st.warning(
             "尚未完整覆盖：" + "、".join(incomplete["平台"].astype(str))
             + "。请按表格中的“下一步”分别处理。"
         )
     if model.data.empty:
         st.info(
-            f"尚无最近 {LOOKBACK_DAYS} 天平台 API 缓存，请点击上方按钮读取。"
+            f"数据库和本地缓存均没有最近 {LOOKBACK_DAYS} 天模型，"
+            "请使用上方管理员入口读取。"
         )
         return
     display = model.data

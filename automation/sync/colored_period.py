@@ -36,6 +36,7 @@ class ColoredApiPeriodModel:
     platform_errors: dict = field(default_factory=dict)
     persistence_errors: dict = field(default_factory=dict)
     storage_error: str | None = None
+    source: str = "empty"
 
 
 def load_colored_api_period_model(
@@ -49,9 +50,16 @@ def load_colored_api_period_model(
             persisted = load_daily_platform_consumption(
                 supabase, "DTF", CATEGORY, start_date, end_date
             )
-            coverage = load_platform_sync_coverage(
-                supabase, "DTF", CATEGORY, start_date, end_date
-            )
+        except Exception as error:
+            storage_error = str(error)
+        else:
+            coverage = {}
+            try:
+                coverage = load_platform_sync_coverage(
+                    supabase, "DTF", CATEGORY, start_date, end_date
+                )
+            except Exception as error:
+                storage_error = str(error)
             included = tuple(sorted(
                 platform for platform, dates in coverage.items()
                 if len(dates) >= int(days)
@@ -72,9 +80,9 @@ def load_colored_api_period_model(
                 return ColoredApiPeriodModel(
                     model, start_date, end_date, int(days), included, missing,
                     available, coverage_days,
+                    storage_error=storage_error,
+                    source="database",
                 )
-        except Exception as error:
-            storage_error = str(error)
     cached = load_production_cache(
         ALL_CLOTHING_PLATFORMS, start_date, end_date
     )
@@ -83,6 +91,7 @@ def load_colored_api_period_model(
             pd.DataFrame(), start_date, end_date, 0, (),
             tuple(DTF_PRODUCTION_PLATFORMS),
             storage_error=storage_error,
+            source="empty",
         )
     rows = cached.data.copy()
     required = {"部门", "品类", "颜色", "尺码", "数量"}
@@ -118,6 +127,7 @@ def load_colored_api_period_model(
         dict(metadata.get("platform_errors") or {}),
         dict(metadata.get("persistence_errors") or {}),
         storage_error,
+        "local_cache",
     )
 
 
