@@ -20,11 +20,14 @@ refactors, not after every small feature.
 - Finance: `pages/10_财务.py`
 - Logistics label review: `pages/11_物流追踪.py`
 - Admin access management: `pages/12_权限管理.py`
+- Personal daily work: `pages/17_每日工作.py`
 
 ## Major Modules
 
 - Authentication and navigation: `utils/auth/`
 - User-role administration: `db/access.py` and `ui/access/`
+- Personal daily-work templates, dated records, and history:
+  `db/daily_work.py` and `ui/daily_work/`
 - Inventory persistence and rules: `db/inventory/`
 - Inventory UI: `ui/inventory/`
 - Inventory history data components: `ui/inventory/history/core/`; history

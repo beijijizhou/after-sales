@@ -3,10 +3,13 @@ from hashlib import sha1
 import pandas as pd
 import streamlit as st
 
-from db.finance import (
-    update_consumable_movement_cost,
-    update_inbound_lot_cost,
+from db.batches import (
+    InboundBatchKind,
+    InboundBatchReference,
+    InboundCostCorrection,
+    replace_inbound_batch,
 )
+from utils.auth import get_current_operator_name
 from utils.sku_sorting import sort_sku_rows
 
 
@@ -99,12 +102,17 @@ def render_inbound_cost_editor(supabase, finance_df):
     ].to_dict()
     for cost_lot_id, unit_cost in changes:
         source_type = str(source_by_record.get(cost_lot_id) or "")
-        if source_type.startswith("consumable_"):
-            update_consumable_movement_cost(
-                supabase, cost_lot_id, unit_cost
-            )
-        else:
-            update_inbound_lot_cost(supabase, cost_lot_id, unit_cost)
+        kind = (
+            InboundBatchKind.CONSUMABLE_MOVEMENT
+            if source_type.startswith("consumable_")
+            else InboundBatchKind.INVENTORY_COST_LOT
+        )
+        replace_inbound_batch(
+            supabase,
+            InboundBatchReference(kind, cost_lot_id),
+            InboundCostCorrection(unit_cost),
+            get_current_operator_name(),
+        )
     st.session_state["finance_cost_saved"] = (
         f"已更新这个批次中 {len(changes)} 个 SKU 的成本"
     )

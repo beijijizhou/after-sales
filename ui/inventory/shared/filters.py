@@ -12,26 +12,44 @@ from ui.inventory.shared.filter_models import (
     filter_inventory_rows,
     normalize_dimensions,
     ordered_options,
+    reset_invalid_multiselect,
+    reset_invalid_selectbox,
 )
-
-_normalize_dimensions = normalize_dimensions
-_ordered_options = ordered_options
-
-
 PREFERRED_DEPARTMENTS = ["DTF", "UV", "3D"]
 PREFERRED_CATEGORIES = ["黑白短袖", "彩色短袖", "卫衣"]
 PREFERRED_MATERIALS = ["160g", "180g", "CVC"]
 PREFERRED_COLORS = ["黑", "白"]
-
-
-def render_inventory_global_filters(dimensions, key="inventory_global"):
+def render_inventory_global_filters(
+    dimensions, key="inventory_global", movement_type_options=None,
+):
     (
         department, category, selected_brands, selected_materials,
         selected_colors, selected_sizes,
     ) = render_inventory_dimension_filters(dimensions, key)
+    movement_types, selected_date, use_snapshot_date = (
+        render_inventory_activity_filters(
+            movement_type_options or [], key=key
+        )
+    )
+    return (
+        department, category, selected_brands, selected_materials,
+        selected_colors, selected_sizes, movement_types, selected_date,
+        use_snapshot_date,
+    )
+
+
+def render_inventory_activity_filters(
+    movement_type_options, key="inventory_global",
+):
+    options = [
+        str(value).strip() for value in movement_type_options
+        if str(value).strip()
+    ]
+    options = list(dict.fromkeys(options))
     movement_col, date_col = st.columns(2)
+    _reset_invalid_multiselect(f"{key}_movement_types", options)
     movement_types = movement_col.multiselect(
-        t("出入库类型"), ["入库", "出库"], format_func=t,
+        t("出入库类型"), options, format_func=t,
         key=f"{key}_movement_types", placeholder=t("全部"),
     )
     today = datetime.now(ZoneInfo("America/New_York")).date()
@@ -46,18 +64,14 @@ def render_inventory_global_filters(dimensions, key="inventory_global"):
     else:
         selected_date = today
         date_col.caption(t("已关闭历史快照，当前显示最新库存"))
-    return (
-        department, category, selected_brands, selected_materials,
-        selected_colors, selected_sizes, movement_types, selected_date,
-        use_snapshot_date,
-    )
+    return movement_types, selected_date, use_snapshot_date
 
 
 def render_inventory_dimension_filters(
     dimensions, key="inventory_dimensions", allow_all_departments=False,
 ):
-    dimensions = _normalize_dimensions(dimensions)
-    departments = _ordered_options(
+    dimensions = normalize_dimensions(dimensions)
+    departments = ordered_options(
         dimensions.get("department", []), PREFERRED_DEPARTMENTS
     )
     department_col, category_col, brand_col = st.columns(3)
@@ -74,7 +88,7 @@ def render_inventory_dimension_filters(
         if department else dimensions
     )
     preferred_categories = PREFERRED_CATEGORIES if department == "DTF" else []
-    categories = _ordered_options(
+    categories = ordered_options(
         department_rows.get("category", []), preferred_categories
     )
     category_options = ["", *categories]
@@ -96,7 +110,7 @@ def render_inventory_dimension_filters(
     if category:
         category_rows = category_rows[category_rows["category"] == category]
 
-    brands = _ordered_options(
+    brands = ordered_options(
         category_rows.get("brand", []), [], include_missing=False
     )
     _reset_invalid_multiselect(f"{key}_brands", brands)
@@ -110,7 +124,7 @@ def render_inventory_dimension_filters(
         material_rows = material_rows[
             material_rows["brand"].isin(selected_brands)
         ]
-    materials = _ordered_options(
+    materials = ordered_options(
         material_rows.get("material", []),
         PREFERRED_MATERIALS if department == "DTF" else [],
         include_missing=False,
@@ -124,7 +138,7 @@ def render_inventory_dimension_filters(
     color_rows = material_rows
     if selected_materials:
         color_rows = color_rows[color_rows["material"].isin(selected_materials)]
-    colors = _ordered_options(
+    colors = ordered_options(
         color_rows.get("color", []),
         PREFERRED_COLORS if department == "DTF" else [],
         include_missing=False,
@@ -143,7 +157,7 @@ def render_inventory_dimension_filters(
         else UV_MODEL_ORDER if department == "UV"
         else []
     )
-    sizes = _ordered_options(
+    sizes = ordered_options(
         size_rows.get("size", []),
         preferred_sizes,
         include_missing=False,
@@ -163,23 +177,16 @@ def render_inventory_dimension_filters(
         department, category, selected_brands, selected_materials,
         selected_colors, selected_sizes,
     )
-
-
 def _reset_invalid_selectbox(key, options):
-    if key in st.session_state and st.session_state[key] not in options:
-        del st.session_state[key]
+    reset_invalid_selectbox(st.session_state, key, options)
 
 
 def _reset_invalid_multiselect(key, options):
-    if key not in st.session_state:
-        return
-    st.session_state[key] = [
-        value for value in st.session_state[key] if value in options
-    ]
+    reset_invalid_multiselect(st.session_state, key, options)
 
 
 def render_department_category_filters(dimensions, key="inventory_shared"):
-    departments = _ordered_options(
+    departments = ordered_options(
         dimensions.get("department", []), PREFERRED_DEPARTMENTS
     )
     col1, col2 = st.columns(2)

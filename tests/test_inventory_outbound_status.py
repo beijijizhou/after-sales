@@ -15,12 +15,14 @@ from ui.inventory.history.core.tables import (
     build_movement_detail_table,
 )
 from ui.inventory.history.core.batches import build_movement_batch_rows
-from ui.inventory.history.core.filters import filter_history_batches
 from ui.inventory.history.core.filters import (
     filter_batches_by_outbound_kind,
+    filter_batches_by_movement_type,
     filter_history_batches,
     filter_reversal_scope,
+    movement_type_options,
 )
+from ui.inventory.history.workflows.daily_outbound import _component_key
 from ui.inventory.page_tabs import inventory_tab_keys
 from ui.inventory.operations.outbound_status import (
     activate_daily_outbound_backfill,
@@ -124,6 +126,14 @@ class OutboundStatusTests(unittest.TestCase):
 
         self.assertNotIn("SKU 管理", tabs)
         self.assertNotIn("SKU 操作历史", tabs)
+
+    def test_batch_editing_and_reversal_share_one_tab(self):
+        tabs = inventory_tab_keys("DTF", category="黑白短袖")
+
+        self.assertIn("批次修改与撤销", tabs)
+        self.assertNotIn("每日出库编辑历史", tabs)
+        self.assertNotIn("撤销", tabs)
+        self.assertEqual(tabs.count("批次修改与撤销"), 1)
 
     def test_combined_ledger_contains_daily_and_temporary_batches(self):
         batches = pd.DataFrame([
@@ -437,7 +447,7 @@ class OutboundStatusTests(unittest.TestCase):
         self.assertEqual(batches[0]["类型"], "库存设置")
         self.assertEqual(batches[0]["消耗来源"], "库存设置")
 
-    def test_daily_shortage_artifacts_are_only_in_edit_history(self):
+    def test_daily_shortage_artifacts_stay_out_of_business_batch_list(self):
         batches = pd.DataFrame([
             {
                 "记录类别": "库存表格记录", "类型": "入库",
@@ -454,10 +464,7 @@ class OutboundStatusTests(unittest.TestCase):
         ])
 
         normal = filter_history_batches(batches, "all")
-        edits = filter_history_batches(batches, "daily_edit")
-
         self.assertEqual(normal["备注"].tolist(), ["仓库每日出货"])
-        self.assertEqual(len(edits), 2)
 
     def test_uv_daily_sheet_is_one_ledger_batch_across_skus(self):
         movements = pd.DataFrame([
@@ -514,6 +521,28 @@ class OutboundStatusTests(unittest.TestCase):
         issues = dict(zip(result["品牌"], result["问题"]))
         self.assertEqual(issues["B64"], "SKU 不存在")
         self.assertEqual(issues["Haloo"], "库存不足")
+
+    def test_movement_type_options_come_from_current_batches(self):
+        batches = pd.DataFrame({
+            "类型": ["出库", "库存设置", "撤销出库", "出库"],
+        })
+
+        self.assertEqual(
+            movement_type_options(batches),
+            ["出库", "库存设置", "撤销出库"],
+        )
+        filtered = filter_batches_by_movement_type(
+            batches, ["撤销出库"]
+        )
+        self.assertEqual(filtered["类型"].tolist(), ["撤销出库"])
+
+    def test_daily_outbound_component_key_includes_render_scope(self):
+        batch_id = "batch-1"
+
+        self.assertNotEqual(
+            _component_key("inventory_all", batch_id),
+            _component_key("inventory_undo", batch_id),
+        )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,11 @@
 import pandas as pd
 import streamlit as st
 
-from db.access import update_user_access, validate_access_change
+from db.access import (
+    load_production_departments,
+    update_user_access,
+    validate_access_change,
+)
 from ui.access.permissions import (
     permission_names,
     role_labels,
@@ -25,6 +29,7 @@ def render_user_role_editor(supabase, users, roles, catalog, assigned):
     st.caption(f"全部登录账号 {len(users):,}｜启用 {active_count:,}")
 
     role_options = roles["role_key"].astype(str).tolist()
+    department_options = load_production_departments(supabase)
     filter_columns = st.columns([3, 2])
     selected_roles = filter_columns[0].multiselect(
         "角色筛选", role_options, default=role_options,
@@ -67,13 +72,23 @@ def render_user_role_editor(supabase, users, roles, catalog, assigned):
             format_func=lambda role: labels.get(str(role), str(role)),
             key=f"access_role_value_{selected_username}",
         )
+        current_departments = list(selected.get("departments") or ["DTF"])
+        new_departments = st.multiselect(
+            "生产部门（可多选）",
+            department_options,
+            default=[
+                value for value in current_departments
+                if value in department_options
+            ] or ["DTF"],
+            key=f"access_departments_value_{selected_username}",
+        )
         new_active = st.checkbox(
             "账号启用", value=bool(selected["is_active"]),
             key=f"access_active_value_{selected_username}",
         )
         preview = access_change_preview(
             selected, new_role, new_active, labels,
-            permissions_by_role, catalog,
+            permissions_by_role, catalog, new_departments,
         )
         st.caption("修改预览")
         st.dataframe(pd.DataFrame([preview]), hide_index=True, width="stretch")
@@ -89,7 +104,8 @@ def render_user_role_editor(supabase, users, roles, catalog, assigned):
     try:
         validate_access_change(selected_username, new_role, new_active, actor)
         update_user_access(
-            supabase, selected_username, new_role, new_active, actor
+            supabase, selected_username, new_role, new_active, actor,
+            departments=new_departments,
         )
     except Exception as error:
         st.error(_access_error_message(error))
@@ -104,16 +120,23 @@ def render_user_role_editor(supabase, users, roles, catalog, assigned):
 def user_access_table(users, labels=None):
     labels = labels or {}
     if users.empty:
-        return pd.DataFrame(columns=["姓名", "账号", "部门", "角色", "状态"])
+        return pd.DataFrame(
+            columns=["姓名", "账号", "员工编号", "岗位", "生产部门", "角色", "状态"]
+        )
     result = users.rename(columns={
         "name": "姓名", "user_name": "账号", "employee_id": "员工编号",
-        "department": "部门", "role": "角色", "is_active": "状态",
+        "job_title": "岗位", "role": "角色", "is_active": "状态",
     }).copy()
+    result["生产部门"] = result["departments"].map(
+        lambda values: " / ".join(values or ["DTF"])
+    )
     result["角色"] = result["角色"].map(
         lambda role: labels.get(str(role), str(role))
     )
     result["状态"] = result["状态"].map({True: "启用", False: "停用"})
-    return result[["姓名", "账号", "员工编号", "部门", "角色", "状态"]]
+    return result[
+        ["姓名", "账号", "员工编号", "岗位", "生产部门", "角色", "状态"]
+    ]
 
 
 def filter_access_users(users, selected_roles, selected_status):
@@ -134,7 +157,7 @@ def filter_access_users(users, selected_roles, selected_status):
 
 def access_change_preview(
     user, new_role, new_active, labels=None,
-    permissions_by_role=None, catalog=None,
+    permissions_by_role=None, catalog=None, new_departments=None,
 ):
     labels = labels or {}
     permissions_by_role = permissions_by_role or {}
@@ -144,6 +167,8 @@ def access_change_preview(
     new_permissions = permissions_by_role.get(new_role, set())
     added = sorted(new_permissions - old_permissions)
     removed = sorted(old_permissions - new_permissions)
+    old_departments = list(user.get("departments") or ["DTF"])
+    target_departments = list(new_departments or old_departments)
     return {
         "账号": str(user.get("user_name") or ""),
         "原角色": labels.get(old_role, old_role),
@@ -152,7 +177,13 @@ def access_change_preview(
         "新状态": "启用" if new_active else "停用",
         "新增权限": permission_names(added, catalog) or "无",
         "移除权限": permission_names(removed, catalog) or "无",
-        "是否变化": old_role != new_role or bool(user.get("is_active")) != new_active,
+        "原生产部门": " / ".join(old_departments),
+        "新生产部门": " / ".join(target_departments),
+        "是否变化": (
+            old_role != new_role
+            or bool(user.get("is_active")) != new_active
+            or set(old_departments) != set(target_departments)
+        ),
     }
 
 
@@ -161,6 +192,6 @@ def _access_error_message(error):
     if "update_app_user_access" in message:
         return (
             "动态角色数据库尚未安装，请按顺序执行 "
-            "sql/access/role_management/ 下的 01–06 脚本。"
+            "sql/access/role_management/ 下的 01–11 脚本。"
         )
     return message

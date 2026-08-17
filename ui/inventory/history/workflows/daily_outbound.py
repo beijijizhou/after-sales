@@ -42,7 +42,8 @@ def is_editable_daily_outbound(selected_df):
     return reasons.isin(DAILY_OUTBOUND_REASONS).all() and quantities.lt(0).all()
 
 
-def render_daily_outbound_replacement(supabase, batch_id):
+def render_daily_outbound_replacement(supabase, batch_id, key_scope=""):
+    component_key = _component_key(key_scope, batch_id)
     st.markdown("#### 修改每日出库记录")
     st.caption(
         "保存时会自动撤销原批次并生成修正版批次；原记录和撤销记录都会保留。"
@@ -57,7 +58,7 @@ def render_daily_outbound_replacement(supabase, batch_id):
         if versioned else build_daily_outbound_edit_rows(complete)
     )
     edited = render_adjustment_preview_editor(
-        original, key=f"daily_outbound_replacement_{batch_id}",
+        original, key=f"daily_outbound_replacement_{component_key}",
         lock_operation=True, lock_identity=False, allow_rows=True,
         disabled_columns=["备注"],
     )
@@ -94,7 +95,7 @@ def render_daily_outbound_replacement(supabase, batch_id):
             "缺口进入版本记录；不会生成临时入库。"
         )
         st.dataframe(issues, hide_index=True, width="stretch")
-    if not _confirmed(batch_id):
+    if not _confirmed(component_key):
         return
     _save_correction(
         supabase, batch_id, complete, corrected, versioned, movement_date,
@@ -160,15 +161,20 @@ def _render_totals(original, corrected):
     columns[2].metric("变化", f"{corrected - original:+,} 件")
 
 
-def _confirmed(batch_id):
+def _confirmed(component_key):
     confirmed = st.checkbox(
         "我已核对修正版，并确认撤销原批次后生成新批次",
-        key=f"confirm_daily_outbound_replacement_{batch_id}",
+        key=f"confirm_daily_outbound_replacement_{component_key}",
     )
     return st.button(
         "保存修正版", type="primary", width="stretch", disabled=not confirmed,
-        key=f"save_daily_outbound_replacement_{batch_id}",
+        key=f"save_daily_outbound_replacement_{component_key}",
     )
+
+
+def _component_key(key_scope, batch_id):
+    scope = str(key_scope or "default").strip().replace(" ", "_")
+    return f"{scope}_{batch_id}"
 
 
 def _save_correction(supabase, batch_id, complete, corrected, versioned,

@@ -64,11 +64,6 @@ def render_inventory_history(
     selected = filter_history_batches(batches, mode)
     department_key = str(department or "all").strip().lower()
     history_key = f"inventory_{department_key}_{mode}_history_batch"
-    if mode == "daily_edit":
-        st.caption(
-            "这里只显示每日出库的原版本、撤销和历史补偿记录；"
-            "这些记录不会混入普通库存流水。"
-        )
     if mode == "all":
         selected = _render_ledger_filters(
             selected, movements, quantity_search_data, visible_sizes,
@@ -80,7 +75,7 @@ def render_inventory_history(
         selected, history_key = _render_reversal_filters(
             selected, department_key
         )
-    elif mode not in {"sku", "daily_edit"}:
+    elif mode != "sku":
         selected = filter_batches_by_movement_type(selected, movement_types)
     if mode == "all" and show_all_filtered:
         render_filtered_movement_results(selected, movements, visible_sizes)
@@ -190,5 +185,5 @@ def render_history_tab(
         return
     render_selected_movement(
         supabase, movement_df, selected, allow_undo=allow_undo,
-        visible_sizes=visible_sizes,
+        visible_sizes=visible_sizes, key_scope=key,
     )

@@ -6,7 +6,9 @@ from unittest.mock import patch
 import pandas as pd
 
 from db.access import (
+    create_employee,
     load_app_users,
+    normalize_employee_departments,
     save_role_definition,
     update_user_access,
     validate_access_change,
@@ -62,11 +64,11 @@ class AccessManagementTests(unittest.TestCase):
         self.assertTrue(filter_access_users(users, [], "全部").empty)
 
     @patch.object(auth_session.st, "session_state", new_callable=dict)
-    def test_existing_supervisor_session_receives_new_logistics_permission(
+    def test_existing_after_sales_session_receives_usps_permission(
         self, state
     ):
         state["current_user"] = {
-            "username": "lead", "role": "supervisor",
+            "username": "lead", "role": "after_sales",
             "can_view_logistics": False,
         }
         state["current_user_role_checked_at"] = 100
@@ -75,7 +77,9 @@ class AccessManagementTests(unittest.TestCase):
             auth_session._refresh_current_user_role()
 
         self.assertTrue(state["current_user"]["can_view_logistics"])
-        self.assertFalse(state["current_user"]["can_manage_logistics"])
+        self.assertTrue(state["current_user"]["can_manage_logistics"])
+        self.assertTrue(state["current_user"]["can_edit_inventory"])
+        self.assertFalse(state["current_user"]["can_view_cost"])
 
     @patch.object(auth_session.st, "session_state", new_callable=dict)
     @patch.object(auth_session, "load_user")
@@ -86,13 +90,13 @@ class AccessManagementTests(unittest.TestCase):
         state["current_user_role_checked_at"] = 1
         load_user.return_value = {
             "username": "worker", "display_name": "Worker",
-            "role": "supervisor",
+            "role": "after_sales",
         }
 
         with patch.object(auth_session.time, "monotonic", return_value=100):
             auth_session._refresh_current_user_role()
 
-        self.assertEqual(state["current_user"]["role"], "supervisor")
+        self.assertEqual(state["current_user"]["role"], "after_sales")
         self.assertTrue(state["current_user"]["can_view_logistics"])
 
     @patch.object(auth_session.st, "session_state", new_callable=dict)
@@ -121,8 +125,8 @@ class AccessManagementTests(unittest.TestCase):
     def test_supervisor_matrix_has_logistics_query_not_management(self):
         roles, catalog, assigned = _dynamic_role_frames()
         matrix = permission_matrix(roles, catalog, assigned).set_index("角色")
-        self.assertEqual(matrix.at["主管", "查看物流查询"], "✓")
-        self.assertEqual(matrix.at["主管", "同步ERP、OCR与物流管理"], "")
+        self.assertEqual(matrix.at["主管", "USPS官方API查询"], "✓")
+        self.assertEqual(matrix.at["主管", "生产物流：ERP同步、OCR与管理"], "")
         self.assertEqual(matrix.at["主管", "管理用户与角色权限"], "")
 
     def test_role_permission_summary_is_compact_and_counted(self):
@@ -144,9 +148,9 @@ class AccessManagementTests(unittest.TestCase):
         ).set_index("权限")
 
         self.assertEqual(len(detail), 2)
-        self.assertEqual(detail.at["查看物流查询", "状态"], "✓ 已启用")
+        self.assertEqual(detail.at["USPS官方API查询", "状态"], "✓ 已启用")
         self.assertEqual(
-            detail.at["同步ERP、OCR与物流管理", "状态"], "— 未启用"
+            detail.at["生产物流：ERP同步、OCR与管理", "状态"], "— 未启用"
         )
 
     def test_group_matrix_only_contains_selected_group(self):
@@ -158,7 +162,7 @@ class AccessManagementTests(unittest.TestCase):
 
         self.assertEqual(
             matrix.columns.tolist(),
-            ["角色", "查看物流查询", "同步ERP、OCR与物流管理"],
+            ["角色", "USPS官方API查询", "生产物流：ERP同步、OCR与管理"],
         )
 
     def test_access_preview_lists_added_and_removed_permissions(self):
@@ -175,7 +179,7 @@ class AccessManagementTests(unittest.TestCase):
         }, catalog)
 
         self.assertTrue(preview["是否变化"])
-        self.assertIn("查看物流查询", preview["新增权限"])
+        self.assertIn("USPS官方API查询", preview["新增权限"])
         self.assertEqual(preview["移除权限"], "无")
 
     def test_admin_cannot_disable_or_demote_self(self):
@@ -282,13 +286,68 @@ class AccessManagementTests(unittest.TestCase):
             "p_changed_by": "admin-user",
         })
 
+    def test_update_access_saves_multiple_production_departments(self):
+        supabase = Mock()
+        supabase.rpc.return_value.execute.return_value.data = [{
+            "user_name": "qa", "role": "visitor",
+            "is_active": True, "departments": ["DTF", "UV"],
+        }]
+
+        update_user_access(
+            supabase, "qa", "visitor", True, "admin-user",
+            departments=["dtf", "UV", "DTF"],
+        )
+
+        supabase.rpc.assert_called_once_with(
+            "update_app_user_profile_access",
+            {
+                "p_username": "qa",
+                "p_role": "visitor",
+                "p_is_active": True,
+                "p_departments": ["DTF", "UV"],
+                "p_changed_by": "admin-user",
+            },
+        )
+
+    def test_employee_departments_require_supported_value(self):
+        self.assertEqual(
+            normalize_employee_departments(["dtf", "UV", "DTF"]),
+            ["DTF", "UV"],
+        )
+        with self.assertRaisesRegex(ValueError, "至少需要选择"):
+            normalize_employee_departments([])
+        with self.assertRaisesRegex(ValueError, "不支持"):
+            normalize_employee_departments(["LASER"])
+
+    def test_employee_registration_uses_atomic_database_rpc(self):
+        supabase = Mock()
+        supabase.rpc.return_value.execute.return_value.data = [{
+            "employee_id": "qa-new_id", "departments": ["DTF", "UV"],
+        }]
+
+        result = create_employee(
+            supabase, "新质检", "质检", ["DTF", "UV"],
+            username="qa-new", password="secret",
+        )
+
+        supabase.rpc.assert_called_once_with(
+            "register_employee_account",
+            {
+                "p_name": "新质检", "p_job_title": "质检",
+                "p_departments": ["DTF", "UV"],
+                "p_username": "qa-new", "p_password": "secret",
+                "p_role": "visitor",
+            },
+        )
+        self.assertEqual(result["employee_id"], "qa-new_id")
+
     def test_database_function_rechecks_active_admin_actor(self):
         sql_directory = (
             Path(__file__).resolve().parents[1]
             / "sql" / "access" / "role_management"
         )
         scripts = sorted(sql_directory.glob("[0-9][0-9]_*.sql"))
-        self.assertEqual(len(scripts), 6)
+        self.assertEqual(len(scripts), 11)
         self.assertTrue(all(
             len(script.read_text().splitlines()) < 200 for script in scripts
         ))
@@ -323,12 +382,12 @@ def _dynamic_role_frames():
         },
         {
             "permission_key": "can_view_logistics",
-            "permission_name": "查看物流查询",
+            "permission_name": "USPS官方API查询",
             "permission_group": "物流", "sort_order": 20,
         },
         {
             "permission_key": "can_manage_logistics",
-            "permission_name": "同步ERP、OCR与物流管理",
+            "permission_name": "生产物流：ERP同步、OCR与管理",
             "permission_group": "物流", "sort_order": 30,
         },
         {

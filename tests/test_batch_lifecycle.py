@@ -5,8 +5,14 @@ from unittest.mock import Mock, patch
 from db.batches import (
     BatchKind,
     BatchReference,
+    ContainerInboundCorrection,
     DailyOutboundReplacement,
+    InboundBatchKind,
+    InboundBatchReference,
+    InboundCostCorrection,
+    InventoryQuantityCorrection,
     replace_batch,
+    replace_inbound_batch,
     reverse_batch,
 )
 
@@ -69,6 +75,69 @@ class BatchLifecycleTests(unittest.TestCase):
                 DailyOutboundReplacement(date.today(), []),
                 "Andy",
             )
+
+    @patch("db.inventory.operations.adjustments.apply_adjustment_rows")
+    def test_inventory_inbound_correction_uses_one_entry_point(self, apply):
+        client = Mock()
+        rows = [{"操作": "增加", "数量": 5}]
+
+        replace_inbound_batch(
+            client,
+            InboundBatchReference(
+                InboundBatchKind.INVENTORY_MOVEMENT,
+                "inbound-1",
+                "DTF",
+                "黑白短袖",
+            ),
+            InventoryQuantityCorrection(rows),
+            "Andy",
+        )
+
+        apply.assert_called_once_with(
+            client, "DTF", "黑白短袖", rows, "Andy", source_type="bulk"
+        )
+
+    @patch("db.inventory.container.costs.update_posted_container_item_costs")
+    @patch("db.inventory.container.editor.correct_posted_container_quantities")
+    def test_container_correction_combines_quantity_and_cost(
+        self, correct_quantity, correct_cost,
+    ):
+        client = Mock()
+        correct_quantity.return_value = {"rows": 1, "inventory_change": 5}
+        correct_cost.return_value = {"rows": 1}
+
+        result = replace_inbound_batch(
+            client,
+            InboundBatchReference(InboundBatchKind.CONTAINER, "container-1"),
+            ContainerInboundCorrection(
+                quantity_updates={"line-1": 10},
+                item_costs={"line-1": 1.25},
+            ),
+            "Andy",
+        )
+
+        correct_quantity.assert_called_once_with(
+            client, "container-1", {"line-1": 10}, "Andy"
+        )
+        correct_cost.assert_called_once_with(
+            client, "container-1", {"line-1": 1.25}, "Andy"
+        )
+        self.assertEqual(result["quantity"]["inventory_change"], 5)
+
+    @patch("db.finance.cost_maintenance.update_inbound_lot_cost")
+    def test_inbound_cost_correction_uses_cost_adapter(self, update):
+        client = Mock()
+
+        replace_inbound_batch(
+            client,
+            InboundBatchReference(
+                InboundBatchKind.INVENTORY_COST_LOT, "lot-1"
+            ),
+            InboundCostCorrection(1.25),
+            "Andy",
+        )
+
+        update.assert_called_once_with(client, "lot-1", 1.25)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,7 @@ PRODUCTION_ACCESS = {
 LOGISTICS_ACCESS = {"can_view_logistics"}
 LOGISTICS_MANAGE = {"can_manage_logistics"}
 ACCESS_MANAGE = {"can_manage_access"}
+DAILY_WORK_ACCESS = {"can_view_daily_work"}
 INVENTORY_VIEW = {
     "can_view_inventory",
     "can_view_container",
@@ -83,26 +84,30 @@ ALL_PERMISSIONS = set().union(
     LOGISTICS_ACCESS,
     LOGISTICS_MANAGE,
     ACCESS_MANAGE,
+    DAILY_WORK_ACCESS,
 )
 
 ROLE_PERMISSIONS = {
     ROLE_VISITOR: PUBLIC_ACCESS,
     ROLE_SUPERVISOR: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW | CONSUMABLE_VIEW
-        | LOGISTICS_ACCESS | {"can_mark_barcode_operations"}
+        | {"can_mark_barcode_operations"}
     ),
     ROLE_PRODUCER: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
         | CONSUMABLE_VIEW | CONSUMABLE_REPORT
+        | LOGISTICS_MANAGE
     ),
     ROLE_WAREHOUSE: (
-        INVENTORY_VIEW | INVENTORY_MANAGE | CONSUMABLE_VIEW
+        INVENTORY_VIEW | (INVENTORY_MANAGE - {"can_edit_inventory"})
+        | CONSUMABLE_VIEW
         | CONSUMABLE_MANAGE | {"can_use_image_stretch"}
     ),
     ROLE_AFTER_SALES: (
-        PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
-        | INVENTORY_MANAGE | CONSUMABLE_VIEW | CONSUMABLE_MANAGE
-        | AFTER_SALES_MANAGE | LOGISTICS_ACCESS | LOGISTICS_MANAGE
+        ALL_PERMISSIONS
+        - COST_VIEW - COST_MANAGE
+        - FINANCE_REPORTS - FINANCE_DASHBOARD
+        - ACCESS_MANAGE
     ),
     ROLE_FINANCE: (
         INVENTORY_VIEW | CONSUMABLE_VIEW | COST_VIEW | FINANCE_REPORTS
@@ -117,9 +122,9 @@ PAGE_ACCESS = {
     "hotstamp": "can_view_hotstamp",
     "platform": "can_view_platform",
     "production_data": "can_view_production_data",
-    "logistics": "can_view_logistics",
-    "logistics_summary": "can_view_logistics",
-    "logistics_rules": "can_view_logistics",
+    "logistics": ("can_view_logistics", "can_manage_logistics"),
+    "logistics_summary": "can_manage_logistics",
+    "logistics_rules": "can_manage_logistics",
     "inventory": "can_view_inventory",
     "customer_sales": "can_view_inventory",
     "inventory_transfer": "can_view_inventory",
@@ -131,11 +136,15 @@ PAGE_ACCESS = {
     "operation_tracking": "can_view_operation_tracking",
     "image_stretch": "can_use_image_stretch",
     "access_management": "can_manage_access",
+    "daily_work": "can_view_daily_work",
 }
 
 PUBLIC_PERMISSIONS = PUBLIC_ACCESS
 
 NAV_SECTIONS = [
+    ("日常管理", [
+        ("daily_work", "每日工作", "pages/17_每日工作.py"),
+    ]),
     (None, [
         ("operation_tracking", "问题件追踪", "app.py"),
         ("app", "售后查询", "pages/6_售后查询.py"),

@@ -135,7 +135,7 @@ from ui.logistics.tracking.query import (
 from ui.logistics.usps_usage import summarize_usps_usage
 from ui.logistics.summary.detail import build_platform_activity_detail
 from ui.logistics.summary.model import build_daily_platform_summary
-from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
+from utils.auth.constants import NAV_SECTIONS, PAGE_ACCESS, ROLE_PERMISSIONS
 
 
 class LogisticsTrackingTests(unittest.TestCase):
@@ -997,9 +997,9 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(rows, [])
         self.assertEqual(issues, ["第 2 行缺少物流单号"])
 
-    def test_logistics_page_allows_supervisor_query_without_management(self):
-        view_allowed = {"supervisor", "after_sales", "admin"}
-        manage_allowed = {"after_sales", "admin"}
+    def test_logistics_permissions_separate_after_sales_and_production(self):
+        view_allowed = {"after_sales", "admin"}
+        manage_allowed = {"producer", "after_sales", "admin"}
         for role, permissions in ROLE_PERMISSIONS.items():
             with self.subTest(role=role):
                 self.assertEqual(
@@ -1010,9 +1010,16 @@ class LogisticsTrackingTests(unittest.TestCase):
                     "can_manage_logistics" in permissions,
                     role in manage_allowed,
                 )
+                self.assertEqual(
+                    "can_edit_inventory" in permissions,
+                    role in {"after_sales", "admin"},
+                )
 
-    def test_supervisor_logistics_page_hides_erp_and_ocr_workbench(self):
-        with patch("ui.logistics.page.has_permission", return_value=False), patch(
+    def test_after_sales_logistics_page_shows_all_operational_tools(self):
+        with patch(
+            "ui.logistics.page.has_permission",
+            return_value=True,
+        ), patch(
             "ui.logistics.page.render_sync"
         ) as render_sync, patch(
             "ui.logistics.page.render_tracking_lookup"
@@ -1023,9 +1030,33 @@ class LogisticsTrackingTests(unittest.TestCase):
         ):
             render_logistics_page(Mock())
 
-        render_sync.assert_not_called()
-        self.assertIsNone(render_lookup.call_args.args[2])
+        render_sync.assert_called_once()
+        render_lookup.assert_called_once()
         render_summary.assert_not_called()
+
+    def test_producer_logistics_page_hides_usps_lookup(self):
+        with patch(
+            "ui.logistics.page.has_permission",
+            side_effect=lambda permission: permission == "can_manage_logistics",
+        ), patch("ui.logistics.page.render_sync") as render_sync, patch(
+            "ui.logistics.page.render_tracking_lookup"
+        ) as render_lookup:
+            render_logistics_page(Mock())
+
+        render_sync.assert_called_once()
+        render_lookup.assert_not_called()
+
+    def test_logistics_summary_and_rules_require_production_permission(self):
+        self.assertEqual(
+            PAGE_ACCESS["logistics"],
+            ("can_view_logistics", "can_manage_logistics"),
+        )
+        self.assertEqual(
+            PAGE_ACCESS["logistics_summary"], "can_manage_logistics"
+        )
+        self.assertEqual(
+            PAGE_ACCESS["logistics_rules"], "can_manage_logistics"
+        )
 
     def test_logistics_sidebar_only_loads_selected_summary(self):
         with patch("ui.logistics.page.has_permission", return_value=True), patch(

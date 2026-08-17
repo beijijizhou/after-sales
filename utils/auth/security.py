@@ -24,6 +24,15 @@ def verify_password(password, stored_hash):
     if not stored_hash:
         return False
 
+    if str(stored_hash).startswith(("$2a$", "$2b$", "$2y$")):
+        try:
+            import bcrypt
+            return bcrypt.checkpw(
+                password.encode("utf-8"), str(stored_hash).encode("utf-8")
+            )
+        except Exception:
+            return False
+
     if not str(stored_hash).startswith("pbkdf2_sha256$"):
         return hmac.compare_digest(str(stored_hash), password)
 

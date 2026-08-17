@@ -38,3 +38,15 @@ def ordered_options(values, preferred, include_missing=True):
     return ordered_values(
         values, preferred, include_missing=include_missing
     )
+
+
+def reset_invalid_selectbox(session_state, key, options):
+    if key in session_state and session_state[key] not in options:
+        del session_state[key]
+
+
+def reset_invalid_multiselect(session_state, key, options):
+    if key in session_state:
+        session_state[key] = [
+            value for value in session_state[key] if value in options
+        ]

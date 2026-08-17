@@ -11,6 +11,7 @@ from utils.auth import has_permission
 
 def render_logistics_page(supabase, selected_view="review"):
     can_manage = has_permission("can_manage_logistics")
+    can_query_usps = has_permission("can_view_logistics")
 
     st.title("物流单号追踪")
     st.markdown(
@@ -19,30 +20,30 @@ def render_logistics_page(supabase, selected_view="review"):
         "辅助发现可疑面单。"
     )
     if selected_view == "review":
-        _render_review_tab(supabase, can_manage)
+        _render_review_tab(supabase, can_manage, can_query_usps)
     elif selected_view == "summary":
         render_logistics_summary(supabase, can_manage)
     else:
         _render_rules()
 
 
-def _render_review_tab(supabase, can_manage):
+def _render_review_tab(supabase, can_manage, can_query_usps):
     if can_manage:
         render_sync(supabase)
         st.divider()
-    else:
+    if can_query_usps and not can_manage:
         st.info(
-            "主管账号可查询数据库记录和USPS实时状态；"
-            "ERP同步、面单OCR及批量下载由售后或管理员处理。"
+            "当前账号只开放 USPS 官方 API 查询。"
         )
-    render_tracking_lookup(
-        supabase,
-        database_error,
-        (
-            st.session_state.get("logistics_usps_candidates", [])
-            if can_manage else None
-        ),
-    )
+    if can_query_usps:
+        render_tracking_lookup(
+            supabase,
+            database_error,
+            (
+                st.session_state.get("logistics_usps_candidates", [])
+                if can_manage else None
+            ),
+        )
 
 
 def _render_rules():

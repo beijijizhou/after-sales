@@ -61,8 +61,15 @@ def has_role(required_role):
 
 
 def can_access_page(page_key):
-    permission = PAGE_ACCESS.get(page_key)
-    return bool(permission and has_permission(permission))
+    requirement = PAGE_ACCESS.get(page_key)
+    permissions = (
+        requirement if isinstance(requirement, (tuple, list, set))
+        else (requirement,)
+    )
+    return any(
+        permission and has_permission(permission)
+        for permission in permissions
+    )
 
 
 def is_admin():
@@ -95,6 +102,12 @@ def set_current_user(user):
         "role_label": str(
             user.get("role_label") or ROLE_LABELS.get(role, role)
         ),
+        "job_title": str(user.get("job_title") or "员工").strip(),
+        "departments": [
+            str(value).strip().upper()
+            for value in (user.get("departments") or ["DTF"])
+            if str(value).strip()
+        ],
         "permissions": sorted(permissions),
         **{
             permission: permission in permissions

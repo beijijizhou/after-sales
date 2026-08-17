@@ -3,6 +3,7 @@ import streamlit as st
 import utils.auth.constants as auth_constants
 from utils.auth.session import (
     clear_persistent_login,
+    can_access_page,
     get_current_user,
     has_permission,
     login_user,
@@ -99,7 +100,7 @@ def render_navigation():
                 for page_key, label, path in section_items
                 if (
                     constants.PAGE_ACCESS.get(page_key)
-                    and has_permission(constants.PAGE_ACCESS[page_key])
+                    and can_access_page(page_key)
                 )
             ]
             if not visible_items:
@@ -126,12 +127,20 @@ def require_page_access(page_key):
     constants = auth_constants
     render_navigation()
     required_permission = constants.PAGE_ACCESS.get(page_key)
+    required_permissions = (
+        required_permission
+        if isinstance(required_permission, (tuple, list, set))
+        else (required_permission,)
+    )
     if (
-        required_permission not in constants.PUBLIC_PERMISSIONS
+        not any(
+            permission in constants.PUBLIC_PERMISSIONS
+            for permission in required_permissions
+        )
         and not get_current_user()
     ):
         render_login()
-    if required_permission and not has_permission(required_permission):
+    if required_permission and not can_access_page(page_key):
         st.error("当前账号没有权限查看这个页面")
         st.stop()
 

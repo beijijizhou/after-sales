@@ -6,6 +6,7 @@ from utils.page_layout import configure_page
 configure_page()
 
 from db.supabase_client import supabase
+from db.access import create_employee, load_production_departments
 from utils.auth import has_permission, require_page_access
 
 require_page_access("register")
@@ -17,15 +18,21 @@ if not can_register:
 
 name = st.text_input("人名")
 
-department = st.selectbox(
-    "部门",
+job_title = st.selectbox(
+    "岗位",
     [
         "质检",
         "烫印",
     ]
 )
 
-is_qa = department == "质检"
+production_departments = st.multiselect(
+    "生产部门（可多选）",
+    load_production_departments(supabase),
+    default=["DTF"],
+)
+
+is_qa = job_title == "质检"
 
 username = st.text_input(
     "登陆账号的用户名",
@@ -40,23 +47,16 @@ password = st.text_input(
 
 if st.button("注册", disabled=not can_register):
 
-    data = {
-        "name": name,
-        "department": department,
-        "employee_id": name + "_id",
-    }
-
-    if is_qa:
-        data["user_name"] = username
-        data["password"] = password
-    if department == "烫印":
-        data["password"] = "N/A"
-
-    (
-        supabase
-        .table("users")
-        .insert(data)
-        .execute()
-    )
-
-    st.success("用户创建成功")
+    try:
+        create_employee(
+            supabase,
+            name,
+            job_title,
+            production_departments,
+            username=username if is_qa else "",
+            password=password if is_qa else "",
+        )
+    except Exception as error:
+        st.error(f"用户创建失败：{error}")
+    else:
+        st.success("用户创建成功")

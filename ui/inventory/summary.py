@@ -23,6 +23,7 @@ from ui.inventory.history.workflows.page import (
     filter_inventory_history_data,
     load_inventory_history_data,
 )
+from ui.inventory.history.core.filters import movement_type_options
 from ui.inventory.i18n import get_language, render_language_selector, t
 from ui.inventory.category_routing import exclude_consumable_dimensions
 from ui.inventory.operations.outbound_feedback import (
@@ -40,7 +41,8 @@ from ui.inventory.page_tabs import render_inventory_tabs
 from ui.inventory.shared import (
     build_inventory_filter_title,
     filter_inventory_rows,
-    render_inventory_global_filters,
+    render_inventory_activity_filters,
+    render_inventory_dimension_filters,
 )
 from utils.auth import has_permission
 from utils.daily_consumption import (
@@ -66,9 +68,21 @@ def render_inventory_summary(supabase):
     dimensions_df = exclude_consumable_dimensions(dimensions_df)
     (
         department, category, brands, materials, colors, selected_sizes,
-        movement_types, selected_date, _use_snapshot_date,
-    ) = (
-        render_inventory_global_filters(dimensions_df)
+    ) = render_inventory_dimension_filters(
+        dimensions_df, key="inventory_global"
+    )
+    try:
+        complete_history_data = load_inventory_history_data(
+            supabase, department, limit=10000
+        )
+    except Exception as error:
+        st.error(f"{t('库存数据加载失败')}: {error}")
+        return
+    movement_types, selected_date, _use_snapshot_date = (
+        render_inventory_activity_filters(
+            movement_type_options(complete_history_data[2]),
+            key="inventory_global",
+        )
     )
     visible_sizes = selected_sizes or (
         SIZE_COLUMNS if department == "DTF" else None
@@ -189,9 +203,6 @@ def render_inventory_summary(supabase):
         if inventory_df.empty:
             st.warning(t("暂无库存数据"))
 
-        complete_history_data = load_inventory_history_data(
-            supabase, department, limit=10000
-        )
         history_data = filter_inventory_history_data(
             complete_history_data,
             category, brands, materials, colors, selected_sizes,

@@ -4,7 +4,7 @@ import pandas as pd
 
 
 USER_ACCESS_COLUMNS = (
-    "name,user_name,employee_id,department,role,is_active"
+    "name,user_name,employee_id,department,job_title,role,is_active"
 )
 ACCESS_AUDIT_COLUMNS = (
     "id,user_name,old_role,new_role,old_is_active,new_is_active,"
@@ -24,28 +24,51 @@ ROLE_AUDIT_COLUMNS = (
 
 
 def load_app_users(supabase):
-    rows = (
-        supabase.table("users")
-        .select(USER_ACCESS_COLUMNS)
-        .order("name")
-        .execute().data
-    )
+    try:
+        rows = (
+            supabase.table("users").select(USER_ACCESS_COLUMNS)
+            .order("name").execute().data
+        )
+    except Exception as error:
+        if "job_title" not in str(error):
+            raise
+        rows = (
+            supabase.table("users")
+            .select(USER_ACCESS_COLUMNS.replace(",job_title", ""))
+            .order("name").execute().data
+        )
     frame = pd.DataFrame(rows)
     if frame.empty:
         return pd.DataFrame(columns=USER_ACCESS_COLUMNS.split(","))
     for column in ("name", "user_name", "employee_id", "department"):
         frame[column] = frame[column].map(_text)
+    if "job_title" not in frame:
+        frame["job_title"] = frame["department"]
+    frame["job_title"] = frame["job_title"].map(_text).where(
+        frame["job_title"].map(_text) != "", frame["department"]
+    )
     frame = frame.loc[frame["user_name"] != ""].copy()
     frame["role"] = frame["role"].map(_text)
     frame.loc[frame["role"] == "", "role"] = "visitor"
     frame["is_active"] = frame["is_active"].fillna(True).astype(bool)
+    frame["departments"] = _load_user_departments(supabase, frame)
     return frame.reset_index(drop=True)
 
 
 def update_user_access(
-    supabase, username, role, is_active, changed_by,
+    supabase, username, role, is_active, changed_by, departments=None,
 ):
     validate_access_change(username, role, is_active, changed_by)
+    if departments is not None:
+        normalized = normalize_employee_departments(departments)
+        response = supabase.rpc("update_app_user_profile_access", {
+            "p_username": str(username).strip(),
+            "p_role": str(role).strip(),
+            "p_is_active": bool(is_active),
+            "p_departments": normalized,
+            "p_changed_by": str(changed_by).strip(),
+        }).execute()
+        return response.data or []
     response = supabase.rpc("update_app_user_access", {
         "p_username": str(username).strip(),
         "p_role": str(role).strip(),
@@ -53,6 +76,83 @@ def update_user_access(
         "p_changed_by": str(changed_by).strip(),
     }).execute()
     return response.data or []
+
+
+def load_production_departments(supabase):
+    try:
+        rows = (
+            supabase.table("app_production_departments")
+            .select("department_code,department_name,sort_order")
+            .eq("is_active", True).order("sort_order").execute().data or []
+        )
+    except Exception:
+        return ["DTF", "UV", "3D"]
+    return [str(row["department_code"]).strip() for row in rows]
+
+
+def normalize_employee_departments(departments):
+    allowed = {"DTF", "UV", "3D"}
+    result = list(dict.fromkeys(
+        str(value or "").strip().upper() for value in departments
+        if str(value or "").strip()
+    ))
+    if not result:
+        raise ValueError("员工至少需要选择一个生产部门")
+    unsupported = set(result) - allowed
+    if unsupported:
+        raise ValueError(f"不支持的生产部门：{', '.join(sorted(unsupported))}")
+    return result
+
+
+def create_employee(
+    supabase, name, job_title, departments, username="", password="",
+    role="visitor",
+):
+    name = _text(name)
+    job_title = _text(job_title)
+    username = _text(username)
+    if not name or not job_title:
+        raise ValueError("姓名和岗位不能为空")
+    department_codes = normalize_employee_departments(departments)
+    if username:
+        if not password:
+            raise ValueError("登录账号必须设置密码")
+    result = supabase.rpc("register_employee_account", {
+        "p_name": name,
+        "p_job_title": job_title,
+        "p_departments": department_codes,
+        "p_username": username or None,
+        "p_password": password or None,
+        "p_role": role,
+    }).execute()
+    row = (result.data or [{}])[0]
+    return {
+        "employee_id": row.get("employee_id", f"{username or name}_id"),
+        "departments": row.get("departments", department_codes),
+    }
+
+
+def _load_user_departments(supabase, users):
+    employee_ids = users["employee_id"].dropna().astype(str).tolist()
+    assignments = {}
+    if employee_ids:
+        try:
+            rows = (
+                supabase.table("app_user_departments")
+                .select("employee_id,department_code")
+                .in_("employee_id", employee_ids).execute().data or []
+            )
+            for row in rows:
+                if not row.get("employee_id") or not row.get("department_code"):
+                    continue
+                assignments.setdefault(str(row["employee_id"]), []).append(
+                    str(row["department_code"])
+                )
+        except Exception:
+            pass
+    return users["employee_id"].map(
+        lambda value: assignments.get(str(value), ["DTF"])
+    )
 
 
 def load_access_audit(supabase, limit=200):

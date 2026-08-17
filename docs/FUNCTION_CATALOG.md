@@ -24,15 +24,17 @@ an activity log.
 | `pages/9_耗材库存.py` | Consumable stock, issue, inbound, ledger, SKU and planning | `ui/consumables/` | batch review concepts; separate consumable persistence and unit conversion |
 | `pages/10_财务.py` | Cost batches, finance reporting and platform order recalculation | `ui/finance/` | inventory filters, cost-lot repository, batch-first summaries, provider finance adapters |
 | `pages/11_物流追踪.py` | ERP shipment acquisition, carrier review, OCR and USPS lookup | `ui/logistics/` | production platform catalog, review models, tracking query/cache, label OCR |
-| `pages/12_权限管理.py` | User roles, permissions and audit | `ui/access/` | database-managed role catalog and audited mutations |
+| `pages/12_权限管理.py` | User roles, permissions, production-department assignments and audit | `ui/access/`, `db/access.py` | database-managed role catalog, multi-department employee profiles and audited mutations |
 | `pages/13_客户销售出库.py` | Customer, invoice and sales outbound | `ui/inventory/sales/` | linked SKU table, inventory change comparison, atomic sales service |
 | `pages/14_仓库调拨.py` | Warehouse request, dispatch and receipt | `ui/inventory/transfers/` | linked SKU options, warehouse batch state, inventory identity rules |
+| `pages/17_每日工作.py` | Personal daily checklist, notes and history | `ui/daily_work/` | authenticated operator identity, configurable task templates, date-first history |
 
 ## Shared Capability Registry
 
 | Capability | Canonical owner | Reuse rule |
 | --- | --- | --- |
 | Authentication, permissions and operator identity | `utils/auth/` | Pages consume permission identifiers; never recreate role mappings locally. |
+| Personal daily-work records | `db/daily_work.py`, `ui/daily_work/` | Scope templates and dated records to the authenticated username; keep task setup configurable and history grouped by business date. |
 | Page width and common layout | `utils/page_layout.py` | Reuse before adding page-specific CSS/layout setup. |
 | Inventory apparel size order | `db/inventory/core/constants.py` | Import `SIZE_COLUMNS`; never define another `S` through `5XL` sequence. |
 | Human SKU sorting | `utils/sku_sorting.py` | Use for entry, preview, history, costing and detail tables. |
@@ -54,7 +56,7 @@ an activity log.
 | SKU group identity changes | `db/inventory/master_data/sku_identity.py` | SKU editors reuse propagation and merge-preview rules before calling the write service. |
 | Persistent SKU merge rules | `db/inventory/master_data/sku_merge.py`, `ui/inventory/sku/merge.py` | SKU management owns audited source-to-target rules, size-level previews and current-rule visibility; inventory history is never rewritten. |
 | Inventory movement batches and selectors | `ui/inventory/history/core/batches.py`, `core/batch_selector.py` | Reuse batch identity, summary and dependent selector state. |
-| Audited batch lifecycle commands | `db/batches/lifecycle.py` | UI workflows call `reverse_batch` for inventory, daily outbound, consumables, transfers and sales; versioned daily-outbound corrections call `replace_batch`. Domain repositories keep their own atomic transaction rules; historical batches are never updated or deleted as ordinary CRUD. |
+| Audited batch lifecycle commands | `db/batches/lifecycle.py`, `db/batches/inbound.py` | UI workflows call `reverse_batch` for inventory, daily outbound, consumables, transfers and sales; versioned daily-outbound corrections call `replace_batch`; inventory quantity, posted-container quantity/cost and inbound cost corrections call `replace_inbound_batch`. Domain repositories keep their own atomic transaction rules; historical batches are never updated or deleted as ordinary CRUD. |
 | Inventory history filtering and tables | `ui/inventory/history/core/` | Extend shared movement/source/reversal filters, quantity search and tables instead of filtering inside pages. |
 | Inventory history workflows | `ui/inventory/history/workflows/` | Compose existing reversal, daily-outbound correction, posted-container quantity/cost correction and SKU-history workflows; do not rebuild stock review. Posted container corrections belong to the selected inventory-ledger batch, while the container page remains read-only after posting. |
 | Daily-consumption flow identity | `utils/daily_consumption.py` | Manual and automatic flows share this operational contract and source classification. |
@@ -62,6 +64,7 @@ an activity log.
 | Automatic deduction source preview | `automation/sync/daily_flow_preview.py` | Dashboard flows reuse the same single-source preparation, preview and audit fields. |
 | Daily outbound entry and review | `ui/inventory/operations/outbound_entry.py`, `outbound_import.py`, `outbound_review.py` | Compose entry/import with the shared inventory review; do not duplicate conversion or shortage handling in pages. |
 | Versioned daily outbound persistence | `db/inventory/operations/daily_outbound_versions.py` | Create, edit and void logical daily-outbound batches through one audited owner; voiding restores inventory and updates the business batch status together. |
+| Inventory batch quantity calibration | `db/inventory/operations/batch_corrections.py`, `ui/inventory/history/workflows/batch_correction.py` | From the shared inventory-ledger batch selector, correct carton-rule, transcription or total errors by entering the corrected absolute batch quantity; preserve the source batch and post only the audited signed delta with the standard current/change/result review. |
 | System deduction display model | `ui/inventory/operations/system_deduction.py` | UV, colored and dashboard previews reuse signed outbound/result column normalization. |
 | Container UI tables | `ui/inventory/container/tables.py`, `detail_tables.py`, `summary_tables.py` | Use the table facade; detail, packaging and grouped summaries retain separate owners. |
 | In-transit container workflow | `ui/inventory/container/transit_view.py`, `db/inventory/container/repository.py` | Container pages compose the shared list/summary/detail operation instead of rebuilding state and progress tables. Existing editable business containers append formal SKU rows through `append_inventory_container_items`, preserving one batch identity and an audit event. |

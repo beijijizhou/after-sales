@@ -8,6 +8,11 @@
 4. `04_user_access_rpc.sql`：用户角色与启用状态变更函数。
 5. `05_role_definition_rpc.sql`：角色创建、权限组合和角色审计函数。
 6. `06_login_and_grants.sql`：登录权限读取、数据库授权和接口刷新。
+7. `07_logistics_production_ownership.sql`：售后拥有除财务、成本和系统权限管理外的全部业务权限；管理员拥有全部权限；生产人员和主管不能调用 USPS API。
+8. `08_employee_departments.sql`：把旧 `department` 迁移为岗位兼容字段，建立 DTF/UV/3D 多部门关联；现有员工默认 DTF。
+9. `09_employee_department_admin.sql`：后台多部门与角色联合修改接口及审计。
+10. `10_employee_department_queries.sql`：登录和 `qa-barcode-listener` 使用的兼容查询接口。
+11. `11_employee_auth_compatibility.sql`：注册账号和质检扫码项目共用的数据库端安全登录接口。
 
 这些脚本可重复执行。第二步只在角色尚无权限记录时写入初始组合，
 不会覆盖管理员已经在页面中保存的角色权限。

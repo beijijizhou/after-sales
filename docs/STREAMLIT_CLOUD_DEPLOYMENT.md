@@ -62,14 +62,16 @@ users never receive or edit the raw token.
 
 ## User access
 
-Users whose Supabase application role is `supervisor`, `after_sales`, or
-`admin` can see and directly open the logistics page. Supervisors have query
-access only; ERP synchronization, OCR, label download, and USPS usage
-calibration remain restricted to `after_sales` and `admin`. Adding secrets does
+Users whose Supabase application role is `producer`, `after_sales`, or `admin`
+can see the logistics workspace. After-sales users have all operational
+permissions except finance and cost; administrators have every permission.
+Production users may run ERP synchronization and OCR but cannot call the USPS
+API, and supervisors cannot call the USPS API either.
+Adding secrets does
 not grant page access; each employee still needs an application account with
 one of those roles.
 
-Before using the admin-only permissions page, run the six scripts in
+Before using the admin-only permissions page, run the ten scripts in
 `sql/access/role_management/` in numeric order. Its `README.md` contains the
 installation and verification sequence. These migrations install the dynamic
 role and permission catalog, audited user-role updates, administrator-created

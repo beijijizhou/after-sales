@@ -109,18 +109,6 @@ def render_inventory_tabs(
                     supabase, department, "黑白短袖", raw_df, can_edit,
                 )
 
-    if "每日出库编辑历史" in tabs:
-        with tabs["每日出库编辑历史"]:
-            render_daily_outbound_revision_history(
-                supabase, department, "黑白短袖"
-            )
-            with st.expander("查看旧版编辑与补偿记录", expanded=False):
-                _render_history(
-                    supabase, department, "daily_edit",
-                    undo_history_data or history_data, visible_sizes,
-                    movement_types,
-                )
-
     if "系统库存扣减" in tabs:
         with tabs["系统库存扣减"]:
             if not can_edit:
@@ -147,7 +135,16 @@ def render_inventory_tabs(
             show_all_filtered=history_filter_active,
         )
 
-    with tabs["撤销"]:
+    with tabs["批次修改与撤销"]:
+        st.caption(
+            "选择完整业务批次后，可以修改替换、数量校准或整批撤销；"
+            "原批次、修正版和撤销记录都会保留。"
+        )
+        if department == "DTF" and category in {"", "黑白短袖"}:
+            with st.expander("每日出库版本历史", expanded=False):
+                render_daily_outbound_revision_history(
+                    supabase, department, "黑白短袖"
+                )
         _render_history(
             supabase, department, "undo",
             undo_history_data or history_data, visible_sizes,
@@ -167,14 +164,13 @@ def inventory_tab_keys(department, can_view_cost=False, category=""):
     category = str(category or "").strip()
     if department == "DTF" and category in {"", "黑白短袖"}:
         keys.append("仓库每日出库")
-        keys.append("每日出库编辑历史")
     if (
         department == "UV"
         or (department == "DTF" and category in {"", "彩色短袖"})
     ):
         keys.append("系统库存扣减")
     keys.extend([
-        "临时库存调整", "库存流水", "撤销",
+        "临时库存调整", "库存流水", "批次修改与撤销",
     ])
     if can_view_cost:
         keys.append("库存成本")

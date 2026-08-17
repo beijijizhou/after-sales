@@ -3,13 +3,15 @@ import streamlit as st
 from db.inventory import SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
 from ui.inventory.i18n import t
+from ui.inventory.shared.filter_models import (
+    normalize_dimensions,
+    ordered_options,
+)
 from ui.inventory.shared.filters import (
     PREFERRED_CATEGORIES,
     PREFERRED_COLORS,
     PREFERRED_DEPARTMENTS,
     PREFERRED_MATERIALS,
-    _normalize_dimensions,
-    _ordered_options,
     _reset_invalid_multiselect,
     _reset_invalid_selectbox,
 )
@@ -19,8 +21,8 @@ def render_container_inventory_filters(
     dimensions,
     key="container_shared",
 ):
-    dimensions = _normalize_dimensions(dimensions)
-    departments = _ordered_options(
+    dimensions = normalize_dimensions(dimensions)
+    departments = ordered_options(
         dimensions["department"],
         PREFERRED_DEPARTMENTS,
         include_missing=False,
@@ -41,7 +43,7 @@ def render_container_inventory_filters(
         dimensions[dimensions["department"] == department]
         if department else dimensions
     )
-    categories = _ordered_options(
+    categories = ordered_options(
         rows["category"],
         PREFERRED_CATEGORIES if department in {"", "DTF"} else [],
         include_missing=False,
@@ -72,7 +74,7 @@ def render_container_inventory_filters(
         ),
     ]
     for column, widget, label, preferred in filter_specs:
-        options = _ordered_options(
+        options = ordered_options(
             rows[column], preferred, include_missing=False
         )
         selection_key = f"{key}_{column}"

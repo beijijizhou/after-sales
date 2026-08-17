@@ -13,10 +13,10 @@ values
     ('can_mark_barcode_operations', '处理问题件', '售后', '', 70),
     ('can_input_after_sales', '录入售后', '售后', '', 80),
     ('can_view_production_data', '查看生产数据', '生产与质检', '', 90),
-    ('can_view_logistics', '查看物流查询', '物流', '', 100),
-    ('can_manage_logistics', '同步ERP、OCR与物流管理', '物流', '', 110),
+    ('can_view_logistics', 'USPS官方API查询', '物流', '', 100),
+    ('can_manage_logistics', '生产物流：ERP同步、OCR与管理', '物流', '', 110),
     ('can_view_inventory', '查看库存', '库存', '', 120),
-    ('can_edit_inventory', '修改库存', '库存', '', 130),
+    ('can_edit_inventory', '库存出入库', '库存', '', 130),
     ('can_manage_sku', '管理SKU', '库存', '', 140),
     ('can_view_container', '查看货柜', '库存', '', 150),
     ('can_edit_container', '修改货柜', '库存', '', 160),
@@ -69,12 +69,13 @@ with seeds(role_key, permission_keys) as (
         'can_register','can_report_consumables','can_use_image_stretch',
         'can_view_app','can_view_consumables','can_view_container',
         'can_view_hotstamp','can_view_inventory','can_view_operation_tracking',
-        'can_view_platform','can_view_production_data','can_view_qa'
+        'can_view_platform','can_view_production_data','can_view_qa',
+        'can_manage_logistics'
     ]::text[]),
     ('supervisor', array[
         'can_mark_barcode_operations','can_register','can_use_image_stretch',
         'can_view_app','can_view_consumables','can_view_container',
-        'can_view_hotstamp','can_view_inventory','can_view_logistics',
+        'can_view_hotstamp','can_view_inventory',
         'can_view_operation_tracking','can_view_platform',
         'can_view_production_data','can_view_qa'
     ]::text[]),
@@ -88,7 +89,7 @@ with seeds(role_key, permission_keys) as (
         'can_view_platform','can_view_production_data','can_view_qa'
     ]::text[]),
     ('warehouse', array[
-        'can_edit_consumables','can_edit_container','can_edit_inventory',
+        'can_edit_consumables','can_edit_container',
         'can_manage_consumable_sku','can_manage_sku','can_use_image_stretch',
         'can_view_consumables','can_view_container','can_view_inventory'
     ]::text[]),

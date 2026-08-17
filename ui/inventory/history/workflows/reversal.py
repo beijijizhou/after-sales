@@ -21,6 +21,9 @@ from ui.inventory.history.workflows.daily_outbound import (
     movement_rows_as_adjustments,
     render_daily_outbound_replacement,
 )
+from ui.inventory.history.batch_correction import (
+    render_inventory_batch_correction,
+)
 from ui.inventory.i18n import t
 from ui.inventory.operations.adjustment_preview import (
     build_inventory_change_comparison,
@@ -31,13 +34,13 @@ from utils.auth import get_current_operator_name, has_permission
 
 def render_selected_movement(
     supabase, dated_movement_df, selected_batch, allow_undo=True,
-    visible_sizes=None,
+    visible_sizes=None, key_scope="inventory_history",
 ):
     movements = add_movement_batch_key(dated_movement_df)
     selected = movements[movements["batch_key"] == selected_batch]
     render_movement_table(
         selected, visible_sizes,
-        key=f"inventory_movement_detail_{selected_batch}",
+        key=f"inventory_movement_detail_{key_scope}_{selected_batch}",
     )
     reversed_ids = set()
     if "reversal_of_batch_id" in movements.columns:
@@ -45,37 +48,62 @@ def render_selected_movement(
             movements["reversal_of_batch_id"].dropna().astype(str)
         )
     if allow_undo:
-        render_movement_undo(supabase, selected, reversed_ids)
+        render_movement_undo(
+            supabase, selected, reversed_ids, key_scope=key_scope
+        )
     else:
-        render_container_batch_correction(supabase, selected)
+        if not render_container_batch_correction(supabase, selected):
+            render_selected_batch_correction(
+                supabase, selected, reversed_ids, key_scope=key_scope
+            )
 
 
 def render_container_batch_correction(supabase, selected):
     if selected.empty or not has_permission("can_edit_inventory"):
-        return
+        return False
     if not selected["quantity_change"].gt(0).all():
-        return
+        return False
     batch_ids = selected.get("batch_id", pd.Series(dtype=str)).dropna(
     ).astype(str).unique()
     if len(batch_ids) != 1:
-        return
+        return False
     try:
         target = load_posted_container_by_inventory_batch(
             supabase, batch_ids[0]
         )
     except Exception as error:
         st.caption(f"货柜批次更正入口暂时无法加载：{error}")
-        return
+        return False
     target = pd.DataFrame(target)
     if target.empty:
-        return
+        return False
     st.divider()
     render_posted_container_correction(
         supabase, target, str(target.iloc[0]["container_key"])
     )
+    return True
 
 
-def render_movement_undo(supabase, selected, reversed_ids):
+def render_selected_batch_correction(
+    supabase, selected, reversed_ids, key_scope="inventory_history",
+):
+    if selected.empty or "batch_id" not in selected:
+        return
+    batch_ids = selected["batch_id"].dropna().astype(str).unique()
+    if len(batch_ids) != 1 or batch_ids[0] in reversed_ids:
+        return
+    batch_id = batch_ids[0]
+    if is_editable_daily_outbound(selected):
+        render_daily_outbound_replacement(
+            supabase, batch_id, key_scope=key_scope
+        )
+        return
+    render_inventory_batch_correction(supabase, selected, batch_id)
+
+
+def render_movement_undo(
+    supabase, selected, reversed_ids, key_scope="inventory_history",
+):
     if selected.empty or not has_permission("can_edit_inventory"):
         return
     if "batch_id" not in selected or selected["batch_id"].isna().all():
@@ -104,18 +132,21 @@ def render_movement_undo(supabase, selected, reversed_ids):
             daily_revision = None
         action = st.segmented_control(
             "处理方式", ["修改并替换", "仅撤销"], default="修改并替换",
-            key=f"inventory_batch_action_{batch_id}",
+            key=f"inventory_batch_action_{key_scope}_{batch_id}",
         )
         if action == "修改并替换":
-            render_daily_outbound_replacement(supabase, batch_id)
+            render_daily_outbound_replacement(
+                supabase, batch_id, key_scope=key_scope
+            )
             return
     _render_reversal_stock_review(supabase, selected)
     confirmed = st.checkbox(
         t("我确认撤销这笔库存变动"),
-        key=f"confirm_inventory_undo_{batch_id}",
+        key=f"confirm_inventory_undo_{key_scope}_{batch_id}",
     )
     if not st.button(
-        t("撤销这笔库存变动"), disabled=not confirmed, width="stretch"
+        t("撤销这笔库存变动"), disabled=not confirmed, width="stretch",
+        key=f"inventory_undo_button_{key_scope}_{batch_id}",
     ):
         return
     row = selected.iloc[0]

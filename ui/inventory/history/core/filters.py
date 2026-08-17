@@ -12,12 +12,6 @@ def filter_history_batches(batch_df, mode):
     shortage_artifacts = reasons.str.contains(
         "临时库存调整｜每日出库缺口补足", regex=False
     )
-    daily_revision_artifacts = (
-        batch_df["记录类别"].ne("库存表格记录")
-        & reasons.str.contains("仓库每日出货", regex=False)
-    )
-    if mode == "daily_edit":
-        return batch_df[shortage_artifacts | daily_revision_artifacts]
     normal_df = batch_df[
         batch_df["记录类别"].eq("库存表格记录")
         & ~shortage_artifacts
@@ -70,12 +64,25 @@ def filter_batches_by_movement_type(batch_df, movement_types):
     if batch_df.empty or not movement_types:
         return batch_df
     return batch_df[
-        batch_df["类型"].fillna("").apply(
-            lambda value: any(
-                movement_type in value for movement_type in movement_types
-            )
-        )
+        batch_df["类型"].fillna("").astype(str).isin(movement_types)
     ]
+
+
+def movement_type_options(batch_df):
+    """Return the actual business movement types present in current data."""
+    if batch_df.empty or "类型" not in batch_df:
+        return []
+    preferred = [
+        "入库", "出库", "库存设置", "新增 SKU",
+        "已撤销入库", "已撤销出库", "撤销入库", "撤销出库",
+    ]
+    present = {
+        str(value).strip() for value in batch_df["类型"].dropna()
+        if str(value).strip()
+    }
+    return [value for value in preferred if value in present] + sorted(
+        present - set(preferred)
+    )
 
 
 def filter_reversal_scope(batch_df, scope):

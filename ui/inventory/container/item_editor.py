@@ -1,11 +1,13 @@
 import pandas as pd
 import streamlit as st
 
-from db.inventory.container.editor import (
-    correct_posted_container_quantities,
-    update_container_items,
+from db.batches import (
+    ContainerInboundCorrection,
+    InboundBatchKind,
+    InboundBatchReference,
+    replace_inbound_batch,
 )
-from db.inventory.container.costs import update_posted_container_item_costs
+from db.inventory.container.editor import update_container_items
 from utils.auth import get_current_operator_name, has_permission
 from utils.sku_sorting import sort_sku_rows
 from ui.table_layout import fit_table_height
@@ -156,25 +158,23 @@ def render_posted_container_correction(supabase, target, container_key):
         return
     try:
         operator = get_current_operator_name()
-        quantity_result = {
-            "rows": 0, "inventory_change": 0, "unresolved_shortage": 0,
-        }
-        if not quantity_changed.empty:
-            quantity_result = correct_posted_container_quantities(
-                supabase, container_key,
-                {
+        result = replace_inbound_batch(
+            supabase,
+            InboundBatchReference(InboundBatchKind.CONTAINER, container_key),
+            ContainerInboundCorrection(
+                quantity_updates={
                     str(key): int(value)
                     for key, value in quantity_changed.items()
                 },
-                operator,
-            )
-        cost_result = {"rows": 0}
-        if not cost_changed.empty:
-            cost_result = update_posted_container_item_costs(
-                supabase, container_key,
-                {str(key): float(value) for key, value in cost_changed.items()},
-                operator,
-            )
+                item_costs={
+                    str(key): float(value)
+                    for key, value in cost_changed.items()
+                },
+            ),
+            operator,
+        )
+        quantity_result = result["quantity"]
+        cost_result = result["cost"]
     except Exception as error:
         st.error(f"已入库货柜更正失败：{error}")
         return
