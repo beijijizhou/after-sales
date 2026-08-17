@@ -10,6 +10,7 @@ from db.consumables.planning import (
     build_consumable_consumption_model,
     build_consumable_reorder_forecast,
 )
+from ui.planning import render_planning_summary, render_target_days_input
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -23,7 +24,7 @@ def build_consumable_planning_frames(items_df, batches_df, movements_df):
 def render_consumable_reorder_forecast(items_df, batches_df, movements_df):
     st.subheader("耗材点货预测")
     st.caption(
-        "按最近领用记录生成耗材日均消耗，并给出当前库存可撑天数与建议下单量。"
+        "按最近领用记录生成耗材日均消耗，并给出当前库存可撑天数与建议点货量。"
     )
     _render_planning_controls()
     _today, frames = build_consumable_planning_frames(
@@ -59,13 +60,11 @@ def _render_planning_controls():
         step=1,
         key="consumable_planning_lookback_days",
     )
-    coverage_days = col2.number_input(
-        "目标备货天数",
-        min_value=1,
-        max_value=90,
-        value=DEFAULT_COVERAGE_DAYS,
-        step=1,
+    coverage_days = render_target_days_input(
+        col2,
         key="consumable_planning_coverage_days",
+        default_days=DEFAULT_COVERAGE_DAYS,
+        max_days=90,
     )
     return {
         "lookback_days": int(lookback_days),
@@ -106,25 +105,11 @@ def _render_summary_metrics(forecast_df):
         st.info("暂无可用于预测的耗材 SKU。")
         return
 
-    forecast = forecast_df.copy()
-    needs_reorder = pd.to_numeric(
-        forecast["建议下单量"], errors="coerce"
-    ).fillna(0).gt(0)
-    risk_days = pd.to_numeric(
-        forecast["最低剩余天数"], errors="coerce"
-    )
-    col1, col2, col3 = st.columns(3)
-    col1.metric("需补货 SKU", int(needs_reorder.sum()))
-    risk_count = int(
-        (risk_days.notna() & risk_days.lt(14)).sum()
-    )
-    col2.metric(
-        "14天内风险 SKU",
-        risk_count,
-    )
-    col3.metric(
-        "建议下单总量",
-        int(pd.to_numeric(forecast["建议下单量"], errors="coerce").fillna(0).sum()),
+    render_planning_summary(
+        forecast_df,
+        reorder_column="建议点货量",
+        coverage_column="最低剩余天数",
+        unit_column="基础单位",
     )
 
 
@@ -143,9 +128,9 @@ def _render_forecast_table(forecast_df):
             "最低剩余天数": st.column_config.NumberColumn(format="%d"),
             "最低库存": st.column_config.NumberColumn(format="%.0f"),
             "安全库存缺口": st.column_config.NumberColumn(format="%.0f"),
-            "建议备货天数": st.column_config.NumberColumn(format="%d"),
-            "建议下单量": st.column_config.NumberColumn(format="%.0f"),
-            "建议下单量（箱）": st.column_config.NumberColumn(format="%.2f"),
+            "目标备货天数": st.column_config.NumberColumn(format="%d"),
+            "建议点货量": st.column_config.NumberColumn(format="%.0f"),
+            "建议点货量（箱）": st.column_config.NumberColumn(format="%.2f"),
             "有效数据天数": st.column_config.NumberColumn(format="%d"),
             "自然窗口日均": st.column_config.NumberColumn(format="%.2f"),
             "窗口天数": st.column_config.NumberColumn(format="%d"),
@@ -182,11 +167,11 @@ def _render_model_table(model_df):
 def _highlight_risk(row):
     daily_usage = pd.to_numeric(row.get("预测日耗合计"), errors="coerce")
     coverage_days = pd.to_numeric(row.get("最低剩余天数"), errors="coerce")
-    reorder_quantity = pd.to_numeric(row.get("建议下单量"), errors="coerce")
+    reorder_quantity = pd.to_numeric(row.get("建议点货量"), errors="coerce")
     styles = []
     for column in row.index:
         if pd.notna(reorder_quantity) and reorder_quantity > 0 and column in {
-            "建议下单量", "建议下单量（箱）", "安全库存缺口",
+            "建议点货量", "建议点货量（箱）", "安全库存缺口",
         }:
             styles.append(
                 "background-color: #fff1cc; color: #7a4a00; font-weight: 700;"

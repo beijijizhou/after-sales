@@ -6,6 +6,7 @@ from ui.inventory.i18n import t
 FORECAST_COLUMNS = [
     "颜色", "材质范围", "最低剩余天数", "低于14天尺码",
     "到货前缺口总数", "到货前缺口尺码", "预计最早耗尽日期",
+    "目标备货天数", "建议点货量", "建议点货尺码",
     "预计当前库存", "预测日耗合计", "日耗依据",
     "库存基准日期", "当前日期", "库存基准总数",
     "到货前需覆盖天数",
@@ -54,6 +55,9 @@ def render_reorder_forecast_table(forecast_df):
                 t("到货前缺口总数"), format="%d"
             ),
             "到货前缺口尺码": st.column_config.TextColumn(t("到货前缺口尺码")),
+            "目标备货天数": st.column_config.NumberColumn(format="%d 天"),
+            "建议点货量": st.column_config.NumberColumn(format="%d"),
+            "建议点货尺码": st.column_config.TextColumn(width="large"),
         },
     )
 
@@ -69,6 +73,10 @@ def highlight_forecast_risk(row):
             "到货前缺口总数", "到货前缺口尺码",
         ]:
             styles.append("background-color: #fff1cc; color: #7a4a00; font-weight: 700;")
+        elif is_positive(row.get("建议点货量")) and column in [
+            "建议点货量", "建议点货尺码",
+        ]:
+            styles.append("background-color: #e7f0ff; color: #123b70; font-weight: 700;")
         else:
             styles.append("")
     return styles

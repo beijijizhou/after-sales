@@ -12,10 +12,11 @@ from ui.consumables.operations.entry import (
 from ui.consumables.units import to_boxes
 from ui.consumables.operations.validation import validate_package_sizes
 from ui.consumables.operations.stock_models import (
+    build_stock_review_comparison,
     build_daily_issue_template,
     normalize_initialization,
-    prepare_preview,
 )
+from ui.operations import render_stock_change_review
 from utils.auth import get_current_operator_name
 
 
@@ -69,7 +70,7 @@ def render_daily_issue_table(supabase, department_code, items_df, can_edit):
     except ValueError as error:
         st.error(str(error))
         rows, preview = [], pd.DataFrame()
-    _render_preview(preview, "实际扣减预览")
+    _render_preview(preview, "实际扣减预览", action="领用")
     movement_date = st.date_input(
         "领用日期",
         value=datetime.now(NY_TIMEZONE).date(),
@@ -172,11 +173,21 @@ def _active_items(items_df, can_edit):
     return active
 
 
-def _render_preview(preview, title):
+def _render_preview(preview, title, action=None):
     if preview.empty:
         return
-    st.caption(title)
-    st.dataframe(prepare_preview(preview), width="stretch", hide_index=True)
+    comparison = build_stock_review_comparison(preview)
+    extra_columns = [
+        column for column in ["单位成本"] if column in comparison
+    ]
+    render_stock_change_review(
+        comparison,
+        action=action,
+        title=title,
+        identity_columns=["耗材 SKU"],
+        extra_columns=extra_columns,
+        unit="箱",
+    )
 
 
 def _save_batch(

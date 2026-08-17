@@ -2,6 +2,8 @@ from datetime import timedelta
 
 import pandas as pd
 
+from db.batches import filter_active_batch_records
+from db.planning import build_daily_usage_contract, calculate_stock_plan
 from utils.daily_usage_model import (
     EFFECTIVE_DAYS_PER_KEY_ACTIVITY,
     build_daily_usage_summary,
@@ -104,8 +106,8 @@ def build_consumable_reorder_forecast(
         "分类", "耗材名称", "规格/型号", "品牌",
         "库存基准总数", "库存基准日期", "当前日期",
         "预测日耗合计", "最低剩余天数", "预计最早耗尽日期",
-        "最低库存", "安全库存缺口", "建议备货天数", "建议下单量",
-        "建议下单量（箱）", "日耗依据", "有效数据天数",
+        "最低库存", "安全库存缺口", "目标备货天数", "建议点货量",
+        "建议点货量（箱）", "日耗依据", "有效数据天数",
         "自然窗口日均", "窗口天数",
     ]
     model = pd.DataFrame(model_df).copy()
@@ -116,8 +118,12 @@ def build_consumable_reorder_forecast(
     result["库存基准总数"] = pd.to_numeric(
         result["当前库存"], errors="coerce"
     ).fillna(0.0)
+    usage = build_consumable_forecast_usage(result)
+    result = result.merge(
+        usage[["item_id", "daily_usage"]], on="item_id", how="left"
+    )
     result["预测日耗合计"] = pd.to_numeric(
-        result["最近领用日均"], errors="coerce"
+        result["daily_usage"], errors="coerce"
     ).fillna(0.0)
     result["最低库存"] = pd.to_numeric(
         result["最低库存"], errors="coerce"
@@ -131,10 +137,16 @@ def build_consumable_reorder_forecast(
     result["窗口天数"] = pd.to_numeric(
         result.get("窗口天数"), errors="coerce"
     ).fillna(CONSUMABLE_LOOKBACK_DAYS).astype(int)
-    result["建议备货天数"] = int(max(coverage_days, 0))
+    result["目标备货天数"] = int(max(coverage_days, 0))
     result["库存基准日期"] = current_date
     result["当前日期"] = current_date
-    result["最低剩余天数"] = result.apply(_coverage_days, axis=1)
+    result["_stock_plan"] = result.apply(_stock_plan, axis=1)
+    result["最低剩余天数"] = result["_stock_plan"].map(
+        lambda plan: (
+            int(plan.coverage_days)
+            if plan.coverage_days is not None else pd.NA
+        )
+    )
     result["预计最早耗尽日期"] = result["最低剩余天数"].apply(
         lambda value: (
             current_date + timedelta(days=int(value))
@@ -144,8 +156,21 @@ def build_consumable_reorder_forecast(
     result["安全库存缺口"] = (
         result["最低库存"] - result["库存基准总数"]
     ).clip(lower=0)
-    result["建议下单量"] = result.apply(_recommended_quantity, axis=1)
-    result["建议下单量（箱）"] = result.apply(_recommended_packages, axis=1)
+    result["建议点货量"] = result["_stock_plan"].map(
+        lambda plan: plan.reorder_quantity
+    )
+    result["建议点货量（箱）"] = result.apply(
+        lambda row: (
+            0
+            if row["_stock_plan"].reorder_quantity <= 0
+            else (
+                row["_stock_plan"].reorder_packages
+                if str(row.get("包装单位") or "").strip() == "箱"
+                else pd.NA
+            )
+        ),
+        axis=1,
+    )
     result["日耗依据"] = result.apply(
         lambda row: (
             f"最近{int(row.get('窗口天数') or CONSUMABLE_LOOKBACK_DAYS)}天领用"
@@ -155,12 +180,27 @@ def build_consumable_reorder_forecast(
         axis=1,
     )
     result = result.sort_values(
-        ["建议下单量", "最低剩余天数", "分类", "耗材名称", "规格/型号"],
+        ["建议点货量", "最低剩余天数", "分类", "耗材名称", "规格/型号"],
         ascending=[False, True, True, True, True],
         kind="stable",
         na_position="last",
     )
     return result[columns].reset_index(drop=True)
+
+
+def build_consumable_forecast_usage(model_df):
+    """Adapt the consumable issue model to the shared usage contract."""
+
+    return build_daily_usage_contract(
+        model_df,
+        key_columns=["item_id"],
+        daily_usage_column="最近领用日均",
+        effective_days_column="有效数据天数",
+        window_days_column="窗口天数",
+        total_usage_column="总领用量",
+        source_type="warehouse_issue",
+        source_label="每日耗材出库",
+    )
 
 
 def _active_issue_movements(batches_df, movements_df):
@@ -170,24 +210,19 @@ def _active_issue_movements(batches_df, movements_df):
     if batches.empty or movements.empty:
         return pd.DataFrame(columns=columns)
 
-    reversed_batch_ids = set(
-        batches["reversal_of_batch_id"].dropna().astype(str)
+    active_batches = filter_active_batch_records(
+        batches, type_column="movement_type"
     )
-    active_batches = batches[
-        batches["reversal_of_batch_id"].isna()
-        & ~batches["id"].astype(str).isin(reversed_batch_ids)
-        & (batches["movement_type"] == "issue")
+    active_batches = active_batches[
+        active_batches["movement_type"] == "issue"
     ].copy()
     if active_batches.empty:
         return pd.DataFrame(columns=columns)
 
-    reversed_movement_ids = set(
-        movements["reversal_of_movement_id"].dropna().astype(str)
+    active_movements = filter_active_batch_records(
+        movements,
+        reversal_column="reversal_of_movement_id",
     )
-    active_movements = movements[
-        movements["reversal_of_movement_id"].isna()
-        & ~movements["id"].astype(str).isin(reversed_movement_ids)
-    ].copy()
     active_movements = active_movements[
         active_movements["batch_id"].astype(str).isin(
             active_batches["id"].astype(str)
@@ -243,29 +278,17 @@ def _to_packages(row, quantity_field="当前库存"):
     return round(float(quantity) / float(package_size), 2)
 
 
-def _coverage_days(row):
-    daily_usage = float(row.get("预测日耗合计") or 0)
-    current_quantity = float(row.get("库存基准总数") or 0)
-    if daily_usage <= 0:
-        return pd.NA
-    return int(current_quantity / daily_usage)
-
-
-def _recommended_quantity(row):
-    daily_usage = float(row.get("预测日耗合计") or 0)
-    current_quantity = float(row.get("库存基准总数") or 0)
-    minimum_quantity = float(row.get("最低库存") or 0)
-    target_days = int(row.get("建议备货天数") or 0)
-    target_quantity = max(daily_usage * target_days, minimum_quantity)
-    return max(round(target_quantity - current_quantity), 0)
-
-
-def _recommended_packages(row):
-    recommended = float(row.get("建议下单量") or 0)
+def _stock_plan(row):
     package_unit = str(row.get("包装单位") or "").strip()
     package_size = pd.to_numeric(row.get("每箱数量"), errors="coerce")
-    if recommended <= 0:
-        return 0
-    if package_unit != "箱" or pd.isna(package_size) or package_size <= 0:
-        return pd.NA
-    return round(recommended / float(package_size), 2)
+    return calculate_stock_plan(
+        row.get("库存基准总数"),
+        row.get("预测日耗合计"),
+        target_days=row.get("目标备货天数"),
+        minimum_quantity=row.get("最低库存"),
+        package_size=(
+            package_size
+            if package_unit == "箱" and pd.notna(package_size)
+            else None
+        ),
+    )

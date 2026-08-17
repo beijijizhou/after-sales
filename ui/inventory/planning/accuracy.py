@@ -5,8 +5,12 @@ from db.inventory.planning.consumption_comparison import (
 )
 
 
-def render_model_accuracy_summary(comparison_df):
+def render_model_accuracy_summary(comparison_df, baseline_label=None):
     accuracy = build_model_accuracy_summary(comparison_df)
+    if baseline_label and not accuracy.empty:
+        accuracy["模型"] = accuracy["模型"].replace({
+            "15,000模型": baseline_label,
+        })
     if accuracy.empty:
         st.info("平台生产数据不足，暂时无法判断模型偏差。")
         return

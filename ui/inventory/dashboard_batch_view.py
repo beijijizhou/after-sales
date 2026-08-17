@@ -12,7 +12,11 @@ from automation.sync.daily_inventory_consumption import (
 )
 from db.inventory.dashboard import load_daily_completion_status
 from utils.auth import get_current_operator_name, has_permission
-from ui.inventory.operations.system_deduction import system_deduction_display
+from ui.inventory.operations.system_deduction import (
+    system_deduction_comparison,
+    system_deduction_display,
+)
+from ui.operations import render_stock_change_review
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -75,9 +79,25 @@ def render_preview_detail(movement_date, flow, preview):
             )
             st.dataframe(preview.source_rows, hide_index=True, width="stretch")
             st.markdown("**SKU 库存匹配**")
-        st.dataframe(
-            system_stock_change_display(preview.rows),
-            hide_index=True, width="stretch",
+        comparison = system_deduction_comparison(preview.rows)
+        identity_columns = [
+            column for column in [
+                "状态", "生产平台", "表格产品", "品类", "材质",
+                "品牌", "颜色", "尺码", "型号",
+            ] if column in comparison
+        ]
+        extra_columns = [
+            column for column in ["待处理数量", "未扣数量", "当日消耗"]
+            if column in comparison
+        ]
+        render_stock_change_review(
+            comparison,
+            action="出库",
+            title="SKU 库存扣减核对",
+            identity_columns=identity_columns,
+            extra_columns=extra_columns,
+            unit="件",
+            quantity_format="%d",
         )
 
 

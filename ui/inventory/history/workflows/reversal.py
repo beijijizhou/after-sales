@@ -6,7 +6,7 @@ import streamlit as st
 from db.inventory.container.repository import (
     load_posted_container_by_inventory_batch,
 )
-from db.batches import BatchKind, BatchReference, reverse_batch
+from db.batches import BatchKind, BatchReference, reversed_record_ids
 from db.inventory.operations.daily_outbound_versions import (
     load_daily_outbound_revision_by_inventory_batch,
 )
@@ -29,7 +29,8 @@ from ui.inventory.operations.adjustment_preview import (
     build_inventory_change_comparison,
     render_inventory_change_comparison,
 )
-from utils.auth import get_current_operator_name, has_permission
+from ui.batches import render_batch_reversal_action
+from utils.auth import has_permission
 
 
 def render_selected_movement(
@@ -42,11 +43,7 @@ def render_selected_movement(
         selected, visible_sizes,
         key=f"inventory_movement_detail_{key_scope}_{selected_batch}",
     )
-    reversed_ids = set()
-    if "reversal_of_batch_id" in movements.columns:
-        reversed_ids = set(
-            movements["reversal_of_batch_id"].dropna().astype(str)
-        )
+    reversed_ids = reversed_record_ids(movements)
     if allow_undo:
         render_movement_undo(
             supabase, selected, reversed_ids, key_scope=key_scope
@@ -140,47 +137,32 @@ def render_movement_undo(
             )
             return
     _render_reversal_stock_review(supabase, selected)
-    confirmed = st.checkbox(
-        t("我确认撤销这笔库存变动"),
-        key=f"confirm_inventory_undo_{key_scope}_{batch_id}",
-    )
-    if not st.button(
-        t("撤销这笔库存变动"), disabled=not confirmed, width="stretch",
-        key=f"inventory_undo_button_{key_scope}_{batch_id}",
-    ):
-        return
     row = selected.iloc[0]
-    try:
-        if daily_revision:
-            daily_batch = daily_revision.get(
-                "inventory_daily_outbound_batches"
-            ) or {}
-            reverse_batch(
-                supabase,
-                BatchReference(
-                    BatchKind.DAILY_OUTBOUND,
-                    daily_revision["daily_outbound_batch_id"],
-                    daily_batch.get("department") or row["department"],
-                    daily_batch.get("category") or row["category"],
-                ),
-                get_current_operator_name(),
-            )
-        else:
-            reverse_batch(
-                supabase,
-                BatchReference(
-                    BatchKind.INVENTORY, batch_id,
-                    row["department"], row["category"],
-                ),
-                get_current_operator_name(),
-            )
-    except Exception as error:
-        st.error(f"{t('撤销失败')}: {error}")
-        return
-    st.session_state["inventory_saved_message"] = t(
-        "库存变动已撤销，库存明细已恢复"
+    if daily_revision:
+        daily_batch = daily_revision.get(
+            "inventory_daily_outbound_batches"
+        ) or {}
+        reference = BatchReference(
+            BatchKind.DAILY_OUTBOUND,
+            daily_revision["daily_outbound_batch_id"],
+            daily_batch.get("department") or row["department"],
+            daily_batch.get("category") or row["category"],
+        )
+    else:
+        reference = BatchReference(
+            BatchKind.INVENTORY, batch_id,
+            row["department"], row["category"],
+        )
+    render_batch_reversal_action(
+        supabase,
+        reference,
+        key_scope=f"inventory_{key_scope}",
+        confirmation_label=t("我确认撤销这笔库存变动"),
+        button_label=t("撤销这笔库存变动"),
+        success_state_key="inventory_saved_message",
+        success_message=t("库存变动已撤销，库存明细已恢复"),
+        error_label=t("撤销失败"),
     )
-    st.rerun()
 
 
 def _render_reversal_stock_review(supabase, selected):

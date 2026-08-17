@@ -16,6 +16,7 @@ from automation.sync.dtf_colored_inventory import (
     load_colored_consumption_history,
     _cap_allocation_at_zero,
 )
+from automation.sync.colored_models import load_colored_ledger_history
 from ui.inventory.planning.colored_review import (
     reconciliation_action,
     stock_change_display,
@@ -23,6 +24,53 @@ from ui.inventory.planning.colored_review import (
 
 
 class ColoredProductionInventoryTests(unittest.TestCase):
+    def test_persisted_deductions_restore_model_when_cache_is_missing(self):
+        class Query:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def select(self, *_args, **_kwargs):
+                return self
+
+            def eq(self, *_args, **_kwargs):
+                return self
+
+            def gte(self, *_args, **_kwargs):
+                return self
+
+            def lte(self, *_args, **_kwargs):
+                return self
+
+            def execute(self):
+                return type("Response", (), {"data": self.rows})()
+
+        class Client:
+            def table(self, _name):
+                return Query([
+                    {
+                        "movement_date": "2026-08-06", "color": "黄色",
+                        "size": "L", "quantity_change": -12,
+                        "reason": "彩色短袖生产自动扣减 2026-08-06",
+                        "batch_id": "active", "reversal_of_batch_id": None,
+                    },
+                    {
+                        "movement_date": "2026-08-06", "color": "黄色",
+                        "size": "L", "quantity_change": -8,
+                        "reason": "彩色短袖生产自动扣减 2026-08-06",
+                        "batch_id": "reversed", "reversal_of_batch_id": None,
+                    },
+                    {
+                        "movement_date": "2026-08-06", "color": "黄色",
+                        "size": "L", "quantity_change": 8,
+                        "reason": "撤销：彩色短袖生产自动扣减 2026-08-06",
+                        "batch_id": "undo", "reversal_of_batch_id": "reversed",
+                    },
+                ])
+
+        target = pd.Timestamp("2026-08-06").date()
+        result = load_colored_ledger_history(Client(), target, target)
+        self.assertEqual(result.iloc[0]["生产数量"], 12)
+
     def test_reconciliation_action_routes_each_problem(self):
         self.assertIn(
             "临时库存调整",
@@ -229,7 +277,8 @@ class ColoredProductionInventoryTests(unittest.TestCase):
         self.assertEqual(row["department"], "DTF")
         self.assertEqual(row["category"], "彩色短袖")
         self.assertEqual(row["planning_material"], "全部品牌/材质")
-        self.assertEqual(row["system_daily_usage"], 123.5)
+        self.assertEqual(row["daily_usage"], 123.5)
+        self.assertEqual(row["usage_source_type"], "production_api")
 
     def test_colored_consumption_is_pivoted_to_size_columns(self):
         display = pd.DataFrame([

@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from ui.table_layout import fit_table_height
+from ui.operations import format_signed, render_stock_change_review
 from utils.sku_sorting import sort_sku_rows
 
 
@@ -88,36 +88,16 @@ def render_inventory_change_comparison(
     comparison, *, action=None, title="保存前库存核对", unit="件",
 ):
     comparison = pd.DataFrame(comparison).copy()
-    if comparison.empty:
-        return comparison
-    if action is None:
-        directions = {
-            "增加" if int(value) > 0 else "扣减"
-            for value in comparison["本次变动"] if int(value) != 0
-        }
-        action = directions.pop() if len(directions) == 1 else "变动"
-    operation_column = {
-        "增加": "本次入库 (+)", "减少": "本次出库 (-)",
-        "扣减": "本次出库 (-)",
-    }.get(action, "本次变动 (+/-)")
-    st.markdown(f"#### {title}")
-    st.caption("每行代表一个 SKU；当前库存 + 本次变动 = 调整后库存。")
-    negative = comparison["调整后库存"] < 0
-    if negative.any():
-        st.error(f"有 {int(negative.sum())} 个 SKU 调整后会出现负库存。")
-    display = comparison.rename(columns={"本次变动": operation_column})
-    display[operation_column] = display[operation_column].map(format_signed)
-    st.dataframe(
-        display, hide_index=True, width="stretch",
-        height=fit_table_height(display),
-        column_config={
-            "当前库存": st.column_config.NumberColumn(format=f"%d {unit}"),
-            "调整后库存": st.column_config.NumberColumn(format=f"%d {unit}"),
-        },
+    identity = [
+        column for column in [
+            "部门", "品类", "材质", "品牌", "颜色", "尺码"
+        ] if column in comparison
+    ]
+    return render_stock_change_review(
+        comparison,
+        action=action,
+        title=title,
+        identity_columns=identity,
+        unit=unit,
+        quantity_format="%d",
     )
-    return comparison
-
-
-def format_signed(value):
-    number = int(value)
-    return f"+{number:,}" if number > 0 else f"{number:,}"

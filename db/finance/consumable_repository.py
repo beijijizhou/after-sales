@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from db.batches import filter_active_batch_records
 from db.finance.repository import FINANCE_COLUMNS, _fetch_pages
 from db.finance.inbound_linking import container_reference
 
@@ -169,15 +170,9 @@ def _load_consumable_frames(supabase, end_date=None):
 def _active_consumable_movements(batches, movements):
     if batches.empty or movements.empty:
         return pd.DataFrame()
-    reversed_ids = set(
-        batches.get("reversal_of_batch_id", pd.Series(dtype=object))
-        .dropna().astype(str)
+    active = filter_active_batch_records(
+        batches, type_column="movement_type"
     )
-    reversal_ids = set(batches.loc[
-        batches.get("movement_type", pd.Series(index=batches.index)) == "reversal",
-        "id",
-    ].astype(str))
-    active = batches[~batches["id"].astype(str).isin(reversed_ids | reversal_ids)].copy()
     if "note" not in active:
         active["note"] = ""
     return movements.merge(

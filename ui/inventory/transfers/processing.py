@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from db.batches import BatchKind, BatchReference, reverse_batch
+from db.batches import BatchKind, BatchReference
 from db.inventory.warehouses import (
     TRANSFER_STATUS_LABELS,
     build_transfer_line_editor,
@@ -12,6 +12,7 @@ from db.inventory.warehouses import (
     normalize_transfer_execution_lines,
     receive_transfer,
 )
+from ui.batches import render_batch_reversal_action
 from utils.auth import get_current_operator_name
 
 
@@ -156,20 +157,15 @@ def render_order_detail(
 def render_reversal(supabase, order, status):
     with st.expander("取消或撤销调拨", expanded=False):
         action = "取消补货任务" if status == "pending" else "撤销调拨"
-        confirmed = st.checkbox(
-            f"我确认{action}，原记录仍会保留",
-            key=f"reverse_transfer_confirm_{order['id']}",
+        render_batch_reversal_action(
+            supabase,
+            BatchReference(BatchKind.WAREHOUSE_TRANSFER, order["id"]),
+            key_scope="warehouse_transfer",
+            confirmation_label=f"我确认{action}，原记录仍会保留",
+            button_label=action,
+            success_state_key="warehouse_transfer_saved",
+            success_message=f"{action}已完成。",
         )
-        if st.button(
-            action, disabled=not confirmed,
-            key=f"reverse_transfer_{order['id']}",
-        ):
-            reverse_batch(
-                supabase,
-                BatchReference(BatchKind.WAREHOUSE_TRANSFER, order["id"]),
-                get_current_operator_name(),
-            )
-            _saved(f"{action}已完成。")
 
 
 def build_order_summary(orders, lines):

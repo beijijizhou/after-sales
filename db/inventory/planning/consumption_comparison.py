@@ -7,9 +7,9 @@ from db.inventory.planning.warehouse_usage import (
 
 
 FORECAST_SOURCE_WEIGHTS = {
-    "15,000模型日耗": 0.60,
-    "平台生产日均": 0.30,
-    "仓库出库日均": 0.10,
+    "15,000模型日耗": 0.30,
+    "平台生产日均": 0.10,
+    "仓库出库日均": 0.60,
 }
 
 
@@ -56,6 +56,23 @@ def build_prioritized_consumption_model(
             ),
         })
     return pd.DataFrame(rows, columns=columns)
+
+
+def scale_forecast_daily_total(model_df, target_daily_total=None):
+    """Scale one SKU-level daily model while preserving its demand mix."""
+    result = pd.DataFrame(model_df).copy()
+    if result.empty or target_daily_total is None:
+        return result
+    values = pd.to_numeric(
+        result.get("consumption_quantity"), errors="coerce"
+    ).fillna(0).clip(lower=0)
+    current_total = float(values.sum())
+    target = max(float(target_daily_total), 0)
+    if current_total <= 0:
+        result["consumption_quantity"] = 0.0
+        return result
+    result["consumption_quantity"] = values * target / current_total
+    return result
 
 
 def build_period_model_comparison(

@@ -227,6 +227,30 @@ date, and suggested reorder quantity. Until procurement lead time or target
 coverage is stored in master data, the forecast uses the operator-selected
 target coverage days from the UI instead of an implicit hard-coded SKU rule.
 
+All inventory categories also share one planning calculation chain after their
+source-specific daily usage is normalized into the SKU base unit:
+`current stock -> daily usage -> coverage -> target stock/reorder -> every
+incoming shipment -> pre-arrival shortage and post-arrival coverage`. Apparel,
+UV, and consumables must use the shared planning core for this arithmetic.
+Their adapters may differ only where the business facts differ: source system,
+lookback/model policy, SKU mapping, and package-to-base-unit conversion. UI
+wording and category-specific views may differ, but must not carry a second
+copy of the reorder or arrival-gap formula.
+Every adapter emits the same reviewable daily-usage evidence fields before
+planning: normalized item identity, daily usage, effective data days, window
+days, total usage, source type, and a human-readable source label. The complete
+arrival detail displays that source label. A consumption-model view must not
+calculate its own container coverage; container linkage has one canonical
+owner in the point-order/incoming forecast workflow.
+
+Planning terminology and manager summaries are also shared. Use `目标备货天数`
+and `建议点货量` for both production inventory and consumables. Every point-order
+view shows the count of SKUs requiring action and the count below the common
+risk threshold. Production inventory additionally shows the recommendation
+after all allocated incoming shipments are considered. Consumables with mixed
+base units must not display a mathematically meaningless summed quantity; show
+the involved units and keep quantities in SKU detail instead.
+
 All four flows use the same user-facing operational concepts: New York
 business date, daily preview, explicit confirmation, duplicate prevention,
 auditable batch, operator and source attribution, current-stock result,

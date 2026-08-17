@@ -1,5 +1,6 @@
 """Public batch lifecycle facade."""
 
+from .filtering import filter_active_batch_records, reversed_record_ids
 from .lifecycle import (
     BatchKind,
     BatchReference,
@@ -17,6 +18,8 @@ from .inbound import (
 )
 
 __all__ = [
+    "filter_active_batch_records",
+    "reversed_record_ids",
     "BatchKind",
     "BatchReference",
     "DailyOutboundReplacement",

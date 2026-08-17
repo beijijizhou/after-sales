@@ -2,6 +2,9 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from db.batches import filter_active_batch_records
+from db.planning import build_daily_usage_contract, empty_daily_usage_contract
+from utils.erp.inventory_mapping import KEY_COLUMNS
 from utils.daily_usage_model import (
     EFFECTIVE_DAYS_GLOBAL_SINCE_FIRST,
     build_daily_usage_summary,
@@ -95,16 +98,7 @@ def build_uv_consumption_model(
     result = result[
         result["reason"].str.startswith(UV_GOOGLE_SHEETS_REASON_PREFIX)
     ]
-    reversed_ids = set(
-        result.get("reversal_of_batch_id", pd.Series(dtype=str))
-        .dropna().astype(str)
-    )
-    if "reversal_of_batch_id" in result.columns:
-        result = result[result["reversal_of_batch_id"].isna()]
-    if "batch_id" in result.columns and reversed_ids:
-        result = result[
-            ~result["batch_id"].astype(str).isin(reversed_ids)
-        ]
+    result = filter_active_batch_records(result, id_column="batch_id")
     result["日期"] = pd.to_datetime(
         result["movement_date"], errors="coerce"
     ).dt.date
@@ -160,12 +154,8 @@ def build_uv_consumption_model(
 
 
 def build_uv_forecast_usage(model_df):
-    columns = [
-        "department", "category", "planning_material", "color", "size",
-        "system_daily_usage",
-    ]
     if model_df is None or model_df.empty:
-        return pd.DataFrame(columns=columns)
+        return empty_daily_usage_contract(KEY_COLUMNS)
     result = model_df.rename(columns={
         "品类": "category",
         "材质": "planning_material",
@@ -182,84 +172,13 @@ def build_uv_forecast_usage(model_df):
     result["size"] = (
         result["size"].fillna("").astype(str).str.strip().str.upper()
     )
-    result["system_daily_usage"] = pd.to_numeric(
-        result["system_daily_usage"], errors="coerce"
-    ).fillna(0)
-    return result[columns]
-
-
-def build_uv_container_coverage(model_df, inventory_df, container_df):
-    columns = [
-        "品类", "材质", "颜色", "型号", "每日消耗", "当前库存",
-        "当前可撑天数", "最近货柜", "预计到货日期", "货柜数量",
-        "到货后可撑天数",
-    ]
-    if model_df.empty:
-        return pd.DataFrame(columns=columns)
-    keys = ["品类", "材质", "颜色", "型号"]
-    current = _normalize_stock_rows(inventory_df)
-    incoming = _normalize_container_rows(container_df)
-    result = model_df.merge(current, on=keys, how="left")
-    result = result.merge(incoming, on=keys, how="left")
-    result["当前库存"] = result["当前库存"].fillna(0).astype(int)
-    result["货柜数量"] = result["货柜数量"].fillna(0).astype(int)
-    result["最近货柜"] = result["最近货柜"].fillna("无在途货柜")
-    result["当前可撑天数"] = (
-        result["当前库存"] / result["每日消耗"]
-    ).round(1)
-    result["到货后可撑天数"] = (
-        (result["当前库存"] + result["货柜数量"])
-        / result["每日消耗"]
-    ).round(1)
-    return result[columns]
-
-
-def _normalize_stock_rows(df):
-    columns = ["品类", "材质", "颜色", "型号", "当前库存"]
-    if df is None or df.empty:
-        return pd.DataFrame(columns=columns)
-    result = df.rename(columns={
-        "category": "品类", "material": "材质", "color": "颜色",
-        "size": "型号", "quantity": "当前库存",
-    }).copy()
-    result["型号"] = result["型号"].fillna("").astype(str).str.upper()
-    result["当前库存"] = pd.to_numeric(
-        result["当前库存"], errors="coerce"
-    ).fillna(0)
-    return result.groupby(columns[:-1], as_index=False)["当前库存"].sum()
-
-
-def _normalize_container_rows(df):
-    columns = [
-        "品类", "材质", "颜色", "型号", "最近货柜",
-        "预计到货日期", "货柜数量",
-    ]
-    if df is None or df.empty:
-        return pd.DataFrame(columns=columns)
-    result = df.rename(columns={
-        "category": "品类", "material": "材质", "color": "颜色",
-        "size": "型号", "container_no": "最近货柜",
-        "expected_arrival_date": "预计到货日期",
-        "quantity": "货柜数量",
-    }).copy()
-    result["型号"] = result["型号"].fillna("").astype(str).str.upper()
-    result["预计到货日期"] = pd.to_datetime(
-        result["预计到货日期"], errors="coerce"
-    ).dt.date
-    result["货柜数量"] = pd.to_numeric(
-        result["货柜数量"], errors="coerce"
-    ).fillna(0)
-    result = result.dropna(subset=["预计到货日期"])
-    nearest = result.groupby(
-        ["品类", "材质", "颜色", "型号"], dropna=False
-    )["预计到货日期"].transform("min")
-    result = result[result["预计到货日期"] == nearest]
-    return result.groupby(
-        ["品类", "材质", "颜色", "型号", "预计到货日期"],
-        as_index=False,
-    ).agg(
-        最近货柜=("最近货柜", lambda values: "、".join(
-            sorted({str(value).strip() for value in values if str(value).strip()})
-        )),
-        货柜数量=("货柜数量", "sum"),
+    return build_daily_usage_contract(
+        result,
+        key_columns=KEY_COLUMNS,
+        daily_usage_column="system_daily_usage",
+        effective_days_column="有效数据天数",
+        window_days_column="窗口天数",
+        total_usage_column="窗口总消耗",
+        source_type="google_sheets",
+        source_label="Google Sheets UV每日消耗",
     )

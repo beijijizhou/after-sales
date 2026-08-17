@@ -15,15 +15,13 @@ from ui.inventory.i18n import t
 from ui.inventory.planning.accuracy import (
     render_model_accuracy_summary,
 )
-from ui.inventory.planning.colored_consumption import (
-    render_colored_consumption,
-)
 from ui.inventory.planning.uv_view import render_uv_consumption_model
 
 
 def render_model_comparison(
-    model_df, outbound_df, current_date, category="黑白短袖"
+    supabase, model_df, outbound_df, current_date, category="黑白短袖"
 ):
+    order_quantity = _model_order_quantity(model_df)
     days = st.selectbox(
         t("统计周期"),
         [3, 7, 14, 28],
@@ -44,17 +42,25 @@ def render_model_comparison(
         production.start_date,
         production.end_date,
         requested_days=days,
+        order_quantity=order_quantity,
     )
 
 
 def render_model_comparison_result(
     comparison_df, platform_days, start_date, end_date,
-    key_prefix="inventory", requested_days=None,
+    key_prefix="inventory", requested_days=None, order_quantity=15000,
+    baseline_label=None,
 ):
+    model_label = baseline_label or f"{int(order_quantity):,}订单模型"
     st.subheader(t("三种消耗模型对比"))
-    st.caption(t(
-        "15,000单是固定基准；仓库模型来自每日出库；平台模型只使用完整平台数据。"
-    ))
+    st.caption(
+        (
+            f"当前订单量基准：{int(order_quantity):,} 单；"
+            if order_quantity is not None else
+            f"当前基准：{model_label}；"
+        ) +
+        "仓库模型来自每日出库；平台模型只使用完整平台数据。"
+    )
     if comparison_df.empty:
         st.info(t("暂无周期对比数据"))
         return
@@ -70,13 +76,13 @@ def render_model_comparison_result(
     )
     if requested_days and platform_days < requested_days:
         st.warning(t("平台完整数据天数不足，平台模型仅供阶段性参考。"))
-    render_model_accuracy_summary(comparison_df)
+    render_model_accuracy_summary(comparison_df, model_label)
 
     view = st.selectbox(
         t("查看模型"),
         [
             t("三模型总览"),
-            t("15,000模型"),
+            model_label,
             t("仓库出库模型"),
             t("平台生产模型"),
         ],
@@ -84,14 +90,14 @@ def render_model_comparison_result(
     )
     if view != t("三模型总览"):
         field = {
-            t("15,000模型"): "15,000模型日耗",
+            model_label: "15,000模型日耗",
             t("仓库出库模型"): "仓库出库日均",
             t("平台生产模型"): "平台生产日均",
         }[view]
-        _render_model_detail(comparison_df, field, view)
+        render_model_detail(comparison_df, field, view)
         return
 
-    _render_totals(comparison_df)
+    _render_totals(comparison_df, order_quantity, model_label)
     display_df = comparison_df.copy()
     display_df["颜色"] = display_df["颜色"].map(t)
     styled_df = display_df.style.apply(highlight_comparison, axis=1)
@@ -101,7 +107,7 @@ def render_model_comparison_result(
             "颜色": st.column_config.TextColumn(t("颜色")),
             "尺码": st.column_config.TextColumn(t("尺码")),
             "15,000模型日耗": st.column_config.NumberColumn(
-                t("15,000模型日耗"), format="%.1f"
+                f"{model_label}日耗", format="%.1f"
             ),
             "仓库出库日均": st.column_config.NumberColumn(
                 t("仓库出库日均"), format="%.1f"
@@ -129,11 +135,16 @@ def render_consumption_models(
 ):
     if department == "UV":
         render_uv_consumption_model(
-            supabase, category, current_date, visible_sizes, inventory_df
+            supabase, category, current_date, visible_sizes
         )
         return
     if category == "彩色短袖":
-        render_colored_consumption(supabase, current_date, inventory_df)
+        from ui.inventory.planning.colored_consumption import (
+            render_colored_consumption,
+        )
+        render_colored_consumption(
+            supabase, current_date, inventory_df, visible_sizes
+        )
         return
     if category != "黑白短袖":
         st.info(t("当前品类暂无消耗模型"))
@@ -153,15 +164,22 @@ def render_consumption_models(
     except Exception as error:
         st.error(f"{t('消耗模型加载失败')}：{error}")
         return
+    st.info(
+        "黑白短袖默认以仓库每日出库为主要权重，同时保留订单模型和"
+        "ERP 平台生产数据参与加权；ERP 生产数据也会长期保存用于分析。"
+    )
     render_model_comparison(
-        model_df, outbound_df, current_date, category
+        supabase, model_df, outbound_df, current_date, category
     )
 
 
-def _render_totals(df):
+def _render_totals(df, order_quantity=15000, baseline_label=None):
     columns = st.columns(4)
     values = [
-        ("15,000模型日耗", "15,000模型"),
+        (
+            "15,000模型日耗",
+            baseline_label or f"{int(order_quantity):,}订单模型",
+        ),
         ("仓库出库日均", "仓库出库模型"),
         ("平台生产日均", "平台生产模型"),
         ("三模型平均日耗", "三模型平均"),
@@ -171,10 +189,21 @@ def _render_totals(df):
         column.metric(t(label), f"{value:,.0f}" if pd.notna(value) else "—")
 
 
-def _render_model_detail(df, field, title):
+def _model_order_quantity(model_df):
+    values = pd.to_numeric(
+        pd.DataFrame(model_df).get("order_quantity"), errors="coerce"
+    ).dropna()
+    return int(values.iloc[0]) if not values.empty else 15000
+
+
+def render_model_detail(df, field, title):
     values = df[["颜色", "尺码", field]].copy()
+    from utils.sku_sorting import sort_sku_rows
+
+    values = sort_sku_rows(values, color="颜色", size="尺码")
+    color_order = values["颜色"].drop_duplicates().tolist()
     wide = values.pivot(index="颜色", columns="尺码", values=field)
-    wide = wide.reindex(index=["黑", "白"], columns=SIZE_COLUMNS)
+    wide = wide.reindex(index=color_order, columns=SIZE_COLUMNS)
     wide = wide.reset_index()
     wide["颜色"] = wide["颜色"].map(t)
     total = pd.to_numeric(values[field], errors="coerce").sum(min_count=1)

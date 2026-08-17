@@ -1,4 +1,3 @@
-import math
 import pandas as pd
 
 from db.inventory.container.workflow.state import (
@@ -15,6 +14,13 @@ from db.inventory.planning.incoming_views import (
     build_inventory_audit_issues,
     format_forecast as _format_forecast,
 )
+from db.planning import (
+    build_daily_usage_contract,
+    calculate_arrival_plan,
+    calculate_stock_plan,
+    classify_inventory_plan,
+    empty_daily_usage_contract,
+)
 
 
 LOOKBACK_DAYS = 14
@@ -23,7 +29,7 @@ LOW_COVERAGE_DAYS = 14
 
 def normalize_forecast_usage(model_df, department, category):
     if model_df is None or model_df.empty:
-        return pd.DataFrame()
+        return empty_daily_usage_contract(KEY_COLUMNS)
     result = model_df.rename(columns={
         "consumption_quantity": "system_daily_usage",
     }).copy()
@@ -32,20 +38,24 @@ def normalize_forecast_usage(model_df, department, category):
     result["planning_material"] = (
         "全部品牌/材质" if department == "DTF" else ""
     )
-    return result[[
-        *KEY_COLUMNS, "system_daily_usage",
-    ]]
+    return build_daily_usage_contract(
+        result,
+        key_columns=KEY_COLUMNS,
+        daily_usage_column="system_daily_usage",
+        source_type="production_model",
+        source_label=f"{category}消耗模型",
+    )
 
 
 def build_incoming_inventory_forecast(
     inventory_df, container_df, system_usage_df, outbound_df, today,
-    department,
+    department, target_days=55,
 ):
     current = normalize_inventory_for_planning(inventory_df, department)
     incoming = normalize_inventory_for_planning(container_df, department)
     current = _sum_quantity(current, "quantity", "current_quantity")
     incoming_plan = _all_incoming(incoming, today)
-    system = _normalize_usage(system_usage_df, "system_daily_usage")
+    system = _normalize_usage(system_usage_df)
     manual = (
         _manual_average(outbound_df, department)
         if department == "DTF"
@@ -81,6 +91,9 @@ def build_incoming_inventory_forecast(
     }
     for column, default in incoming_defaults.items():
         result[column] = result[column].fillna(default)
+    result["usage_source_label"] = result.get(
+        "usage_source_label", pd.Series("", index=result.index)
+    ).fillna("").astype(str)
     result["arrival_events"] = result["arrival_events"].apply(
         lambda value: value if isinstance(value, list) else []
     )
@@ -88,23 +101,59 @@ def build_incoming_inventory_forecast(
     result["days_to_arrival"] = result.apply(
         lambda row: _days_to_arrival(row, today), axis=1
     )
-    result["coverage_days"] = result.apply(_coverage_days, axis=1)
-    result["quantity_before_arrival"] = result.apply(
-        _quantity_before_arrival, axis=1
+    result["_arrival_plan"] = result.apply(_arrival_plan, axis=1)
+    result["coverage_days"] = result.apply(
+        lambda row: calculate_stock_plan(
+            row["current_quantity"], row["system_daily_usage"]
+        ).coverage_days,
+        axis=1,
     )
-    result["shortage"] = result.apply(_projected_shortage, axis=1)
-    result["quantity_after_arrival"] = result.apply(
-        _quantity_after_all_arrivals, axis=1
+    result["quantity_before_arrival"] = result["_arrival_plan"].map(
+        lambda plan: plan.quantity_before_first_arrival
     )
-    result["coverage_after_arrival"] = result.apply(
-        _coverage_after_arrival, axis=1
+    result["shortage"] = result["_arrival_plan"].map(
+        lambda plan: plan.shortage_before_arrivals
+    )
+    result["quantity_after_arrival"] = result["_arrival_plan"].map(
+        lambda plan: plan.quantity_after_all_arrivals
+    )
+    result["coverage_after_arrival"] = result["_arrival_plan"].map(
+        lambda plan: plan.coverage_after_all_arrivals
+    )
+    result["target_days"] = max(int(target_days or 0), 0)
+    result["_stock_plan"] = result.apply(
+        lambda row: calculate_stock_plan(
+            row["current_quantity"],
+            row["system_daily_usage"],
+            target_days=row["target_days"],
+        ),
+        axis=1,
+    )
+    result["target_quantity"] = result["_stock_plan"].map(
+        lambda plan: plan.target_quantity or 0
+    )
+    result["reorder_quantity"] = result["_stock_plan"].map(
+        lambda plan: plan.reorder_quantity
+    )
+    result["reorder_after_arrivals"] = result.apply(
+        lambda row: calculate_stock_plan(
+            row["quantity_after_arrival"],
+            row["system_daily_usage"],
+            target_days=row["target_days"],
+        ).reorder_quantity,
+        axis=1,
     )
     result["判断"] = result.apply(_forecast_status, axis=1)
-    result["录入核对"] = (
-        result.apply(_audit_status, axis=1)
-        if department == "DTF"
-        else "不适用"
-    )
+    if department == "DTF":
+        result["录入核对"] = result.apply(
+            lambda row: (
+                "不适用" if row.get("category") == "彩色短袖"
+                else _audit_status(row)
+            ),
+            axis=1,
+        )
+    else:
+        result["录入核对"] = "不适用"
     return _format_forecast(result)
 
 
@@ -118,16 +167,30 @@ def _sum_quantity(df, source, target):
     )
 
 
-def _normalize_usage(df, column):
-    if df.empty:
-        return pd.DataFrame(columns=[*KEY_COLUMNS, column])
-    return df.groupby(KEY_COLUMNS, dropna=False, as_index=False).agg(
-        **{column: (column, "sum")}
+def _normalize_usage(df):
+    if df is None or df.empty:
+        return pd.DataFrame(columns=[*KEY_COLUMNS, "system_daily_usage"])
+    source = df.copy()
+    usage_column = (
+        "daily_usage" if "daily_usage" in source
+        else "system_daily_usage"
+    )
+    source["usage_source_label"] = source.get(
+        "usage_source_label", pd.Series("", index=source.index)
+    ).fillna("").astype(str).str.strip()
+    return source.groupby(KEY_COLUMNS, dropna=False, as_index=False).agg(
+        system_daily_usage=(usage_column, "sum"),
+        usage_source_label=(
+            "usage_source_label",
+            lambda values: "、".join(dict.fromkeys(
+                value for value in values if value
+            )),
+        ),
     )
 
 
 def _manual_average(df, department):
-    if df.empty:
+    if df is None or df.empty:
         return pd.DataFrame(
             columns=[*KEY_COLUMNS, "manual_daily_usage"]
         )
@@ -150,83 +213,27 @@ def _days_to_arrival(row, today):
     return (row["first_arrival_date"] - today).days
 
 
-def _coverage_days(row):
-    if row["system_daily_usage"] <= 0:
-        return None
-    return row["current_quantity"] / row["system_daily_usage"]
-
-
-def _quantity_before_arrival(row):
-    if not row["arrival_events"]:
-        return max(math.floor(row["current_quantity"]), 0)
-    days = max(row["days_to_arrival"], 0)
-    return max(math.floor(
-        row["current_quantity"] - row["system_daily_usage"] * days
-    ), 0)
-
-
-def _projected_shortage(row):
-    if row["system_daily_usage"] <= 0:
-        return 0
-    shortage = 0
-    today = row["_forecast_today"]
-    arrival_dates = sorted({
-        arrival_date for arrival_date, _quantity in row["arrival_events"]
-    })
-    for arrival_date in arrival_dates:
-        days = max((arrival_date - today).days, 0)
-        stock_before = (
-            float(row["current_quantity"])
-            - float(row["system_daily_usage"]) * days
-            + sum(
-                previous_quantity
-                for previous_date, previous_quantity in row["arrival_events"]
-                if previous_date < arrival_date
-            )
-        )
-        shortage = max(shortage, math.ceil(max(-stock_before, 0)))
-    return shortage
-
-
-def _quantity_after_all_arrivals(row):
-    if not row["arrival_events"]:
-        return max(float(row["current_quantity"]), 0)
-    last_date = max(date for date, _quantity in row["arrival_events"])
-    days = max((last_date - row["_forecast_today"]).days, 0)
-    return max(
-        float(row["current_quantity"])
-        - float(row["system_daily_usage"]) * days
-        + sum(quantity for _date, quantity in row["arrival_events"]),
-        0,
+def _arrival_plan(row):
+    return calculate_arrival_plan(
+        row["current_quantity"],
+        row["system_daily_usage"],
+        row["arrival_events"],
+        row["_forecast_today"],
     )
 
 
-def _coverage_after_arrival(row):
-    if row["system_daily_usage"] <= 0:
-        return None
-    return row["quantity_after_arrival"] / row["system_daily_usage"]
-
-
 def _forecast_status(row):
-    if not row["arrival_events"]:
-        if row["system_daily_usage"] <= 0:
-            return "暂无系统消耗依据"
-        if row["coverage_days"] < LOW_COVERAGE_DAYS:
-            return "当前库存偏低"
-        return "当前库存可用"
-    if STATE_ARRIVED in row["normalized_status"]:
-        return "已到柜待入库"
-    if row["days_to_arrival"] < 0:
-        return "货柜已延迟"
-    if row["system_daily_usage"] <= 0:
-        return "暂无系统消耗依据"
-    if row["shortage"] > 0:
-        return "到货前可能断货"
-    if row.get("has_overdue_estimate", False):
-        return "延期柜按明日估算"
-    if row["coverage_after_arrival"] < LOW_COVERAGE_DAYS:
-        return "到货后库存仍偏低"
-    return "可撑到到货"
+    return classify_inventory_plan(
+        has_arrivals=bool(row["arrival_events"]),
+        is_arrived=STATE_ARRIVED in row["normalized_status"],
+        days_to_arrival=row["days_to_arrival"],
+        daily_usage=row["system_daily_usage"],
+        coverage_days=row["coverage_days"],
+        shortage=row["shortage"],
+        coverage_after_arrival=row["coverage_after_arrival"],
+        has_overdue_estimate=row.get("has_overdue_estimate", False),
+        low_coverage_days=LOW_COVERAGE_DAYS,
+    )
 
 
 def _audit_status(row):

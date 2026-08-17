@@ -4,10 +4,6 @@ import pandas as pd
 import streamlit as st
 
 from automation.production_reference import load_production_reference
-from automation.sync.dtf_colored_inventory import (
-    build_colored_forecast_usage,
-    load_colored_consumption_history,
-)
 from db.inventory.container.repository import load_inventory_containers
 from db.inventory.container.unallocated import (
     attach_unallocated_cup_cargo,
@@ -26,11 +22,12 @@ from db.inventory.planning.uv_consumption import (
     load_uv_consumption_history,
 )
 from ui.inventory.i18n import t
+from ui.planning import render_planning_summary
 
 
 def render_incoming_inventory_forecast(
     supabase, department, category, inventory_df, today,
-    forecast_usage_df=None,
+    forecast_usage_df=None, target_days=55,
 ):
     department_label = str(department or "").strip()
     st.subheader(f"{department_label} 部门库存与最近到货联动")
@@ -38,6 +35,12 @@ def render_incoming_inventory_forecast(
         st.caption(t(
             "UV 货柜联动使用消耗模型中的 Google Sheets 日耗，并自动扣减库存，不做仓库申报对比。"
         ))
+    elif department == "DTF" and category == "彩色短袖":
+        st.caption(
+            "彩色短袖使用最近30天平台生产消耗模型并自动扣减库存，"
+            "不做仓库申报对比；上方手动调整后的预测日耗、缺口和"
+            "建议点货量会同步传递到货柜联动。"
+        )
     else:
         st.caption(t(
             "货柜联动沿用上方点货预测的综合日耗；仓库手工出库只用于核对录入差异。"
@@ -55,19 +58,12 @@ def render_incoming_inventory_forecast(
                 st.info(t("最近 14 天暂无已同步的 UV 每日消耗数据"))
                 return
         elif department == "DTF" and category == "彩色短袖":
-            colored_model = load_colored_consumption_history(
-                supabase, today, LOOKBACK_DAYS
+            system_usage = normalize_forecast_usage(
+                forecast_usage_df, department, category
             )
-            system_usage = build_colored_forecast_usage(colored_model)
             if system_usage.empty:
-                st.info("最近 14 天暂无彩色短袖生产消耗数据")
+                st.info("请先在上方生成彩色短袖点货预测")
                 return
-            effective_days = int(colored_model["有效天数"].max())
-            st.caption(
-                f"彩色短袖按最近 14 天中的 {effective_days} 个有效生产日计算日耗；"
-                "快速补录数据立即参与计算，全平台到齐后自动更新；"
-                "缺失平台仅提示，不停止货柜预测。"
-            )
         else:
             system_usage = normalize_forecast_usage(
                 forecast_usage_df, department, category
@@ -99,11 +95,11 @@ def render_incoming_inventory_forecast(
                 today - timedelta(days=LOOKBACK_DAYS - 1),
                 category,
             )
-            if department == "DTF" else None
+            if department == "DTF" and category != "彩色短袖" else None
         )
         forecast = build_incoming_inventory_forecast(
             inventory_df, containers, system_usage, outbound, today,
-            department,
+            department, target_days=target_days,
         )
         forecast = attach_unallocated_cup_cargo(forecast, pending_cups)
     except Exception as error:
@@ -121,6 +117,13 @@ def render_incoming_inventory_forecast(
         st.warning(t("延期货柜已临时按明日到货计算，请及时更新实际预计日期。"))
     if not forecast.empty and (forecast["判断"] == "到货后库存仍偏低").any():
         st.warning(t("部分 SKU 到货后预计仍不足 14 天，请提前安排下一批。"))
+    render_planning_summary(
+        forecast,
+        reorder_column="建议点货量",
+        coverage_column="当前可撑天数",
+        quantity_unit="件",
+        after_incoming_column="扣除在途后建议点货量",
+    )
     audit_issues = build_inventory_audit_issues(forecast)
     if not audit_issues.empty:
         st.warning(
@@ -148,6 +151,8 @@ def render_incoming_inventory_forecast(
             "当前库存": st.column_config.NumberColumn(format="%d"),
             "日耗": st.column_config.NumberColumn(format="%.1f"),
             "可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
+            "建议点货": st.column_config.NumberColumn(format="%d"),
+            "扣除在途后建议点货": st.column_config.NumberColumn(format="%d"),
             "到货计划": st.column_config.TextColumn(),
             "在途总量": st.column_config.NumberColumn(format="%d"),
             "到货前缺口": st.column_config.NumberColumn(format="%d"),
@@ -165,6 +170,10 @@ def render_incoming_inventory_forecast(
                 "当前可撑天数": st.column_config.NumberColumn(
                     format="%.1f 天"
                 ),
+                "目标备货天数": st.column_config.NumberColumn(format="%d 天"),
+                "目标库存": st.column_config.NumberColumn(format="%d"),
+                "建议点货量": st.column_config.NumberColumn(format="%d"),
+                "扣除在途后建议点货量": st.column_config.NumberColumn(format="%d"),
                 "最早到货": st.column_config.DateColumn(),
                 "最晚到货": st.column_config.DateColumn(),
                 "距到货天数": st.column_config.NumberColumn(format="%d 天"),

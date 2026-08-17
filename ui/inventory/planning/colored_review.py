@@ -14,7 +14,11 @@ from automation.sync.dtf_colored_inventory import (
 )
 from db.inventory.core.constants import SIZE_COLUMNS
 from ui.inventory.shared.filters import _reset_invalid_selectbox
-from ui.inventory.operations.system_deduction import system_deduction_display
+from ui.inventory.operations.system_deduction import (
+    system_deduction_comparison,
+    system_deduction_display,
+)
+from ui.operations import render_stock_change_review
 from utils.auth.session import get_current_operator_name, has_permission
 from utils.sku_sorting import sort_sku_rows
 
@@ -102,18 +106,24 @@ def render_colored_reconciliation(supabase, current_date):
     if preview is None or st.session_state.get(date_key) != selected_date:
         return
     detail = sort_sku_rows(
-        stock_change_display(preview), material="材质", color="颜色", size="尺码",
+        stock_change_comparison(preview), material="材质", color="颜色", size="尺码",
         leading=["状态", "品牌"],
     )
     detail["核对方式"] = detail["状态"].map(reconciliation_action)
-    columns = [column for column in [
-        "状态", "核对方式", "生产平台", "原始生产颜色", "原始生产尺码",
-        "材质", "品牌", "颜色", "尺码", "当前库存", "本次出库 (-)",
-        "调整后库存", "待处理数量",
-    ] if column in detail]
-    st.dataframe(detail[columns], hide_index=True, width="stretch")
+    render_stock_change_review(
+        detail,
+        action="出库",
+        title="差额补扣库存核对",
+        identity_columns=[
+            "状态", "核对方式", "生产平台", "原始生产颜色",
+            "原始生产尺码", "材质", "品牌", "颜色", "尺码",
+        ],
+        extra_columns=["待处理数量"],
+        unit="件",
+        quantity_format="%d",
+    )
     render_reconciliation_steps(detail, selected["尚未读取平台"])
-    quantity = int(detail.get("本次出库 (-)", pd.Series(dtype=int)).abs().sum())
+    quantity = int(detail.get("本次变动", pd.Series(dtype=int)).abs().sum())
     st.info(
         f"当前可继续扣减 {quantity:,} 件。该操作只处理差额。"
         if quantity else "目前没有可继续扣减的库存，请先按核对步骤处理。"
@@ -144,6 +154,12 @@ def render_colored_reconciliation(supabase, current_date):
 
 def stock_change_display(preview):
     return system_deduction_display(
+        preview, eligible_status="可扣减", pending_column="未扣数量"
+    )
+
+
+def stock_change_comparison(preview):
+    return system_deduction_comparison(
         preview, eligible_status="可扣减", pending_column="未扣数量"
     )
 

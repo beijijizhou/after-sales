@@ -3,6 +3,7 @@
 import pandas as pd
 
 from ui.consumables.units import boxes_to_base, to_boxes
+from ui.operations import prepare_stock_change_display
 
 
 def build_daily_issue_template(label_to_row):
@@ -42,12 +43,35 @@ def normalize_initialization(edited, label_to_row, include_cost):
     return rows, pd.DataFrame(preview)
 
 
-def prepare_preview(preview):
-    display = preview.copy()
-    if "本次变动（箱）" in display:
-        values = pd.to_numeric(display["本次变动（箱）"], errors="coerce").fillna(0)
-        operation = "本次出库 (-)" if values.le(0).all() else "本次入库 (+)" if values.ge(0).all() else "本次变动 (+/-)"
-        return display.rename(columns={"本次变动（箱）": operation, "操作后库存（箱）": "调整后库存（箱）"})
-    if "库存差额（箱）" in display:
-        return display.rename(columns={"库存差额（箱）": "本次变动 (+/-)", "目标库存（箱）": "调整后库存（箱）"})
-    return display
+def build_stock_review_comparison(preview):
+    """Adapt legacy consumable previews to the cross-ledger stock contract."""
+    comparison = pd.DataFrame(preview).copy()
+    if comparison.empty:
+        return comparison
+    if {
+        "当前库存", "本次变动", "调整后库存",
+    }.issubset(comparison.columns):
+        return comparison
+    if "本次变动（箱）" in comparison:
+        return comparison.rename(columns={
+            "当前库存（箱）": "当前库存",
+            "本次变动（箱）": "本次变动",
+            "操作后库存（箱）": "调整后库存",
+        })
+    if "库存差额（箱）" in comparison:
+        return comparison.rename(columns={
+            "当前库存（箱）": "当前库存",
+            "库存差额（箱）": "本次变动",
+            "目标库存（箱）": "调整后库存",
+        })
+    return comparison
+
+
+def prepare_preview(preview, action=None):
+    """Compatibility adapter for callers that need the display DataFrame."""
+    comparison = build_stock_review_comparison(preview)
+    if comparison.empty or not {
+        "当前库存", "本次变动", "调整后库存",
+    }.issubset(comparison.columns):
+        return comparison
+    return prepare_stock_change_display(comparison, action=action)[0]

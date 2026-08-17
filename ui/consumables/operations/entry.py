@@ -12,6 +12,7 @@ from ui.consumables.units import (
     to_boxes,
     to_entry_quantity,
 )
+from ui.operations import render_stock_change_review
 from utils.auth import get_current_operator_name
 
 
@@ -97,26 +98,18 @@ def render_movement_entry(
         rows, preview = [], pd.DataFrame()
 
     if not preview.empty:
-        st.caption("实际库存变动预览")
-        operation_column = (
-            "本次入库 (+)" if movement_label == "入库" else "本次出库 (-)"
-        )
-        display_preview = preview.rename(columns={
-            "本次变动": operation_column,
+        comparison = preview.rename(columns={
             "操作后库存": "调整后库存",
         })
-        st.dataframe(
-            display_preview[[
-                "耗材 SKU", "当前库存", operation_column,
-                "调整后库存", "录入单位", "换算数量", "换算单位",
-                *(["单位成本"] if "单位成本" in display_preview else []),
-            ]], width="stretch", hide_index=True,
-            column_config={
-                "当前库存": st.column_config.NumberColumn(format="%.2f"),
-                operation_column: st.column_config.NumberColumn(format="%+.2f"),
-                "调整后库存": st.column_config.NumberColumn(format="%.2f"),
-                "单位成本": st.column_config.NumberColumn(format="$%.4f"),
-            },
+        render_stock_change_review(
+            comparison,
+            action=movement_label,
+            title="保存前耗材库存核对",
+            identity_columns=["耗材 SKU"],
+            extra_columns=[
+                "录入单位", "换算数量", "换算单位", "单位成本",
+            ],
+            unit_column="录入单位",
         )
 
     note = st.text_input("整批备注（可选）", key="consumable_batch_note")

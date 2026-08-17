@@ -8,16 +8,15 @@ from automation.sync.uv_daily_operation import (
     build_daily_sync_preview,
 )
 from automation.sync.uv_sheet_inventory import load_daily_summary
-from db.inventory.container.repository import load_inventory_containers
 from db.inventory.core.queries import load_inventory_items
 from db.inventory.planning.uv_consumption import (
     UV_CONSUMPTION_LOOKBACK_DAYS,
     UV_GOOGLE_DRIVE_FOLDER_URL,
-    build_uv_container_coverage,
     load_uv_consumption_history,
 )
 from ui.inventory.i18n import t
-from ui.inventory.operations.system_deduction import system_deduction_display
+from ui.inventory.operations.system_deduction import system_deduction_comparison
+from ui.operations import render_stock_change_review
 from ui.inventory.planning.uv_source import (
     google_sheets_client,
     render_uv_spreadsheet_selector,
@@ -26,7 +25,7 @@ from utils.auth.session import get_current_operator_name, has_permission
 
 
 def render_uv_consumption_model(
-    supabase, category, current_date, visible_sizes=None, inventory_df=None,
+    supabase, category, current_date, visible_sizes=None,
 ):
     try:
         model = load_uv_consumption_history(supabase, current_date)
@@ -34,18 +33,14 @@ def render_uv_consumption_model(
             model = model[model["品类"] == category]
         if visible_sizes:
             model = model[model["型号"].isin(visible_sizes)]
-        containers = load_inventory_containers(
-            supabase, department="UV", category=category or None,
-            statuses=["在途", "未到货", "延迟", "已到柜", "已到货"],
-        )
-        coverage = build_uv_container_coverage(model, inventory_df, containers)
     except Exception as error:
         st.error(f"{t('消耗模型加载失败')}：{error}")
         return
-    st.subheader("UV 每日消耗与货柜")
+    st.subheader("UV 每日消耗模型")
     st.caption(
         f"每日消耗按 Google Sheets 最近 {UV_CONSUMPTION_LOOKBACK_DAYS} 天"
-        "的有效数据日计算，并连接当前库存和货柜。每日扣减在“系统库存扣减”。"
+        "的有效数据日计算。点货、库存覆盖和全部在途货柜统一在“点货预测”计算；"
+        "每日扣减在“系统库存扣减”。"
     )
     if model.empty:
         st.info("最近 14 天暂无已同步的 UV 每日消耗数据")
@@ -58,14 +53,11 @@ def render_uv_consumption_model(
     if effective_days < UV_CONSUMPTION_LOOKBACK_DAYS:
         st.warning(f"最近 14 天中只有 {effective_days} 天已同步。")
     st.dataframe(
-        coverage, hide_index=True, width="stretch",
+        model, hide_index=True, width="stretch",
         column_config={
             "每日消耗": st.column_config.NumberColumn(format="%.1f"),
-            "当前库存": st.column_config.NumberColumn(format="%d"),
-            "当前可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
-            "预计到货日期": st.column_config.DateColumn(),
-            "货柜数量": st.column_config.NumberColumn(format="%d"),
-            "到货后可撑天数": st.column_config.NumberColumn(format="%.1f 天"),
+            "自然日均消耗": st.column_config.NumberColumn(format="%.1f"),
+            "窗口总消耗": st.column_config.NumberColumn(format="%.0f"),
         },
     )
 
@@ -134,8 +126,17 @@ def _load_preview(supabase, spreadsheet_id, current_date, state_key, date_key):
 
 def _render_preview(preview, current_date):
     st.caption(f"扣减日期：{current_date:%Y-%m-%d}")
-    display = system_deduction_display(preview)
-    st.dataframe(display, hide_index=True, width="stretch")
+    render_stock_change_review(
+        system_deduction_comparison(preview),
+        action="出库",
+        title="UV 每日扣减库存核对",
+        identity_columns=[
+            "状态", "表格产品", "品类", "材质", "颜色", "型号",
+        ],
+        extra_columns=["当日消耗"],
+        unit="件",
+        quantity_format="%d",
+    )
     pending = preview[preview["状态"] == "可扣减"]
     blocking = preview[~preview["状态"].isin(SYNCABLE_STATUSES)]
     st.caption(

@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import pandas as pd
 
+from db.batches import filter_active_batch_records
 from db.inventory.core.constants import SIZE_COLUMNS
 from db.inventory.planning.warehouse_usage import (
     build_warehouse_usage_intervals,
@@ -87,10 +88,7 @@ def normalize_daily_outbound_history(movement_df):
     result = movement_df.copy()
     result["reason"] = result["reason"].fillna("").astype(str)
     result = result[result["reason"].str.contains(DAILY_OUTBOUND_PATTERN, regex=True)]
-    reversed_ids = set(result["reversal_of_batch_id"].dropna().astype(str))
-    result = result[result["reversal_of_batch_id"].isna()]
-    if "batch_id" in result.columns and reversed_ids:
-        result = result[~result["batch_id"].astype(str).isin(reversed_ids)]
+    result = filter_active_batch_records(result, id_column="batch_id")
 
     result["quantity_change"] = pd.to_numeric(
         result["quantity_change"], errors="coerce"

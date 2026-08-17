@@ -9,6 +9,7 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 | `after_sales/` | 售后字段和条码修复 | 2 |
 | `production/` | 生产条码历史和多件订单刷新 | 2 |
 | `production/summaries/` | 人员平台、小时、配对工作流和区间汇总 | 5 |
+| `production/consumption/` | ERP/API 每日平台消耗及同步审计 | 2 |
 | `inventory/schema/` | 库存基础表和主数据结构 | 5 |
 | `inventory/operations/` | 调整、盘点设置、每日出库版本、批次、快照、撤销、SKU 更新和并入规则 | 8 |
 | `inventory/containers/` | 货柜表、到柜和历史 | 3 |
@@ -38,6 +39,8 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 3. `production/summaries/03_hourly_people.sql`
 4. `production/summaries/04_pair_workflow.sql`
 5. `production/summaries/05_qa_period.sql`
+
+每日平台消耗按 `production/consumption/README.md` 执行 `01–02`。
 
 ## 动态角色权限安装顺序
 

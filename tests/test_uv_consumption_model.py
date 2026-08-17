@@ -4,7 +4,6 @@ import unittest
 import pandas as pd
 
 from db.inventory.planning.uv_consumption import (
-    build_uv_container_coverage,
     build_uv_consumption_model,
     build_uv_forecast_usage,
     filter_uv_model_to_active_skus,
@@ -75,31 +74,6 @@ class UVConsumptionModelTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["每日消耗"], 150.0)
         self.assertEqual(result.iloc[0]["有效数据天数"], 2)
 
-    def test_connects_daily_usage_to_inventory_and_nearest_container(self):
-        model = pd.DataFrame([{
-            "品类": "手机壳", "材质": "", "颜色": "",
-            "型号": "IPHONE 15", "每日消耗": 2.0,
-            "有效数据天数": 7,
-        }])
-        inventory = pd.DataFrame([{
-            "category": "手机壳", "material": "", "color": "",
-            "size": "iPhone 15", "quantity": 20,
-        }])
-        containers = pd.DataFrame([{
-            "category": "手机壳", "material": "", "color": "",
-            "size": "Iphone 15", "quantity": 30,
-            "container_no": "10柜",
-            "expected_arrival_date": "2026-08-05",
-        }])
-
-        result = build_uv_container_coverage(
-            model, inventory, containers
-        )
-
-        self.assertEqual(result.iloc[0]["当前可撑天数"], 10.0)
-        self.assertEqual(result.iloc[0]["货柜数量"], 30)
-        self.assertEqual(result.iloc[0]["到货后可撑天数"], 25.0)
-
     def test_adapts_google_sheet_model_for_incoming_forecast(self):
         model = pd.DataFrame([{
             "品类": "铁板画",
@@ -117,8 +91,9 @@ class UVConsumptionModelTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["planning_material"], "铁牌")
         self.assertEqual(result.iloc[0]["size"], "2030")
         self.assertEqual(
-            result.iloc[0]["system_daily_usage"], 2302.0
+            result.iloc[0]["daily_usage"], 2302.0
         )
+        self.assertEqual(result.iloc[0]["usage_source_type"], "google_sheets")
 
     def test_2030_models_restart_after_substitution_ends(self):
         rows = pd.DataFrame([

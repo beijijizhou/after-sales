@@ -82,17 +82,18 @@ def render_inventory_tabs(
             render_sku_update_times(raw_df, department, visible_sizes)
 
     with tabs["点货预测"]:
-        order_quantity, arrival_date, buffer_days = (
+        order_quantity, arrival_date, buffer_days, target_days = (
             render_consumption_planning_inputs(category)
         )
         forecast_usage_df = render_reorder_forecast(
             supabase, department, category, inventory_df, order_quantity,
             arrival_date, buffer_days, inventory_date, visible_sizes,
+            target_days=target_days,
         )
         if selected_date == current_date:
             render_incoming_inventory_forecast(
                 supabase, department, category, raw_df, current_date,
-                forecast_usage_df,
+                forecast_usage_df, target_days=target_days,
             )
     with tabs["消耗模型"]:
         render_consumption_models(

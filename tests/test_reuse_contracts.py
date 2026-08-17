@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from ui.inventory.operations.system_deduction import system_deduction_display
+from ui.inventory.operations.system_deduction import (
+    system_deduction_comparison,
+    system_deduction_display,
+)
 from utils.barcode_patterns import (
     build_exact_search_preview,
     build_fuzzy_search_preview,
@@ -36,6 +39,15 @@ class SharedReuseContractTests(unittest.TestCase):
         self.assertEqual(display["本次出库 (-)"].tolist(), [-8, 0])
         self.assertEqual(display["调整后库存"].tolist(), [12, 0])
         self.assertEqual(display["待处理数量"].tolist(), [0, 5])
+
+    def test_system_deduction_exposes_canonical_stock_contract(self):
+        comparison = system_deduction_comparison(pd.DataFrame([{
+            "状态": "可扣减", "当前库存": 20,
+            "预计扣减": 8, "扣减后库存": 12,
+        }]), eligible_status="可扣减")
+
+        self.assertEqual(comparison.loc[0, "本次变动"], -8)
+        self.assertEqual(comparison.loc[0, "调整后库存"], 12)
 
     def test_barcode_preview_builders_share_canonical_schema(self):
         self.assertEqual(
@@ -72,7 +84,8 @@ class SharedReuseContractTests(unittest.TestCase):
         for relative in files:
             source = (PROJECT_ROOT / relative).read_text()
             with self.subTest(file=relative):
-                self.assertIn("system_deduction_display", source)
+                self.assertIn("system_deduction_comparison", source)
+                self.assertIn("render_stock_change_review", source)
 
     def test_dimension_queries_use_shared_filter_composer(self):
         files = (
@@ -98,9 +111,12 @@ class SharedReuseContractTests(unittest.TestCase):
     def test_container_posting_has_one_feedback_action(self):
         posting = (PROJECT_ROOT / "ui/inventory/container/posting.py").read_text()
         today = (PROJECT_ROOT / "ui/inventory/container/today.py").read_text()
+        events = (PROJECT_ROOT / "ui/inventory/container/events.py").read_text()
         self.assertIn("def post_container_with_feedback", posting)
         self.assertIn("post_container_with_feedback", today)
+        self.assertIn("post_container_with_feedback", events)
         self.assertNotIn("post_container_inventory(", today)
+        self.assertNotIn("post_container_inventory(", events)
 
 
 if __name__ == "__main__":

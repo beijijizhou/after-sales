@@ -32,7 +32,8 @@ def build_inventory_audit_issues(forecast):
 
 def build_incoming_executive_view(forecast):
     columns = [
-        "SKU", "判断", "当前库存", "日耗", "可撑天数", "到货计划",
+        "SKU", "判断", "当前库存", "日耗", "可撑天数", "建议点货",
+        "扣除在途后建议点货", "到货计划",
         "在途总量", "到货前缺口", "货柜衔接", "到货后可撑",
     ]
     if forecast is None or forecast.empty:
@@ -79,9 +80,14 @@ def build_incoming_executive_view(forecast):
             display_text(row.get("颜色")), display_text(row.get("规格")),
         ] if value), axis=1,
     )
+    for column in ["建议点货量", "扣除在途后建议点货量"]:
+        if column not in result:
+            result[column] = 0
     result = result.rename(columns={
         "系统日均": "日耗", "当前可撑天数": "可撑天数",
         "到货后可撑天数": "到货后可撑",
+        "建议点货量": "建议点货",
+        "扣除在途后建议点货量": "扣除在途后建议点货",
     })
     return result[columns].sort_values(
         "可撑天数", ascending=True, kind="stable", na_position="last",
@@ -93,6 +99,11 @@ def format_forecast(result):
         "department": "部门", "category": "品类",
         "planning_material": "材质口径", "color": "颜色", "size": "规格",
         "current_quantity": "当前库存", "system_daily_usage": "系统日均",
+        "usage_source_label": "日耗来源",
+        "target_days": "目标备货天数",
+        "target_quantity": "目标库存",
+        "reorder_quantity": "建议点货量",
+        "reorder_after_arrivals": "扣除在途后建议点货量",
         "manual_daily_usage": "仓库申报日均", "coverage_days": "当前可撑天数",
         "container_no": "全部在途货柜", "arrival_schedule": "到货安排",
         "arrival_overview": "到货概览", "has_overdue_estimate": "包含延期估算",
@@ -105,7 +116,9 @@ def format_forecast(result):
     })
     columns = [
         "部门", "品类", "材质口径", "颜色", "规格", "判断", "当前库存",
-        "系统日均", "当前可撑天数", "全部在途货柜", "货柜状态", "到货概览",
+        "系统日均", "日耗来源", "当前可撑天数", "目标备货天数",
+        "目标库存", "建议点货量", "扣除在途后建议点货量",
+        "全部在途货柜", "货柜状态", "到货概览",
         "到货安排", "包含延期估算", "最早到货", "最晚到货", "距到货天数",
         "到货前预计剩余", "到货前缺口", "在途总量", "到货后预计库存",
         "到货后可撑天数", "仓库申报日均", "录入核对",

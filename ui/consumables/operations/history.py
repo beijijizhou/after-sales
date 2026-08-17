@@ -1,9 +1,16 @@
 import pandas as pd
 import streamlit as st
 
-from db.batches import BatchKind, BatchReference, reverse_batch
+from db.batches import (
+    BatchKind,
+    BatchReference,
+    filter_active_batch_records,
+)
+from ui.batches import (
+    render_batch_reversal_action,
+    synchronize_batch_selector_state,
+)
 from ui.consumables.units import entry_unit, to_entry_quantity
-from utils.auth import get_current_operator_name
 
 
 TYPE_LABELS = {
@@ -33,13 +40,9 @@ def render_reversals(
         "统一撤销规则：整批生成反向流水，原记录、撤销记录、操作人和"
         "时间全部保留；不直接删除或覆盖历史。"
     )
-    reversed_ids = set(
-        batches_df["reversal_of_batch_id"].dropna().astype(str)
+    candidates = filter_active_batch_records(
+        batches_df, type_column="movement_type"
     )
-    candidates = batches_df[
-        (batches_df["movement_type"] != "reversal")
-        & ~batches_df["id"].astype(str).isin(reversed_ids)
-    ].copy()
     if candidates.empty:
         st.info("当前没有可以撤销的耗材记录。")
     else:
@@ -48,28 +51,15 @@ def render_reversals(
         )
         _render_batch_detail(selected_id, movements_df, items_df, show_cost)
         if can_edit:
-            confirmed = st.checkbox(
-                "我确认整批撤销以上记录",
-                key=f"confirm_consumable_reverse_{selected_id}",
+            render_batch_reversal_action(
+                supabase,
+                BatchReference(BatchKind.CONSUMABLE, selected_id),
+                key_scope="consumable",
+                confirmation_label="我确认整批撤销以上记录",
+                button_label="撤销这笔耗材记录",
+                success_state_key="consumable_saved_message",
+                success_message="耗材记录已撤销，库存已经恢复。",
             )
-            if st.button(
-                "撤销这笔耗材记录",
-                width="stretch",
-                disabled=not confirmed,
-            ):
-                try:
-                    reverse_batch(
-                        supabase,
-                        BatchReference(BatchKind.CONSUMABLE, selected_id),
-                        get_current_operator_name(),
-                    )
-                except Exception as error:
-                    st.error(f"撤销失败：{error}")
-                    return
-                st.session_state["consumable_saved_message"] = (
-                    "耗材记录已撤销，库存已经恢复。"
-                )
-                st.rerun()
         else:
             st.info("当前账号只有查看权限，不能撤销耗材记录。")
 
@@ -101,8 +91,7 @@ def _render_batch_selector(batch_df, key):
             f"｜{row['movement_date']}｜{row['created_by']}"
         )
     options = list(labels)
-    if key in st.session_state and st.session_state[key] not in options:
-        del st.session_state[key]
+    synchronize_batch_selector_state(st.session_state, key, options)
     selected = st.selectbox(
         "选择记录", options,
         format_func=lambda value: labels[value],

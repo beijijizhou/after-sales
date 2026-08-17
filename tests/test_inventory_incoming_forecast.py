@@ -48,6 +48,23 @@ def usage_row(daily_usage=10):
 
 
 class InventoryIncomingForecastTests(unittest.TestCase):
+    def test_colored_forecast_never_requests_warehouse_audit(self):
+        inventory = pd.DataFrame([{
+            **inventory_row(), "category": "彩色短袖",
+            "brand": "Daisy", "material": "180g", "color": "粉色",
+        }])
+        usage = pd.DataFrame([{
+            **usage_row(), "category": "彩色短袖", "color": "粉色",
+        }])
+
+        result = build_incoming_inventory_forecast(
+            inventory, pd.DataFrame(), usage, None,
+            date(2026, 8, 17), "DTF",
+        )
+
+        self.assertTrue(result["录入核对"].eq("不适用").all())
+        self.assertTrue(build_inventory_audit_issues(result).empty)
+
     def test_reuses_reorder_forecast_daily_usage(self):
         usage = normalize_forecast_usage(
             pd.DataFrame([{
@@ -59,7 +76,7 @@ class InventoryIncomingForecastTests(unittest.TestCase):
             "黑白短袖",
         )
 
-        self.assertEqual(usage.iloc[0]["system_daily_usage"], 123)
+        self.assertEqual(usage.iloc[0]["daily_usage"], 123)
         self.assertEqual(
             usage.iloc[0]["planning_material"], "全部品牌/材质"
         )
@@ -225,6 +242,8 @@ class InventoryIncomingForecastTests(unittest.TestCase):
         self.assertNotIn("TEST-2", executive.iloc[0]["到货计划"])
         self.assertEqual(row["到货后预计库存"], 300)
         self.assertEqual(row["到货后可撑天数"], 30)
+        self.assertEqual(row["建议点货量"], 450)
+        self.assertEqual(row["扣除在途后建议点货量"], 250)
 
     def test_same_day_containers_are_combined_for_boss_view(self):
         second = container_row(quantity=200)
@@ -304,6 +323,7 @@ class InventoryIncomingForecastTests(unittest.TestCase):
             result.columns.tolist(),
             [
                 "SKU", "判断", "当前库存", "日耗", "可撑天数",
+                "建议点货", "扣除在途后建议点货",
                 "到货计划", "在途总量", "到货前缺口", "货柜衔接",
                 "到货后可撑",
             ],

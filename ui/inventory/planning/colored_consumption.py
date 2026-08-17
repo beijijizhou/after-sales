@@ -1,68 +1,124 @@
 import pandas as pd
 import streamlit as st
 
-from db.inventory.core.constants import SIZE_COLUMNS
-from automation.sync.dtf_colored_inventory import (
-    apply_colored_daily_deduction,
-    build_colored_consumption_wide_table,
-    build_colored_daily_preview,
-    load_colored_day_deducted_total,
-    load_colored_consumption_history,
+from automation.sync.colored_period import (
+    LOOKBACK_DAYS,
+    build_colored_platform_status,
+    load_colored_api_period_model,
+    refresh_colored_api_period,
 )
-from utils.auth.session import get_current_operator_name, has_permission
+from utils.auth.session import get_current_operator_name
+from ui.inventory.planning.colored_daily import (
+    render_colored_daily_deduction_form,
+)
 from ui.inventory.planning.colored_review import (
     render_colored_mapping_review as _render_colored_mapping_review,
     render_colored_reconciliation as _render_colored_reconciliation,
-    stock_change_display as _stock_change_display,
 )
+from ui.inventory.planning.comparison import render_model_detail
 
 
-def render_colored_consumption(supabase, current_date, inventory_df):
+def render_colored_consumption(
+    supabase, current_date, inventory_df, visible_sizes=None,
+):
     view = st.segmented_control(
         "彩色短袖数据视图",
-        ["日耗模型", "待核对差异"],
-        default="日耗模型",
+        ["平台生产模型", "待核对差异"],
+        default="平台生产模型",
         key="colored_consumption_view",
-    ) or "日耗模型"
-    if view == "日耗模型":
+    ) or "平台生产模型"
+    if view == "平台生产模型":
         _render_colored_consumption_model(
-            supabase, current_date, inventory_df
+            supabase, current_date, inventory_df, visible_sizes
         )
     else:
         _render_colored_reconciliation(supabase, current_date)
 
 
-def _render_colored_consumption_model(supabase, current_date, inventory_df):
-    st.subheader("彩色短袖每日消耗")
+def _render_colored_consumption_model(
+    supabase, current_date, inventory_df, visible_sizes=None,
+):
+    st.subheader("彩色短袖消耗模型")
     st.caption(
-        "按最近 14 天的有效生产日计算；快速补录平台数据会立即进入模型，"
-        "全平台数据到齐后会用同一天的最新数据重新计算。"
+        f"唯一数据来源为最近 {LOOKBACK_DAYS} 个完整自然日的各平台 "
+        "ERP/API 生产数据。"
+        "不同品牌属于调货来源，统一合并到相同颜色和尺码；仓库每日出库"
+        "只作备份审计，不参与本模型。"
     )
-    history = load_colored_consumption_history(supabase, current_date, 14)
-    if history.empty:
-        st.info("最近 14 天暂无已同步的彩色短袖生产消耗")
-    else:
-        stock = _stock_summary(inventory_df)
-        display = history.merge(stock, on=["颜色", "尺码"], how="left")
-        display["当前库存"] = display["当前库存"].fillna(0).astype(int)
-        display["可撑天数"] = display.apply(
-            lambda row: row["当前库存"] / row["每日消耗"]
-            if row["每日消耗"] > 0 else None,
-            axis=1,
+    model = load_colored_api_period_model(current_date, supabase=supabase)
+    with st.expander(
+        f"如何读取最近 {LOOKBACK_DAYS} 天平台数据",
+        expanded=model.data.empty,
+    ):
+        st.markdown(
+            f"1. 点击下方 **并发读取并更新最近 {LOOKBACK_DAYS} 天平台数据**。\n"
+            "2. 系统会按平台和 7 天区间并发读取；已有缓存会自动复用。\n"
+            "3. 完成后查看平台状态表；系统会区分未开始、部分读取、"
+            "登录过期、平台限制以及模型数据尚未保存。\n"
+            "4. 个别平台失败不会清除其他平台已经读取的数据。"
         )
-        total = history["每日消耗"].sum()
-        days = int(history["有效天数"].max())
-        left, right = st.columns(2)
-        left.metric("一天消耗", f"{total:,.1f} 件")
-        right.metric("有效生产日", f"{days} 天")
-        wide = build_colored_consumption_wide_table(display)
-        st.dataframe(
-            wide, hide_index=True, width="stretch",
-            column_config={
-                size: st.column_config.NumberColumn(size, format="%.1f")
-                for size in SIZE_COLUMNS
-            },
+    if st.button(
+        f"并发读取并更新最近 {LOOKBACK_DAYS} 天平台数据",
+        key="refresh_colored_90_day_api_model",
+    ):
+        progress = st.progress(0, text="准备读取各平台 API")
+
+        def report(done, total, message):
+            progress.progress(
+                done / max(total, 1), text=f"{done}/{total}｜{message}"
+            )
+
+        try:
+            model = refresh_colored_api_period(
+                current_date, st.secrets, report_progress=report,
+                supabase=supabase,
+                operator=get_current_operator_name(),
+            )
+            progress.empty()
+            st.success(
+                f"最近 {LOOKBACK_DAYS} 天统一衣服生产数据已更新。"
+            )
+        except Exception as error:
+            progress.empty()
+            st.error(f"平台数据更新失败：{error}")
+    st.subheader("平台读取状态")
+    status = build_colored_platform_status(model)
+    st.dataframe(status, hide_index=True, width="stretch")
+    incomplete = status[~status["读取状态"].eq("已读取")]
+    if model.storage_error:
+        st.error(
+            "生产消耗模型数据库尚未就绪。请依次执行 "
+            "sql/production/consumption/01_tables.sql 和 02_replace_rpc.sql；"
+            "平台缓存仍可显示，不会因此当作凭据失败。"
         )
+    if not incomplete.empty:
+        st.warning(
+            "尚未完整覆盖：" + "、".join(incomplete["平台"].astype(str))
+            + "。请按表格中的“下一步”分别处理。"
+        )
+    if model.data.empty:
+        st.info(
+            f"尚无最近 {LOOKBACK_DAYS} 天平台 API 缓存，请点击上方按钮读取。"
+        )
+        return
+    display = model.data
+    if visible_sizes:
+        display = display[display["尺码"].isin(visible_sizes)]
+    daily_total = pd.to_numeric(
+        display["平台生产日均"], errors="coerce"
+    ).fillna(0).sum()
+    columns = st.columns(3)
+    columns[0].metric("平台生产日均", f"{daily_total:,.1f} 件")
+    columns[1].metric("统计范围", f"{LOOKBACK_DAYS} 天")
+    columns[2].metric(
+        "平台覆盖",
+        f"完整 {len(model.included_platforms)} / 有数据 "
+        f"{len(model.available_platforms)}",
+    )
+    st.caption(f"数据期间：{model.start_date} 至 {model.end_date}")
+    render_model_detail(
+        display, "平台生产日均", f"{LOOKBACK_DAYS}天平台API模型"
+    )
 
 
 def render_colored_daily_deduction(supabase, current_date):
@@ -75,79 +131,4 @@ def render_colored_daily_deduction(supabase, current_date):
     if view == "生产字段映射":
         _render_colored_mapping_review(current_date)
         return
-    _render_colored_daily_deduction_form(supabase, current_date)
-
-
-def _render_colored_daily_deduction_form(supabase, current_date):
-    st.subheader("彩色短袖系统库存扣减")
-    st.caption(
-        "从全部衣服平台读取当天生产数据；按纽约日期生成批次，"
-        "重复确认不会重复扣减。"
-    )
-    state_key = "colored_daily_deduction_preview"
-    date_key = "colored_daily_deduction_date"
-    deducted = load_colored_day_deducted_total(supabase, current_date)
-    if deducted:
-        st.success(f"今日彩色短袖库存已扣减 {deducted:,} 件。")
-        return
-    if st.button("读取今日生产并生成扣减表", key="colored_daily_load"):
-        try:
-            preview = build_colored_daily_preview(supabase, current_date)
-            st.session_state[state_key] = preview
-            st.session_state[date_key] = current_date
-        except Exception as error:
-            st.error(f"读取今日生产失败：{error}")
-    preview = st.session_state.get(state_key)
-    if preview is None or st.session_state.get(date_key) != current_date:
-        return
-    if preview.empty:
-        st.info(f"{current_date:%m/%d} 暂无完整的彩色短袖生产数据")
-        return
-    st.dataframe(
-        _stock_change_display(preview), hide_index=True, width="stretch"
-    )
-    deferred = preview[preview["状态"] != "可扣减"]
-    if not deferred.empty:
-        st.warning(
-            f"有 {int(deferred['未扣数量'].sum()):,} 件因库存为 0 或字段异常暂不扣减；"
-            "生产消耗仍会进入模型，待清点后再处理库存差异。"
-        )
-    total = int(pd.to_numeric(
-        preview.loc[preview["状态"] == "可扣减", "预计扣减"],
-        errors="coerce",
-    ).fillna(0).sum())
-    st.caption(f"本次实际可扣减：{total:,} 件；库存最低扣到 0。")
-    if not has_permission("can_edit_inventory"):
-        st.info("当前账号只有查看权限，不能确认扣减库存。")
-        return
-    confirmed = st.checkbox(
-        "我已核对生产数据和待清点差异",
-        key="colored_daily_confirm",
-    )
-    if st.button(
-        "确认扣减今日彩色短袖库存", type="primary",
-        disabled=not confirmed, key="colored_daily_apply",
-    ):
-        try:
-            imported = apply_colored_daily_deduction(
-                supabase, preview, current_date, get_current_operator_name()
-            )
-            st.session_state.pop(state_key, None)
-            st.session_state.pop(date_key, None)
-            st.session_state["inventory_saved_message"] = (
-                f"彩色短袖生产库存已扣减 {imported:,} 件"
-            )
-            st.rerun()
-        except Exception as error:
-            st.error(f"扣减失败：{error}")
-
-
-def _stock_summary(inventory_df):
-    if inventory_df is None or inventory_df.empty:
-        return pd.DataFrame(columns=["颜色", "尺码", "当前库存"])
-    frame = inventory_df.copy()
-    frame["quantity"] = pd.to_numeric(frame["quantity"], errors="coerce").fillna(0)
-    return (
-        frame.groupby(["color", "size"], as_index=False)["quantity"].sum()
-        .rename(columns={"color": "颜色", "size": "尺码", "quantity": "当前库存"})
-    )
+    render_colored_daily_deduction_form(supabase, current_date)

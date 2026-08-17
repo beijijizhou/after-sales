@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from db.batches import filter_active_batch_records
 from utils.daily_consumption import COLORED_REASON_PREFIX, UV_REASON_PREFIX
 
 
@@ -105,20 +106,15 @@ def active_inventory_movements(movements):
             "department", "category", "movement_date", "quantity_change",
             "reason", "batch_id", "reversal_of_batch_id",
         ])
-    result = movements.copy()
-    reversed_ids = set(result.get("reversal_of_batch_id", pd.Series(dtype=str)).dropna().astype(str))
-    if "reversal_of_batch_id" in result:
-        result = result[result["reversal_of_batch_id"].isna()]
-    if "batch_id" in result and reversed_ids:
-        result = result[~result["batch_id"].astype(str).isin(reversed_ids)]
-    return result
+    return filter_active_batch_records(movements, id_column="batch_id")
 
 
 def active_consumable_issue_dates(batches):
     if batches is None or batches.empty:
         return set()
-    result = batches.copy()
-    reversed_ids = set(result.get("reversal_of_batch_id", pd.Series(dtype=str)).dropna().astype(str))
+    result = filter_active_batch_records(
+        batches, type_column="movement_type"
+    )
     source_names = result.get(
         "source_file_name", pd.Series(index=result.index, dtype=str)
     ).fillna("").astype(str)
@@ -126,6 +122,4 @@ def active_consumable_issue_dates(batches):
         result["movement_type"].eq("issue")
         | source_names.eq("completion_ack")
     ]
-    if "id" in result and reversed_ids:
-        result = result[~result["id"].astype(str).isin(reversed_ids)]
     return set(pd.to_datetime(result["movement_date"], errors="coerce").dropna().dt.date)

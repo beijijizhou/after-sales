@@ -1,11 +1,11 @@
 import streamlit as st
 
-from db.batches import BatchKind, BatchReference, reverse_batch
+from db.batches import BatchKind, BatchReference
 from db.inventory.sales import (
     build_sales_invoice_pdf,
     load_invoice_detail,
 )
-from utils.auth import get_current_operator_name
+from ui.batches import render_batch_reversal_action
 
 
 def render_invoice_history(supabase, invoices, can_edit):
@@ -65,25 +65,15 @@ def render_invoice_history(supabase, invoices, can_edit):
 
 
 def _render_void_invoice(supabase, invoice_id, invoice_number):
-    confirmed = st.checkbox(
-        "我确认作废此 Invoice，并生成库存反向批次",
-        key=f"confirm_void_invoice_{invoice_id}",
-    )
-    if not st.button(
-        "作废 Invoice 并退回库存",
-        disabled=not confirmed,
-        key=f"void_invoice_{invoice_id}",
-    ):
-        return
-    try:
-        reverse_batch(
-            supabase,
-            BatchReference(BatchKind.SALES_INVOICE, invoice_id),
-            get_current_operator_name(),
-        )
-        st.session_state["inventory_saved_message"] = (
+    render_batch_reversal_action(
+        supabase,
+        BatchReference(BatchKind.SALES_INVOICE, invoice_id),
+        key_scope="sales_invoice",
+        confirmation_label="我确认作废此 Invoice，并生成库存反向批次",
+        button_label="作废 Invoice 并退回库存",
+        success_state_key="inventory_saved_message",
+        success_message=(
             f"Invoice {invoice_number} 已作废，库存已生成反向批次。"
-        )
-        st.rerun()
-    except Exception:
-        st.error("Invoice 作废失败，请刷新后重试。")
+        ),
+        error_label="Invoice 作废失败",
+    )

@@ -15,6 +15,7 @@ from db.inventory.planning.consumption_alerts import (
 from db.inventory.planning.consumption_comparison import (
     build_period_model_comparison,
     build_prioritized_consumption_model,
+    scale_forecast_daily_total,
 )
 from db.inventory.planning.demand_anomaly import (
     build_demand_anomaly_table,
@@ -135,7 +136,7 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
 
         result = build_prioritized_consumption_model(comparison)
 
-        self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 690)
+        self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 1310)
 
     def test_missing_platform_reweights_available_sources(self):
         comparison = pd.DataFrame([{
@@ -148,7 +149,7 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
 
         result = build_prioritized_consumption_model(comparison)
 
-        self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 700)
+        self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 1067)
 
     def test_user_can_change_forecast_weights(self):
         comparison = pd.DataFrame([{
@@ -169,6 +170,34 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
         )
 
         self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 645)
+
+    def test_user_daily_override_preserves_sku_mix(self):
+        model = pd.DataFrame([
+            {"color": "红", "size": "S", "consumption_quantity": 30},
+            {"color": "红", "size": "M", "consumption_quantity": 70},
+        ])
+
+        adjusted = scale_forecast_daily_total(model, 200)
+
+        self.assertEqual(adjusted["consumption_quantity"].tolist(), [60, 140])
+
+    def test_forecast_calculates_target_days_reorder_quantity(self):
+        stock = pd.DataFrame([{
+            "颜色": "红", "S": 100,
+            **{size: 0 for size in SIZE_COLUMNS if size != "S"},
+        }])
+        model = pd.DataFrame([{
+            "color": "红", "size": "S", "consumption_quantity": 10,
+        }])
+
+        forecast = build_inventory_consumption_alerts(
+            stock, model, target_days=55,
+            inventory_date=date(2026, 8, 17),
+            current_date=date(2026, 8, 17),
+        )
+
+        self.assertEqual(int(forecast.iloc[0]["建议点货量"]), 450)
+        self.assertEqual(forecast.iloc[0]["建议点货尺码"], "S:450件")
 
     def test_warehouse_average_uses_outbound_intervals(self):
         model = pd.DataFrame([{

@@ -11,11 +11,13 @@ from db.inventory.container.history import (
 )
 from db.inventory.container.workflow import (
     confirm_container_arrival_date,
-    post_container_inventory,
 )
 from utils.auth import get_current_operator_name
 from ui.inventory.container.reversal import render_container_undo_action
-from ui.inventory.container.posting import render_container_posting_stock_review
+from ui.inventory.container.posting import (
+    post_container_with_feedback,
+    render_container_posting_stock_review,
+)
 from ui.table_layout import fit_table_height
 
 
@@ -100,17 +102,9 @@ def render_status_update(
         width="stretch",
         key=f"{key_prefix}_direct_post_{container_key}",
     ):
-        try:
-            post_container_inventory(
-                supabase,
-                container_key,
-                get_current_operator_name(),
-                note,
-            )
-            st.success(f"入库成功：库存增加 {total:,} 件")
-            st.rerun()
-        except Exception as error:
-            st.error(f"直接入库失败：{error}")
+        post_container_with_feedback(
+            supabase, container_key, note, total
+        )
 
 
 def render_container_history(supabase, raw_df):
