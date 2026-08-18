@@ -9,7 +9,6 @@ import pandas as pd
 from automation.production import DTF_PRODUCTION_PLATFORMS, load_production_data
 from automation.production_batch import ALL_CLOTHING_PLATFORMS
 from automation.production_cache import load_production_cache, save_production_cache
-from automation.sync.colored_models import load_colored_ledger_history
 from automation.sync.credentials import load_platform_credentials
 from db.production_consumption import (
     load_daily_platform_consumption,
@@ -152,23 +151,6 @@ def load_colored_api_period_model(
                     storage_error=storage_error,
                     source="database",
                 )
-        ledger = load_colored_ledger_history(
-            supabase, start_date, end_date
-        )
-        if not ledger.empty:
-            ledger_dates = tuple(sorted(ledger["日期"].dropna().unique()))
-            return ColoredApiPeriodModel(
-                _model_from_ledger(ledger, days),
-                start_date,
-                end_date,
-                len(ledger_dates),
-                (),
-                (),
-                (),
-                {"系统扣减流水": len(ledger_dates)},
-                storage_error=storage_error,
-                source="inventory_ledger",
-            )
     cached = load_production_cache(
         ALL_CLOTHING_PLATFORMS, start_date, end_date
     )
@@ -372,20 +354,6 @@ def _model_from_persisted(rows, days):
     return model.rename(columns={
         "color": "颜色", "size": "尺码",
     })[["颜色", "尺码", "平台生产日均"]]
-
-
-def _model_from_ledger(rows, days):
-    source = pd.DataFrame(rows).copy()
-    if source.empty:
-        return pd.DataFrame(columns=["颜色", "尺码", "平台生产日均"])
-    source["生产数量"] = pd.to_numeric(
-        source["生产数量"], errors="coerce"
-    ).fillna(0)
-    model = source.groupby(
-        ["颜色", "尺码"], as_index=False
-    )["生产数量"].sum()
-    model["平台生产日均"] = model["生产数量"] / int(days)
-    return model[["颜色", "尺码", "平台生产日均"]]
 
 
 def _errors_by_platform(errors):

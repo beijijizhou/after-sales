@@ -159,38 +159,6 @@ class ColoredPeriodModelTests(unittest.TestCase):
         self.assertIn("coverage table", model.storage_error)
         local_cache.assert_not_called()
 
-    def test_inventory_ledger_builds_model_when_production_fact_is_empty(self):
-        ledger = pd.DataFrame([
-            {
-                "日期": date(2026, 8, 15), "颜色": "黄色",
-                "尺码": "L", "生产数量": 120,
-            },
-            {
-                "日期": date(2026, 8, 16), "颜色": "黄色",
-                "尺码": "L", "生产数量": 180,
-            },
-        ])
-        with patch(
-            "automation.sync.colored_period.load_daily_platform_consumption",
-            return_value=pd.DataFrame(),
-        ), patch(
-            "automation.sync.colored_period.load_platform_sync_coverage",
-            return_value={},
-        ), patch(
-            "automation.sync.colored_period.load_colored_ledger_history",
-            return_value=ledger,
-        ), patch(
-            "automation.sync.colored_period.load_production_cache"
-        ) as local_cache:
-            model = load_colored_api_period_model(
-                date(2026, 8, 17), days=30, supabase=object()
-            )
-
-        self.assertEqual(model.source, "inventory_ledger")
-        self.assertEqual(model.covered_days, 2)
-        self.assertEqual(model.data.iloc[0]["平台生产日均"], 10)
-        local_cache.assert_not_called()
-
     def test_existing_local_cache_can_be_published_without_erp_request(self):
         cached = type("Cached", (), {
             "data": pd.DataFrame([

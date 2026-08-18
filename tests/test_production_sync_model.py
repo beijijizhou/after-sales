@@ -20,37 +20,6 @@ from automation.sync.daily import sync_production_day
 
 
 class ProductionSyncModelTests(unittest.TestCase):
-    def test_recent_colored_model_uses_inventory_ledger_before_local_cache(self):
-        current = date(2026, 8, 17)
-        ledger = pd.DataFrame([{
-            "日期": date(2026, 8, 16), "颜色": "黄色",
-            "尺码": "L", "生产数量": 300,
-        }])
-        with (
-            patch(
-                "automation.production_period.load_daily_platform_consumption",
-                return_value=pd.DataFrame(),
-            ),
-            patch(
-                "automation.production_period.load_platform_sync_coverage",
-                return_value={},
-            ),
-            patch(
-                "automation.production_period.load_colored_ledger_history",
-                return_value=ledger,
-            ),
-            patch(
-                "automation.production_period.load_production_cache"
-            ) as local_cache,
-        ):
-            model = load_recent_production_model(
-                current, 30, "彩色短袖", supabase=object()
-            )
-
-        self.assertEqual(model.total_quantity, 300)
-        self.assertEqual(model.data.iloc[0]["平台生产日均"], 10)
-        local_cache.assert_not_called()
-
     def test_cache_miss_fetches_one_day_and_keeps_consumption_model(self):
         target = date(2026, 8, 6)
         production = pd.DataFrame([

@@ -223,12 +223,13 @@ must be identified as local-only in the UI. Failure to read platform coverage
 audit metadata must not hide already persisted consumption rows; it may reduce
 the platform-completeness evidence, but the stored daily usage remains usable.
 Live platform refresh is an explicit administrator maintenance action.
-If the normalized platform-production fact is absent but completed colored-
-shirt system deductions already exist in `inventory_movements`, both the
-consumption view and reorder forecast must rebuild the 30-day model from those
-active database batches before considering local cache or a live ERP request.
-Reversed batches are excluded. This ledger fallback is already-persisted
-consumption and requires neither an upload nor another inventory deduction.
+The colored-shirt consumption model and reorder forecast must never substitute
+inventory deductions for missing ERP production facts. Successful deductions
+can be lower than production because of zero stock, deferred mappings, or
+unfinished reconciliation. The UI therefore exposes a daily database audit
+with ERP quantity, synchronized platforms, production-record count, inventory
+deduction, and difference. Users can select a date and inspect platform/color
+rows in the fixed apparel-size order.
 When an exact 30-day aggregate already exists only in a local cache, an
 administrator may publish that existing cache into the shared daily production
 fact without contacting any ERP again. The UI must identify the date range,

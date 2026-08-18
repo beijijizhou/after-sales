@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from db.inventory.core.pagination import fetch_range_pages
 from utils.erp.catalog import normalize_color
 from utils.erp.inventory_mapping import normalize_size
 from utils.erp.time_range import TIME_COLUMNS
@@ -77,27 +78,37 @@ def replace_daily_platform_consumption(
 def load_daily_platform_consumption(
     supabase, department, category, start_date, end_date,
 ):
-    rows = (
-        supabase.table("production_platform_daily_consumption")
-        .select("business_date,platform,color,size,quantity,record_count")
-        .eq("department", department).eq("category", category)
-        .gte("business_date", start_date.isoformat())
-        .lte("business_date", end_date.isoformat()).execute().data or []
-    )
+    def fetch_page(first, last):
+        return (
+            supabase.table("production_platform_daily_consumption")
+            .select("business_date,platform,color,size,quantity,record_count")
+            .eq("department", department).eq("category", category)
+            .gte("business_date", start_date.isoformat())
+            .lte("business_date", end_date.isoformat())
+            .order("business_date").order("platform")
+            .range(first, last).execute().data or []
+        )
+
+    rows = fetch_range_pages(fetch_page, limit=None)
     return pd.DataFrame(rows)
 
 
 def load_platform_sync_coverage(
     supabase, department, category, start_date, end_date,
 ):
-    rows = (
-        supabase.table("production_consumption_sync_batches")
-        .select("platform,start_date,end_date,status")
-        .eq("status", "completed")
-        .eq("department", department).eq("category", category)
-        .gte("start_date", start_date.isoformat())
-        .lte("end_date", end_date.isoformat()).execute().data or []
-    )
+    def fetch_page(first, last):
+        return (
+            supabase.table("production_consumption_sync_batches")
+            .select("platform,start_date,end_date,status")
+            .eq("status", "completed")
+            .eq("department", department).eq("category", category)
+            .gte("start_date", start_date.isoformat())
+            .lte("end_date", end_date.isoformat())
+            .order("start_date").order("platform")
+            .range(first, last).execute().data or []
+        )
+
+    rows = fetch_range_pages(fetch_page, limit=None)
     coverage = {}
     for row in rows:
         first = pd.to_datetime(row.get("start_date"), errors="coerce")

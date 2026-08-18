@@ -6,6 +6,7 @@ import pandas as pd
 
 from db.production_consumption import (
     build_daily_platform_consumption,
+    load_daily_platform_consumption,
     replace_daily_platform_consumption,
 )
 
@@ -69,6 +70,49 @@ class ProductionConsumptionTests(unittest.TestCase):
                 date(2026, 8, 15), date(2026, 8, 15),
                 pd.DataFrame([row]), "Haloo API", "Andy",
             )
+
+    def test_daily_fact_loader_reads_every_supabase_page(self):
+        rows = [
+            {
+                "business_date": "2026-08-15", "platform": "S2B",
+                "color": "黄色", "size": "L", "quantity": 1,
+                "record_count": 1,
+            }
+            for _ in range(1005)
+        ]
+
+        class Query:
+            def select(self, *_args):
+                return self
+
+            def eq(self, *_args):
+                return self
+
+            def gte(self, *_args):
+                return self
+
+            def lte(self, *_args):
+                return self
+
+            def order(self, *_args):
+                return self
+
+            def range(self, first, last):
+                self.page = rows[first:last + 1]
+                return self
+
+            def execute(self):
+                return type("Response", (), {"data": self.page})()
+
+        client = type("Client", (), {
+            "table": lambda self, _name: Query(),
+        })()
+        result = load_daily_platform_consumption(
+            client, "DTF", "彩色短袖",
+            date(2026, 7, 18), date(2026, 8, 16),
+        )
+
+        self.assertEqual(len(result), 1005)
 
 
 def _row(brand, timestamp, quantity):
