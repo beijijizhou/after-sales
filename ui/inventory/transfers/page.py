@@ -46,5 +46,5 @@ def render_warehouse_transfer_page(supabase):
         )
     with tabs[2]:
         render_transfer_processing(
-            supabase, warehouses, balances, orders, all_lines, can_edit
+            supabase, warehouses, items, balances, orders, all_lines, can_edit
         )

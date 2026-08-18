@@ -9,6 +9,7 @@ from .repository import (
     load_warehouse_inventory_items,
     load_warehouses,
     receive_transfer,
+    record_transfer_baseline,
     reverse_transfer,
     save_location_note,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "load_warehouses",
     "normalize_transfer_execution_lines",
     "receive_transfer",
+    "record_transfer_baseline",
     "reverse_transfer",
     "save_location_note",
 ]

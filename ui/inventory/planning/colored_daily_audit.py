@@ -6,6 +6,7 @@ import streamlit as st
 from automation.sync.colored_models import load_colored_ledger_history
 from db.inventory.core.constants import SIZE_COLUMNS
 from db.production_consumption import load_daily_platform_consumption
+from ui.table_layout import fit_table_height
 
 
 def render_colored_daily_erp_audit(supabase, current_date, days=30):
@@ -34,7 +35,7 @@ def render_colored_daily_erp_audit(supabase, current_date, days=30):
         summary,
         hide_index=True,
         width="stretch",
-        height=min(38 * (len(summary) + 1), 900),
+        height=fit_table_height(summary),
         column_config={
             "日期": st.column_config.DateColumn(format="MM/DD/YYYY"),
             "ERP生产件数": st.column_config.NumberColumn(format="%d"),
@@ -63,7 +64,7 @@ def render_colored_daily_erp_audit(supabase, current_date, days=30):
         detail,
         hide_index=True,
         width="stretch",
-        height=min(38 * (len(detail) + 1), 800),
+        height=fit_table_height(detail),
     )
 
 

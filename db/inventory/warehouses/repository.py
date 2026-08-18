@@ -39,17 +39,34 @@ def load_warehouse_balances(supabase):
 
 
 def load_transfer_orders(supabase, limit=200):
-    rows = (
-        supabase.table("inventory_transfer_orders")
-        .select(
-            "id,transfer_number,from_warehouse,to_warehouse,status,note,"
-            "created_by,created_at,dispatched_by,dispatched_at,"
-            "received_by,received_at"
-        )
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute().data or []
+    base_columns = (
+        "id,transfer_number,from_warehouse,to_warehouse,status,note,"
+        "created_by,created_at,dispatched_by,dispatched_at,"
+        "received_by,received_at"
     )
+    try:
+        rows = (
+            supabase.table("inventory_transfer_orders")
+            .select(
+                f"{base_columns},business_date,balance_effect_applied,"
+                "balance_effect_note"
+            )
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute().data or []
+        )
+    except Exception:
+        rows = (
+            supabase.table("inventory_transfer_orders")
+            .select(base_columns)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute().data or []
+        )
+        for row in rows:
+            row["business_date"] = str(row.get("created_at") or "")[:10]
+            row["balance_effect_applied"] = True
+            row["balance_effect_note"] = None
     return pd.DataFrame(rows)
 
 
@@ -109,6 +126,20 @@ def complete_transfer_direct(
     supabase, from_warehouse, to_warehouse, lines, note, operated_by,
 ):
     return supabase.rpc("complete_inventory_transfer_direct", {
+        "p_from_warehouse": from_warehouse,
+        "p_to_warehouse": to_warehouse,
+        "p_lines": lines,
+        "p_note": note or None,
+        "p_operated_by": operated_by,
+    }).execute().data
+
+
+def record_transfer_baseline(
+    supabase, business_date, from_warehouse, to_warehouse, lines,
+    note, operated_by,
+):
+    return supabase.rpc("record_inventory_transfer_baseline", {
+        "p_business_date": str(business_date),
         "p_from_warehouse": from_warehouse,
         "p_to_warehouse": to_warehouse,
         "p_lines": lines,

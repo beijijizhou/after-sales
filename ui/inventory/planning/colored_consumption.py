@@ -22,6 +22,7 @@ from ui.inventory.planning.comparison import render_model_detail
 from ui.inventory.planning.colored_persistence import (
     render_cached_model_persistence,
 )
+from ui.table_layout import fit_table_height
 
 
 def render_colored_consumption(
@@ -115,7 +116,10 @@ def _refresh_colored_model(supabase, current_date):
 def _render_colored_model_result(model, visible_sizes=None):
     st.subheader("平台读取状态")
     status = build_colored_platform_status(model)
-    st.dataframe(status, hide_index=True, width="stretch")
+    st.dataframe(
+        status, hide_index=True, width="stretch",
+        height=fit_table_height(status),
+    )
     incomplete = status[~status["读取状态"].eq("已读取")]
     if model.storage_error:
         if model.source == "database" and not model.data.empty:

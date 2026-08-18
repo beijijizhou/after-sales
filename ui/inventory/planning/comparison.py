@@ -16,6 +16,7 @@ from ui.inventory.planning.accuracy import (
     render_model_accuracy_summary,
 )
 from ui.inventory.planning.uv_view import render_uv_consumption_model
+from ui.table_layout import fit_table_height
 
 
 def render_model_comparison(
@@ -103,6 +104,7 @@ def render_model_comparison_result(
     styled_df = display_df.style.apply(highlight_comparison, axis=1)
     st.dataframe(
         styled_df, hide_index=True, width="stretch",
+        height=fit_table_height(display_df),
         column_config={
             "颜色": st.column_config.TextColumn(t("颜色")),
             "尺码": st.column_config.TextColumn(t("尺码")),
@@ -213,6 +215,7 @@ def render_model_detail(df, field, title):
     )
     st.dataframe(
         wide, hide_index=True, width="stretch",
+        height=fit_table_height(wide),
         column_config={
             "颜色": st.column_config.TextColumn(t("颜色")),
             **{

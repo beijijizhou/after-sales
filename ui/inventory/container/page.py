@@ -102,7 +102,9 @@ def render_inventory_container_page(supabase):
             st.info("当前账号只能查看货柜安排，不能新增或修改")
     with tabs["到柜及入库历史"]:
         arrival_start, arrival_end = render_arrival_date_range(today)
-        arrived_df = render_arrival_history_table(
+        arrived_df, selected_arrival_key = render_arrival_history_table(
             supabase, arrival_start, arrival_end, *filters
         )
-        render_container_history(supabase, arrived_df)
+        render_container_history(
+            supabase, arrived_df, selected_arrival_key
+        )

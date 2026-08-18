@@ -95,7 +95,7 @@ class InventoryWarehouseTests(unittest.TestCase):
         paths = sorted(Path("sql/inventory/warehouses").glob("*.sql"))
         sql = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
-        self.assertEqual(len(paths), 4)
+        self.assertEqual(len(paths), 5)
         self.assertIn("inventory_movement_warehouse_sync", sql)
         self.assertIn("default '25'", sql)
         self.assertIn("create_inventory_transfer_request", sql)
@@ -103,6 +103,8 @@ class InventoryWarehouseTests(unittest.TestCase):
         self.assertIn("receive_inventory_transfer", sql)
         self.assertIn("complete_pending_inventory_transfer", sql)
         self.assertIn("reverse_inventory_transfer", sql)
+        self.assertIn("record_inventory_transfer_baseline", sql)
+        self.assertIn("balance_effect_applied", sql)
         for path in paths:
             migration = path.read_text(encoding="utf-8")
             self.assertRegex(migration, r"(?s)^begin;.*commit;")

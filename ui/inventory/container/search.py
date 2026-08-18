@@ -54,6 +54,27 @@ def build_container_search_choices(raw_df):
     return choices
 
 
+def filter_container_search_choices(raw_df, choices, search_text):
+    """Filter container choices by physical number, business name or context."""
+    term = "".join(str(search_text or "").casefold().split())
+    if not term or raw_df.empty:
+        return choices
+    matched = {}
+    for container_key, label in choices.items():
+        rows = raw_df[raw_df["container_key"].astype(str) == str(container_key)]
+        searchable_columns = [
+            "container_key", "container_no", "note", "department", "category",
+        ]
+        values = [label]
+        for column in searchable_columns:
+            if column in rows.columns:
+                values.extend(rows[column].dropna().astype(str).tolist())
+        haystack = "".join("".join(value.casefold().split()) for value in values)
+        if term in haystack:
+            matched[container_key] = label
+    return matched
+
+
 def render_container_search(supabase):
     saved = st.session_state.pop("container_undo_saved", None)
     if saved:
@@ -67,14 +88,27 @@ def render_container_search(supabase):
         st.info("目前还没有货柜记录")
         return
     choices = build_container_search_choices(raw_df)
-    search_options = ["", *choices]
+    search_text = st.text_input(
+        "货柜号或备注搜索",
+        key="container_search_text",
+        placeholder="输入实体货柜号、例如 COSU6502384810，或输入第十四柜",
+    )
+    visible_choices = filter_container_search_choices(
+        raw_df, choices, search_text
+    )
+    if str(search_text or "").strip() and not visible_choices:
+        st.warning(f"未找到货柜：{str(search_text).strip()}")
+        st.caption("数据库中没有匹配记录；如为新货柜，请前往“新增货柜”录入。")
+        st.session_state.pop("container_search_dropdown", None)
+        return
+    search_options = ["", *visible_choices]
     _reset_invalid_selectbox("container_search_dropdown", search_options)
-    st.caption("优先显示货柜备注名称；实体货柜号作为辅助，也可以输入柜号、部门或品类查找。")
+    st.caption("搜索支持实体货柜号、业务备注名称、部门和品类；结果优先显示业务备注名称。")
     container_key = st.selectbox(
-        "查找货柜",
+        "选择匹配货柜",
         search_options,
         format_func=lambda value: (
-            "请选择货柜" if not value else choices[value]
+            "请选择货柜" if not value else visible_choices[value]
         ),
         key="container_search_dropdown",
     )

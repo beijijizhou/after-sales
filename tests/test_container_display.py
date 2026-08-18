@@ -4,6 +4,7 @@ from datetime import date
 import pandas as pd
 
 from db.inventory.container.tables import (
+    build_arrival_batch_summary,
     build_container_display,
     build_container_template,
     build_filtered_container_summary,
@@ -35,6 +36,40 @@ def container_row(department, material, item, quantity):
 
 
 class ContainerDisplayTests(unittest.TestCase):
+    def test_arrival_history_collapses_sku_rows_into_container_batches(self):
+        rows = pd.DataFrame([
+            {
+                "container_key": "第十四柜", "container_no": "TRHU5477320",
+                "department": "UV", "category": "铁板画", "brand": "",
+                "material": "铁牌", "color": "白", "size": "2030",
+                "quantity": 55000, "status": "已入库",
+                "actual_arrival_date": "2026-08-17",
+                "arrival_confirmed_at": "2026-08-17T15:00:00Z",
+                "note": "第十四柜",
+            },
+            {
+                "container_key": "第十四柜", "container_no": "TRHU5477320",
+                "department": "UV", "category": "铁板画", "brand": "",
+                "material": "铁牌", "color": "白", "size": "1040",
+                "quantity": 10000, "status": "已入库",
+                "actual_arrival_date": "2026-08-17",
+                "arrival_confirmed_at": "2026-08-17T15:00:00Z",
+                "note": "第十四柜",
+            },
+        ])
+
+        result = build_arrival_batch_summary(rows)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            result.loc[0, "货柜批次"], "第十四柜｜柜号 TRHU5477320"
+        )
+        self.assertEqual(result.loc[0, "SKU数"], 2)
+        self.assertEqual(result.loc[0, "总件数"], 65000)
+        self.assertEqual(
+            result.loc[0, "实际到柜日期"].isoformat(), "2026-08-17"
+        )
+
     def test_arrival_history_can_sort_by_latest_time(self):
         rows = pd.DataFrame([
             {

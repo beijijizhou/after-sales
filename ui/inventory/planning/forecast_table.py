@@ -1,6 +1,7 @@
 import streamlit as st
 
 from ui.inventory.i18n import t
+from ui.table_layout import fit_table_height
 
 
 FORECAST_COLUMNS = [
@@ -22,6 +23,7 @@ def render_reorder_forecast_table(forecast_df):
         display_df,
         hide_index=True,
         width="stretch",
+        height=fit_table_height(forecast_df),
         column_config={
             "颜色": st.column_config.TextColumn(t("颜色")),
             "材质范围": st.column_config.TextColumn(t("材质范围")),
