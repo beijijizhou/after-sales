@@ -8,6 +8,7 @@ from automation.production import DTF_PRODUCTION_PLATFORMS
 from automation.production_batch import ALL_CLOTHING_PLATFORMS
 from automation.production_cache import CACHE_DIR
 from automation.production_cache import load_production_cache
+from automation.sync.colored_models import load_colored_ledger_history
 from db.production_consumption import (
     load_daily_platform_consumption,
     load_platform_sync_coverage,
@@ -65,6 +66,15 @@ def load_recent_production_model(
             # Deployment may not have the unified fact tables yet. The exact
             # aggregate cache remains a valid, reviewable fallback.
             pass
+        if category == "彩色短袖":
+            ledger = load_colored_ledger_history(
+                supabase, start_date, end_date
+            )
+            if not ledger.empty:
+                return _build_recent_model(
+                    ledger, "生产数量", requested_days,
+                    start_date, end_date,
+                )
     cached = load_production_cache(
         ALL_CLOTHING_PLATFORMS, start_date, end_date
     )

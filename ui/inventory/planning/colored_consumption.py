@@ -16,6 +16,9 @@ from ui.inventory.planning.colored_review import (
     render_colored_reconciliation as _render_colored_reconciliation,
 )
 from ui.inventory.planning.comparison import render_model_detail
+from ui.inventory.planning.colored_persistence import (
+    render_cached_model_persistence,
+)
 
 
 def render_colored_consumption(
@@ -40,8 +43,9 @@ def _render_colored_consumption_model(
 ):
     st.subheader("彩色短袖消耗模型")
     st.caption(
-        f"唯一数据来源为最近 {LOOKBACK_DAYS} 个完整自然日的各平台 "
-        "ERP/API 生产数据。"
+        f"使用最近 {LOOKBACK_DAYS} 个完整自然日已经保存到数据库的生产消耗。"
+        "优先使用平台生产日表；尚未生成日表时，直接使用已完成的彩色短袖"
+        "系统扣减流水，不要求重新读取平台。"
         "不同品牌属于调货来源，统一合并到相同颜色和尺码；仓库每日出库"
         "只作备份审计，不参与本模型。"
     )
@@ -51,10 +55,14 @@ def _render_colored_consumption_model(
             "已从数据库加载最近 30 天彩色短袖生产消耗模型；"
             "本地和部署环境共用这份数据，无需重新读取平台。"
         )
+    elif model.source == "inventory_ledger" and not model.data.empty:
+        st.success(
+            "已直接从数据库中的彩色短袖系统扣减流水生成最近30天消耗模型；"
+            "无需上传本地缓存，也无需重新读取生产平台。"
+        )
     elif model.source == "local_cache" and not model.data.empty:
-        st.warning(
-            "当前显示的是本机缓存。它不会自动同步到 Streamlit Cloud；"
-            "请刷新一次并确认模型成功保存到数据库。"
+        model = render_cached_model_persistence(
+            supabase, current_date, model
         )
     with st.expander(
         (
@@ -105,12 +113,21 @@ def _refresh_colored_model(supabase, current_date):
 
 
 def _render_colored_model_result(model, visible_sizes=None):
-    st.subheader("平台读取状态")
-    status = build_colored_platform_status(model)
-    st.dataframe(status, hide_index=True, width="stretch")
-    incomplete = status[~status["读取状态"].eq("已读取")]
+    ledger_source = model.source == "inventory_ledger"
+    if ledger_source:
+        status = pd.DataFrame()
+        incomplete = pd.DataFrame()
+        st.caption(
+            f"数据库流水覆盖 {model.covered_days} 个有扣减记录的日期；"
+            "平台明细覆盖情况仅在管理员重新同步生产数据时核对。"
+        )
+    else:
+        st.subheader("平台读取状态")
+        status = build_colored_platform_status(model)
+        st.dataframe(status, hide_index=True, width="stretch")
+        incomplete = status[~status["读取状态"].eq("已读取")]
     if model.storage_error:
-        if model.source == "database" and not model.data.empty:
+        if model.source in {"database", "inventory_ledger"} and not model.data.empty:
             st.warning(
                 "生产消耗模型已从数据库加载，但平台覆盖审计暂时不可用；"
                 "这不影响当前日耗和点货计算。"
@@ -148,9 +165,13 @@ def _render_colored_model_result(model, visible_sizes=None):
     columns[0].metric("平台生产日均", f"{daily_total:,.1f} 件")
     columns[1].metric("统计范围", f"{LOOKBACK_DAYS} 天")
     columns[2].metric(
-        "平台覆盖",
-        f"完整 {len(model.included_platforms)} / 有数据 "
-        f"{len(model.available_platforms)}",
+        "数据覆盖",
+        (
+            f"流水 {model.covered_days} 天"
+            if ledger_source else
+            f"完整 {len(model.included_platforms)} / 有数据 "
+            f"{len(model.available_platforms)}"
+        ),
     )
     st.caption(f"数据期间：{model.start_date} 至 {model.end_date}")
     render_model_detail(

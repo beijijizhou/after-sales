@@ -12,6 +12,7 @@ from automation.sync.colored_period import (
     _date_chunks,
     build_colored_platform_status,
     load_colored_api_period_model,
+    persist_cached_colored_api_period,
     refresh_colored_api_period,
 )
 
@@ -157,6 +158,111 @@ class ColoredPeriodModelTests(unittest.TestCase):
         self.assertFalse(model.data.empty)
         self.assertIn("coverage table", model.storage_error)
         local_cache.assert_not_called()
+
+    def test_inventory_ledger_builds_model_when_production_fact_is_empty(self):
+        ledger = pd.DataFrame([
+            {
+                "日期": date(2026, 8, 15), "颜色": "黄色",
+                "尺码": "L", "生产数量": 120,
+            },
+            {
+                "日期": date(2026, 8, 16), "颜色": "黄色",
+                "尺码": "L", "生产数量": 180,
+            },
+        ])
+        with patch(
+            "automation.sync.colored_period.load_daily_platform_consumption",
+            return_value=pd.DataFrame(),
+        ), patch(
+            "automation.sync.colored_period.load_platform_sync_coverage",
+            return_value={},
+        ), patch(
+            "automation.sync.colored_period.load_colored_ledger_history",
+            return_value=ledger,
+        ), patch(
+            "automation.sync.colored_period.load_production_cache"
+        ) as local_cache:
+            model = load_colored_api_period_model(
+                date(2026, 8, 17), days=30, supabase=object()
+            )
+
+        self.assertEqual(model.source, "inventory_ledger")
+        self.assertEqual(model.covered_days, 2)
+        self.assertEqual(model.data.iloc[0]["平台生产日均"], 10)
+        local_cache.assert_not_called()
+
+    def test_existing_local_cache_can_be_published_without_erp_request(self):
+        cached = type("Cached", (), {
+            "data": pd.DataFrame([
+                {
+                    **_production_row("黄色", "L", 40, "品牌A"),
+                    "运营商": "S2B",
+                },
+                {
+                    **_production_row("红色", "M", 60, "品牌B"),
+                    "运营商": "SDS1",
+                },
+                {
+                    "运营商": "S2B", "部门": "DTF",
+                    "品类": "黑白短袖", "颜色": "白", "尺码": "L",
+                    "数量": 999,
+                },
+            ]),
+            "source": "现有本地缓存",
+        })()
+        with patch(
+            "automation.sync.colored_period.load_production_cache",
+            return_value=cached,
+        ), patch(
+            "automation.sync.colored_period.replace_daily_platform_consumption"
+        ) as persist, patch(
+            "automation.sync.colored_period.load_production_data"
+        ) as erp:
+            result = persist_cached_colored_api_period(
+                date(2026, 8, 17), object(), operator="Andy"
+            )
+
+        self.assertEqual(result.platforms, ("S2B", "SDS1"))
+        self.assertEqual(result.source_rows, 2)
+        self.assertEqual(result.saved_platforms, ("S2B", "SDS1"))
+        self.assertEqual(persist.call_count, 2)
+        self.assertTrue(all(
+            call.args[2] == "彩色短袖" for call in persist.call_args_list
+        ))
+        erp.assert_not_called()
+
+    def test_cache_publish_preserves_successes_when_one_platform_fails(self):
+        cached = type("Cached", (), {
+            "data": pd.DataFrame([
+                {
+                    **_production_row("黄色", "L", 40, "品牌A"),
+                    "运营商": "S2B",
+                },
+                {
+                    **_production_row("红色", "M", 60, "品牌B"),
+                    "运营商": "SDS1",
+                },
+            ]),
+            "source": "现有本地缓存",
+        })()
+
+        def persist(_db, _department, _category, platform, *_args):
+            if platform == "SDS1":
+                raise RuntimeError("database unavailable")
+
+        with patch(
+            "automation.sync.colored_period.load_production_cache",
+            return_value=cached,
+        ), patch(
+            "automation.sync.colored_period.replace_daily_platform_consumption",
+            side_effect=persist,
+        ):
+            result = persist_cached_colored_api_period(
+                date(2026, 8, 17), object()
+            )
+
+        self.assertEqual(result.saved_platforms, ("S2B",))
+        self.assertIn("SDS1", result.errors)
 
 
 def _production_row(color, size, quantity, brand):

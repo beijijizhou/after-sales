@@ -9,6 +9,7 @@ import pandas as pd
 from automation.production import DTF_PRODUCTION_PLATFORMS, load_production_data
 from automation.production_batch import ALL_CLOTHING_PLATFORMS
 from automation.production_cache import load_production_cache, save_production_cache
+from automation.sync.colored_models import load_colored_ledger_history
 from automation.sync.credentials import load_platform_credentials
 from db.production_consumption import (
     load_daily_platform_consumption,
@@ -37,6 +38,74 @@ class ColoredApiPeriodModel:
     persistence_errors: dict = field(default_factory=dict)
     storage_error: str | None = None
     source: str = "empty"
+
+
+@dataclass(frozen=True)
+class CachedModelPersistenceResult:
+    start_date: object
+    end_date: object
+    platforms: tuple
+    source_rows: int
+    saved_platforms: tuple
+    errors: dict = field(default_factory=dict)
+
+
+def persist_cached_colored_api_period(
+    current_date, supabase, days=LOOKBACK_DAYS, operator="system",
+):
+    """Publish the exact local aggregate cache without requesting an ERP."""
+    end_date = current_date - timedelta(days=1)
+    start_date = end_date - timedelta(days=int(days) - 1)
+    cached = load_production_cache(
+        ALL_CLOTHING_PLATFORMS, start_date, end_date
+    )
+    if cached is None:
+        raise ValueError(
+            f"本机没有 {start_date} 至 {end_date} 的完整区间缓存"
+        )
+    rows = cached.data.copy()
+    required = {"运营商", "部门", "品类", "颜色", "尺码", "数量"}
+    missing_columns = sorted(required - set(rows.columns))
+    if missing_columns:
+        raise ValueError(
+            "本地缓存缺少必要字段：" + "、".join(missing_columns)
+        )
+    colored = rows[
+        rows["部门"].eq("DTF") & rows["品类"].eq(CATEGORY)
+    ].copy()
+    if "生产项状态" in colored:
+        colored = colored[
+            ~colored["生产项状态"].astype(str).str.contains("取消", na=False)
+        ]
+    if colored.empty:
+        raise ValueError("本地缓存中没有彩色短袖生产数据")
+    platforms = tuple(sorted(
+        value for value in colored["运营商"].dropna().astype(str).unique()
+        if value.strip()
+    ))
+    saved, errors = [], {}
+    for platform in platforms:
+        platform_rows = colored[
+            colored["运营商"].astype(str).eq(platform)
+        ].copy()
+        try:
+            replace_daily_platform_consumption(
+                supabase, "DTF", CATEGORY, platform,
+                start_date, end_date, platform_rows,
+                f"本地缓存发布｜{cached.source}", operator,
+            )
+        except Exception as error:
+            errors[platform] = str(error)
+        else:
+            saved.append(platform)
+    return CachedModelPersistenceResult(
+        start_date=start_date,
+        end_date=end_date,
+        platforms=platforms,
+        source_rows=len(colored),
+        saved_platforms=tuple(saved),
+        errors=errors,
+    )
 
 
 def load_colored_api_period_model(
@@ -83,6 +152,23 @@ def load_colored_api_period_model(
                     storage_error=storage_error,
                     source="database",
                 )
+        ledger = load_colored_ledger_history(
+            supabase, start_date, end_date
+        )
+        if not ledger.empty:
+            ledger_dates = tuple(sorted(ledger["日期"].dropna().unique()))
+            return ColoredApiPeriodModel(
+                _model_from_ledger(ledger, days),
+                start_date,
+                end_date,
+                len(ledger_dates),
+                (),
+                (),
+                (),
+                {"系统扣减流水": len(ledger_dates)},
+                storage_error=storage_error,
+                source="inventory_ledger",
+            )
     cached = load_production_cache(
         ALL_CLOTHING_PLATFORMS, start_date, end_date
     )
@@ -286,6 +372,20 @@ def _model_from_persisted(rows, days):
     return model.rename(columns={
         "color": "颜色", "size": "尺码",
     })[["颜色", "尺码", "平台生产日均"]]
+
+
+def _model_from_ledger(rows, days):
+    source = pd.DataFrame(rows).copy()
+    if source.empty:
+        return pd.DataFrame(columns=["颜色", "尺码", "平台生产日均"])
+    source["生产数量"] = pd.to_numeric(
+        source["生产数量"], errors="coerce"
+    ).fillna(0)
+    model = source.groupby(
+        ["颜色", "尺码"], as_index=False
+    )["生产数量"].sum()
+    model["平台生产日均"] = model["生产数量"] / int(days)
+    return model[["颜色", "尺码", "平台生产日均"]]
 
 
 def _errors_by_platform(errors):

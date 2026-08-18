@@ -211,7 +211,7 @@ def render_reorder_forecast(
         forecast_df["材质范围"] = "、".join(materials) or t("未填写")
         forecast_df["日耗依据"] = (
             t("加权综合模型")
-            if category == "黑白短袖" else "最近30天平台生产模型（可自定义）"
+            if category == "黑白短袖" else "最近30天数据库生产消耗（可自定义）"
         )
     except Exception as e:
         st.info(t("暂无点货预测数据"))
@@ -227,7 +227,8 @@ def render_reorder_forecast(
         )
     else:
         st.caption(
-            "本页只计算彩色短袖：使用彩色短袖最近30天平台生产数据，"
+            "本页只计算彩色短袖：使用最近30天已保存的数据库生产消耗；"
+            "平台日表缺失时自动使用已完成的系统扣减流水，"
             "不读取黑白短袖日耗或仓库每日出库。"
         )
     st.caption("当前品类的自定义日耗会同步更新其建议点货量和货柜联动。")
