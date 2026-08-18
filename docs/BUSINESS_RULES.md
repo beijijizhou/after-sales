@@ -230,6 +230,17 @@ unfinished reconciliation. The UI therefore exposes a daily database audit
 with ERP quantity, synchronized platforms, production-record count, inventory
 deduction, and difference. Users can select a date and inspect platform/color
 rows in the fixed apparel-size order.
+An ERP response that contains production rows but no usable business date is
+not `未开始`. Persist it as a failed synchronization audit with its source row
+count, quantity and reason, and display `已读取｜日期待核对`. The next action is
+to repair or confirm the provider date-field mapping, not to repeat the same
+platform read.
+The 19DIY production endpoint used by Seven Creation (`七创`) and Yiduoyun
+(`一朵云`) returns period aggregates rather than row-level production dates.
+Their 30-day synchronization must therefore issue one request per natural day
+and persist each day independently. These two providers must bypass stale
+multi-day or derived empty caches during an administrator refresh. Other ERP
+providers retain bounded multi-day chunks and normal cache reuse.
 When an exact 30-day aggregate already exists only in a local cache, an
 administrator may publish that existing cache into the shared daily production
 fact without contacting any ERP again. The UI must identify the date range,

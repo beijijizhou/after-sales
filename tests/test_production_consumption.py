@@ -7,6 +7,7 @@ import pandas as pd
 from db.production_consumption import (
     build_daily_platform_consumption,
     load_daily_platform_consumption,
+    record_platform_sync_failure,
     replace_daily_platform_consumption,
 )
 
@@ -113,6 +114,24 @@ class ProductionConsumptionTests(unittest.TestCase):
         )
 
         self.assertEqual(len(result), 1005)
+
+    def test_failed_sync_is_persisted_for_deployment_audit(self):
+        supabase = Mock()
+        supabase.table.return_value.insert.return_value.execute.return_value.data = [
+            {"status": "failed"}
+        ]
+
+        record_platform_sync_failure(
+            supabase, "DTF", "彩色短袖", "七创",
+            date(2026, 7, 18), date(2026, 8, 16),
+            "本地缓存发布", "缺少可用生产日期",
+            row_count=9, total_quantity=9, operator="Andy",
+        )
+
+        payload = supabase.table.return_value.insert.call_args.args[0]
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["total_quantity"], 9)
+        self.assertIn("缺少可用生产日期", payload["source"])
 
 
 def _row(brand, timestamp, quantity):

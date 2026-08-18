@@ -75,6 +75,29 @@ def replace_daily_platform_consumption(
     }).execute().data
 
 
+def record_platform_sync_failure(
+    supabase, department, category, platform, start_date, end_date,
+    source, error_message, row_count=0, total_quantity=0, operator="system",
+):
+    error_source = f"{source}｜错误：{str(error_message).strip()}"
+    return (
+        supabase.table("production_consumption_sync_batches")
+        .insert({
+            "department": department,
+            "category": category,
+            "platform": platform,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "source": error_source[:1000],
+            "row_count": max(int(row_count or 0), 0),
+            "total_quantity": max(int(total_quantity or 0), 0),
+            "operator": operator or "system",
+            "status": "failed",
+        })
+        .execute().data
+    )
+
+
 def load_daily_platform_consumption(
     supabase, department, category, start_date, end_date,
 ):
@@ -119,3 +142,29 @@ def load_platform_sync_coverage(
             value.date() for value in pd.date_range(first, last, freq="D")
         )
     return coverage
+
+
+def load_platform_sync_status(
+    supabase, department, category, start_date, end_date,
+):
+    def fetch_page(first, last):
+        return (
+            supabase.table("production_consumption_sync_batches")
+            .select(
+                "platform,start_date,end_date,status,source,row_count,"
+                "total_quantity,created_at"
+            )
+            .eq("department", department).eq("category", category)
+            .gte("start_date", start_date.isoformat())
+            .lte("end_date", end_date.isoformat())
+            .order("created_at", desc=True)
+            .range(first, last).execute().data or []
+        )
+
+    rows = fetch_range_pages(fetch_page, limit=None)
+    latest = {}
+    for row in rows:
+        platform = str(row.get("platform") or "").strip()
+        if platform and platform not in latest:
+            latest[platform] = row
+    return latest

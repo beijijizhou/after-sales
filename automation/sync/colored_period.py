@@ -6,6 +6,7 @@ from datetime import timedelta
 
 import pandas as pd
 
+from automation.api.diy19 import DIY19_BASE_URLS
 from automation.production import DTF_PRODUCTION_PLATFORMS, load_production_data
 from automation.production_batch import ALL_CLOTHING_PLATFORMS
 from automation.production_cache import load_production_cache, save_production_cache
@@ -13,6 +14,8 @@ from automation.sync.credentials import load_platform_credentials
 from db.production_consumption import (
     load_daily_platform_consumption,
     load_platform_sync_coverage,
+    load_platform_sync_status,
+    record_platform_sync_failure,
     replace_daily_platform_consumption,
 )
 from utils.erp.catalog import normalize_color
@@ -95,6 +98,17 @@ def persist_cached_colored_api_period(
             )
         except Exception as error:
             errors[platform] = str(error)
+            try:
+                record_platform_sync_failure(
+                    supabase, "DTF", CATEGORY, platform,
+                    start_date, end_date, "本地缓存发布",
+                    error, len(platform_rows),
+                    pd.to_numeric(
+                        platform_rows["数量"], errors="coerce"
+                    ).fillna(0).sum(), operator,
+                )
+            except Exception:
+                pass
         else:
             saved.append(platform)
     return CachedModelPersistenceResult(
@@ -121,9 +135,12 @@ def load_colored_api_period_model(
         except Exception as error:
             storage_error = str(error)
         else:
-            coverage = {}
+            coverage, sync_status = {}, {}
             try:
                 coverage = load_platform_sync_coverage(
+                    supabase, "DTF", CATEGORY, start_date, end_date
+                )
+                sync_status = load_platform_sync_status(
                     supabase, "DTF", CATEGORY, start_date, end_date
                 )
             except Exception as error:
@@ -132,11 +149,15 @@ def load_colored_api_period_model(
                 platform for platform, dates in coverage.items()
                 if len(dates) >= int(days)
             ))
-            if not persisted.empty or included:
+            if not persisted.empty or included or sync_status:
                 model = _model_from_persisted(persisted, days)
                 available = tuple(sorted(
                     set(persisted.get("platform", pd.Series(dtype=str))
                         .dropna().astype(str))
+                    | {
+                        platform for platform, item in sync_status.items()
+                        if int(item.get("total_quantity") or 0) > 0
+                    }
                 ))
                 coverage_days = {
                     platform: len(dates) for platform, dates in coverage.items()
@@ -148,6 +169,11 @@ def load_colored_api_period_model(
                 return ColoredApiPeriodModel(
                     model, start_date, end_date, int(days), included, missing,
                     available, coverage_days,
+                    platform_errors={
+                        platform: str(item.get("source") or "同步失败")
+                        for platform, item in sync_status.items()
+                        if str(item.get("status") or "") == "failed"
+                    },
                     storage_error=storage_error,
                     source="database",
                 )
@@ -252,7 +278,9 @@ def refresh_colored_api_period(
         (platform, chunk_start, chunk_end)
         for platform in DTF_PRODUCTION_PLATFORMS
         if platform not in credential_errors
-        for chunk_start, chunk_end in chunks
+        for chunk_start, chunk_end in _platform_chunks(
+            platform, start_date, end_date, chunks
+        )
     ]
     frames, errors = [], dict(credential_errors)
     persistence_errors = {}
@@ -265,6 +293,7 @@ def refresh_colored_api_period(
             executor.submit(
                 _load_chunk, platform, chunk_start, chunk_end,
                 credentials.get(platform),
+                force_refresh=platform in DIY19_BASE_URLS,
             ): (platform, chunk_start, chunk_end)
             for platform, chunk_start, chunk_end in tasks
         }
@@ -286,6 +315,28 @@ def refresh_colored_api_period(
                             persistence_errors[
                                 f"{platform}:{category}:{chunk_start}:{chunk_end}"
                             ] = str(error)
+                            try:
+                                category_rows = frame[
+                                    frame.get("品类", pd.Series(
+                                        index=frame.index, dtype=str
+                                    )).eq(category)
+                                ]
+                                record_platform_sync_failure(
+                                    supabase, "DTF", category, platform,
+                                    chunk_start, chunk_end, source, error,
+                                    len(category_rows),
+                                    pd.to_numeric(
+                                        category_rows.get(
+                                            "数量", pd.Series(
+                                                index=category_rows.index,
+                                                dtype=float,
+                                            )
+                                        ),
+                                        errors="coerce",
+                                    ).fillna(0).sum(), operator,
+                                )
+                            except Exception:
+                                pass
                 message = f"{platform} {chunk_start:%m/%d}-{chunk_end:%m/%d}"
             except Exception as error:
                 errors[f"{platform}:{chunk_start}:{chunk_end}"] = str(error)
@@ -318,8 +369,12 @@ def refresh_colored_api_period(
     return load_colored_api_period_model(current_date, days, supabase)
 
 
-def _load_chunk(platform, start_date, end_date, credentials):
-    cached = load_production_cache(platform, start_date, end_date)
+def _load_chunk(
+    platform, start_date, end_date, credentials, force_refresh=False,
+):
+    cached = None if force_refresh else load_production_cache(
+        platform, start_date, end_date
+    )
     if cached is not None:
         return cached.data, cached.source
     result = load_production_data(
@@ -329,6 +384,12 @@ def _load_chunk(platform, start_date, end_date, credentials):
         platform, start_date, end_date, result.data, result.source
     )
     return result.data, result.source
+
+
+def _platform_chunks(platform, start_date, end_date, default_chunks):
+    if platform in DIY19_BASE_URLS:
+        return _date_chunks(start_date, end_date, 1)
+    return default_chunks
 
 
 def _date_chunks(start_date, end_date, chunk_days):
@@ -369,6 +430,11 @@ def _platform_state(
 ):
     if platform in included:
         return "已读取（待保存）" if platform in persistence_errors else "已读取"
+    error = " ".join(api_errors.get(platform, ())).lower()
+    if platform in api_errors and (
+        "生产日期" in error or "production date" in error
+    ):
+        return "已读取｜日期待核对"
     if platform in available or int(coverage.get(platform, 0) or 0) > 0:
         return "部分读取"
     if platform in api_errors:

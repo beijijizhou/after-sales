@@ -10,6 +10,8 @@ from automation.production import ProductionDataResult
 from automation.sync.colored_period import (
     LOOKBACK_DAYS,
     _date_chunks,
+    _load_chunk,
+    _platform_chunks,
     build_colored_platform_status,
     load_colored_api_period_model,
     persist_cached_colored_api_period,
@@ -35,6 +37,25 @@ class ColoredPeriodModelTests(unittest.TestCase):
         self.assertEqual(status["读取状态"].tolist(), ["已读取", "未开始"])
         self.assertEqual(status.iloc[0]["下一步"], "无需操作")
         self.assertIn("开始读取", status.iloc[1]["下一步"])
+
+    def test_platform_with_rows_but_missing_dates_is_not_unstarted(self):
+        model = type("Model", (), {
+            "included_platforms": (),
+            "missing_platforms": ("七创",),
+            "available_platforms": ("七创",),
+            "coverage_days": {},
+            "platform_errors": {
+                "七创": "七创 返回了彩色短袖数据，但缺少可用生产日期"
+            },
+            "persistence_errors": {},
+            "start_date": date(2026, 7, 18),
+            "end_date": date(2026, 8, 16),
+        })()
+
+        status = build_colored_platform_status(model, ("七创",))
+
+        self.assertEqual(status.iloc[0]["读取状态"], "已读取｜日期待核对")
+        self.assertIn("生产日期", status.iloc[0]["下一步"])
 
     def test_persistence_failure_does_not_erase_successful_api_read(self):
         rows = pd.DataFrame([
@@ -74,6 +95,46 @@ class ColoredPeriodModelTests(unittest.TestCase):
         self.assertEqual(len(chunks), 13)
         self.assertEqual(chunks[0], (date(2026, 5, 18), date(2026, 5, 24)))
         self.assertEqual(chunks[-1], (date(2026, 8, 10), date(2026, 8, 15)))
+
+    def test_diy19_platforms_use_one_calendar_day_per_chunk(self):
+        start = date(2026, 8, 14)
+        end = date(2026, 8, 16)
+        weekly = _date_chunks(start, end, 7)
+
+        diy = _platform_chunks("七创", start, end, weekly)
+        ordinary = _platform_chunks("S2B", start, end, weekly)
+
+        self.assertEqual(diy, [
+            (date(2026, 8, 14), date(2026, 8, 14)),
+            (date(2026, 8, 15), date(2026, 8, 15)),
+            (date(2026, 8, 16), date(2026, 8, 16)),
+        ])
+        self.assertEqual(ordinary, weekly)
+
+    def test_forced_diy19_daily_read_does_not_reuse_stale_cache(self):
+        fresh = pd.DataFrame([
+            _production_row("黄色", "L", 12, "品牌A")
+        ])
+        with patch(
+            "automation.sync.colored_period.load_production_cache",
+            return_value=type("Cached", (), {
+                "data": pd.DataFrame(), "source": "旧空缓存",
+            })(),
+        ) as cache, patch(
+            "automation.sync.colored_period.load_production_data",
+            return_value=ProductionDataResult(fresh, "七创单日API"),
+        ) as fetch, patch(
+            "automation.sync.colored_period.save_production_cache",
+        ):
+            rows, source = _load_chunk(
+                "七创", date(2026, 8, 15), date(2026, 8, 15),
+                {"token": "test"}, force_refresh=True,
+            )
+
+        cache.assert_not_called()
+        fetch.assert_called_once()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(source, "七创单日API")
 
     def test_platform_and_date_chunks_merge_brands_by_color_and_size(self):
         rows = pd.DataFrame([
