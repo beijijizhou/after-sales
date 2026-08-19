@@ -7,6 +7,7 @@ import streamlit as st
 from db.inventory import SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
 from ui.inventory.i18n import t
+from ui.inventory.category_routing import apply_phone_case_display_scope
 from ui.inventory.shared.filter_models import (
     build_inventory_filter_title,
     filter_inventory_rows,
@@ -109,6 +110,9 @@ def render_inventory_dimension_filters(
     category_rows = department_rows
     if category:
         category_rows = category_rows[category_rows["category"] == category]
+    category_rows = apply_phone_case_display_scope(
+        category_rows, department, category
+    )
 
     brands = ordered_options(
         category_rows.get("brand", []), [], include_missing=False

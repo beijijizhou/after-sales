@@ -4,9 +4,9 @@ import pandas as pd
 
 
 STATUS_LABELS = {
-    "pending": "待处理",
-    "completed": "已完成",
-    "not_applicable": "不适用",
+    "pending": "🟡 待处理",
+    "completed": "🟢 已完成",
+    "not_applicable": "⚪ 不适用",
 }
 STATUS_CODES = {label: code for code, label in STATUS_LABELS.items()}
 TASK_KIND_LABELS = {"daily": "每日必做", "as_needed": "按需处理"}
@@ -28,7 +28,9 @@ def build_daily_editor(tasks, records):
             "类别": str(task.get("section") or ""),
             "类型": TASK_KIND_LABELS.get(task.get("task_kind"), "每日必做"),
             "工作事项": str(task.get("task_name") or ""),
-            "状态": STATUS_LABELS.get(record.get("status", default), "待处理"),
+            "状态": STATUS_LABELS.get(
+                record.get("status", default), STATUS_LABELS["pending"]
+            ),
             "备注": str(record.get("note") or ""),
         })
     return pd.DataFrame(rows)
@@ -56,9 +58,9 @@ def completion_summary(editor):
     if frame.empty:
         return {"total": 0, "completed": 0, "pending": 0, "not_applicable": 0, "rate": 0}
     counts = frame["状态"].value_counts()
-    completed = int(counts.get("已完成", 0))
-    pending = int(counts.get("待处理", 0))
-    not_applicable = int(counts.get("不适用", 0))
+    completed = int(counts.get(STATUS_LABELS["completed"], 0))
+    pending = int(counts.get(STATUS_LABELS["pending"], 0))
+    not_applicable = int(counts.get(STATUS_LABELS["not_applicable"], 0))
     applicable = completed + pending
     return {
         "total": len(frame),
@@ -108,6 +110,28 @@ def history_detail(day_id, records):
         "状态": frame["status"].map(STATUS_LABELS),
         "备注": frame["note"].fillna(""),
     })
+
+
+def style_status_table(frame):
+    frame = pd.DataFrame(frame)
+    if frame.empty or "状态" not in frame.columns:
+        return frame.style
+    return frame.style.map(_status_cell_style, subset=["状态"])
+
+
+def _status_cell_style(value):
+    styles = {
+        STATUS_LABELS["completed"]: (
+            "background-color: #dcfce7; color: #166534; font-weight: 700"
+        ),
+        STATUS_LABELS["pending"]: (
+            "background-color: #fef3c7; color: #92400e; font-weight: 700"
+        ),
+        STATUS_LABELS["not_applicable"]: (
+            "background-color: #f3f4f6; color: #4b5563"
+        ),
+    }
+    return styles.get(value, "")
 
 
 def _records(value):

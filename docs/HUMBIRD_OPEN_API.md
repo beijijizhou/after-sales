@@ -6,7 +6,7 @@
 蜂鸟官方开放平台，不依赖 Chrome、Playwright、网页登录状态或网页登录
 token。尚未配置开放平台 Key 的平台继续使用原有服务器 token 适配器。
 
-Haloo 原有 Bearer token 接口继续保留。物流读取采用三级授权链：先请求官方
+Haloo 原有 Bearer token 接口继续保留。生产与物流读取采用三级授权链：先请求官方
 开放 API；遇到无权限、限流或临时故障时，从 `erp_api_credentials` 读取加密的
 共享 token，直接请求生产项与订单物流详情，不启动浏览器；只有共享 token
 缺失或确实失效时，才在管理员本机启动专用 Chrome。登录完成后，新 token 会
@@ -30,9 +30,15 @@ Haloo 原有 Bearer token 接口继续保留。物流读取采用三级授权链
 [humbird_open_api."Haloo"]
 api_key = "Haloo 账号在蜂鸟商家后台生成的 API Key"
 
+[humbird_open_api."莆田"]
+api_key = "莆田账号在蜂鸟商家后台生成的 API Key"
+
 [humbird_open_api."隆丰"]
 api_key = "隆丰账号在蜂鸟商家后台生成的 API Key"
 ```
+
+每个 Key 只代表生成它的蜂鸟商家账号，不能用 Haloo Key 读取莆田或隆丰。
+未配置某个平台的独立 Key 时，该平台才会回退到数据库加密保存的 Bearer token。
 
 ## 已接入链路
 

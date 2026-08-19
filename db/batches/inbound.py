@@ -37,6 +37,9 @@ class InventoryQuantityCorrection:
 class ContainerInboundCorrection:
     quantity_updates: Mapping[str, int] = field(default_factory=dict)
     item_costs: Mapping[str, float] = field(default_factory=dict)
+    identity_updates: Mapping[str, Mapping[str, str]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(frozen=True)
@@ -80,9 +83,18 @@ def replace_inbound_batch(
             update_posted_container_item_costs,
         )
         from db.inventory.container.editor import (
+            correct_posted_container_identities,
             correct_posted_container_quantities,
         )
 
+        identity_result = {
+            "rows": 0, "inventory_change": 0, "unresolved_history": 0,
+        }
+        if correction.identity_updates:
+            identity_result = correct_posted_container_identities(
+                supabase, reference.batch_id,
+                dict(correction.identity_updates), operator,
+            )
         quantity_result = {
             "rows": 0, "inventory_change": 0, "unresolved_shortage": 0,
         }
@@ -97,7 +109,11 @@ def replace_inbound_batch(
                 supabase, reference.batch_id,
                 dict(correction.item_costs), operator,
             )
-        return {"quantity": quantity_result, "cost": cost_result}
+        return {
+            "identity": identity_result,
+            "quantity": quantity_result,
+            "cost": cost_result,
+        }
 
     if not isinstance(correction, InboundCostCorrection):
         raise TypeError("入库成本更正必须使用 InboundCostCorrection")

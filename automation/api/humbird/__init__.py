@@ -1,5 +1,8 @@
 from automation.api.humbird.client import fetch_humbird_production_records
-from automation.api.humbird.config import load_humbird_credentials
+from automation.api.humbird.config import (
+    load_humbird_credentials,
+    load_humbird_credentials_with_local_refresh,
+)
 from automation.api.humbird.http_client import (
     HumbirdAuthenticationError,
     fetch_humbird_production_records_http,
@@ -28,6 +31,7 @@ __all__ = [
     "fetch_humbird_production_records_http",
     "HumbirdAuthenticationError",
     "load_humbird_credentials",
+    "load_humbird_credentials_with_local_refresh",
     "HumbirdOpenApiClient",
     "HumbirdOpenApiError",
     "fetch_open_production_records",

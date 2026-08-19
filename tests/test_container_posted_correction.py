@@ -3,6 +3,7 @@ import unittest
 import pandas as pd
 
 from db.inventory.container.editor import (
+    build_posted_container_identity_correction_plan,
     build_posted_container_correction_plan,
 )
 from ui.inventory.container.item_editor import build_container_item_editor_source
@@ -77,6 +78,25 @@ class ContainerPostedCorrectionTests(unittest.TestCase):
         self.assertEqual(plan[0]["unresolved_shortage"], 0)
         self.assertEqual(plan[1]["inventory_change"], 0)
         self.assertEqual(plan[1]["unresolved_shortage"], 160)
+
+    def test_identity_correction_moves_remaining_stock_without_adding_total(self):
+        rows = [{
+            "id": "clock", "department": "UV", "category": "木板画",
+            "brand": "", "material": "挂钟", "color": "白",
+            "size": "25", "quantity": 20_000, "unit_cost": 1.4086,
+        }]
+        inventory = [
+            {**rows[0], "quantity": 26_369},
+            {**rows[0], "size": "30", "quantity": 0},
+        ]
+
+        plan = build_posted_container_identity_correction_plan(
+            rows, {"clock": {"size": "30"}}, inventory
+        )
+
+        self.assertEqual(plan[0]["moved_quantity"], 20_000)
+        self.assertEqual(plan[0]["unresolved_history"], 0)
+        self.assertEqual(plan[0]["target"]["size"], "30")
 
 
 def _sku(color, size):

@@ -16,6 +16,7 @@ from ui.daily_work.models import (
     editor_records,
     history_detail,
     history_summary,
+    style_status_table,
 )
 
 
@@ -33,7 +34,6 @@ def render_daily_record(supabase, owner, actor, today):
         st.info("当前还没有工作事项，请先到“任务设置”添加。")
         return
     editor = build_daily_editor(tasks, records)
-    _render_metrics(completion_summary(editor))
     edited = st.data_editor(
         editor,
         hide_index=True,
@@ -51,8 +51,10 @@ def render_daily_record(supabase, owner, actor, today):
             ),
             "备注": st.column_config.TextColumn("备注", width="large"),
         },
+        row_height=42,
         key=f"daily_work_editor_{owner}_{selected_date.isoformat()}",
     )
+    _render_metrics(completion_summary(pd.DataFrame(edited)))
     summary = st.text_area(
         "当日总结", value=str(day.get("summary") or ""),
         key=f"daily_work_summary_{selected_date}",
@@ -111,7 +113,8 @@ def render_history(supabase, owner, today):
         key="daily_work_history_day",
     )
     st.dataframe(
-        history_detail(selected, records), hide_index=True, width="stretch"
+        style_status_table(history_detail(selected, records)),
+        hide_index=True, width="stretch",
     )
     day = next(row for row in days.to_dict("records") if str(row["id"]) == selected)
     st.caption(f"问题 / 阻塞：{day.get('blockers') or '无'}")
@@ -121,6 +124,6 @@ def render_history(supabase, owner, today):
 def _render_metrics(summary):
     columns = st.columns(4)
     columns[0].metric("完成率", f"{summary['rate']}%")
-    columns[1].metric("已完成", summary["completed"])
-    columns[2].metric("待处理", summary["pending"])
-    columns[3].metric("不适用", summary["not_applicable"])
+    columns[1].success(f"🟢 已完成\n\n{summary['completed']} 项")
+    columns[2].warning(f"🟡 待处理\n\n{summary['pending']} 项")
+    columns[3].info(f"⚪ 不适用\n\n{summary['not_applicable']} 项")

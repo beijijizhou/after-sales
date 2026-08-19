@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 
+from automation.production import DTF_PRODUCTION_PLATFORMS
 from automation.sync.colored_period import (
     LOOKBACK_DAYS,
     build_colored_platform_status,
@@ -64,6 +65,7 @@ def _render_colored_consumption_model(
         model = render_cached_model_persistence(
             supabase, current_date, model
         )
+    platform_status = build_colored_platform_status(model)
     with st.expander(
         (
             f"管理员：重新读取最近 {LOOKBACK_DAYS} 天平台数据"
@@ -73,23 +75,50 @@ def _render_colored_consumption_model(
         expanded=model.data.empty,
     ):
         st.markdown(
-            f"1. 点击下方 **并发读取并更新最近 {LOOKBACK_DAYS} 天平台数据**。\n"
-            "2. 七创和一朵云按自然日逐天并发读取；其他平台按7天区间读取。\n"
-            "3. 19DIY单日数据会重新请求以确保日期准确；其他有效缓存会复用。\n"
-            "4. 完成后查看平台状态表；系统会区分未开始、部分读取、"
+            "1. 选择一个或多个平台；默认选中当前尚未完整读取的平台。\n"
+            f"2. 点击 **读取所选平台最近 {LOOKBACK_DAYS} 天数据**。\n"
+            "3. 这里与“生产数据”页面共用平台凭据、API、缓存和数据库日表。\n"
+            "4. 七创和一朵云按自然日逐天并发读取；其他平台按7天区间读取。\n"
+            "5. 完成后查看平台状态表；系统会区分未开始、部分读取、"
             "登录过期、平台限制以及模型数据尚未保存。\n"
-            "5. 个别平台失败不会清除其他平台已经读取的数据。"
+            "6. 单个平台失败或重读不会清除其他平台已经保存的数据。"
+        )
+        selected_platforms = st.multiselect(
+            "选择生产平台",
+            options=list(DTF_PRODUCTION_PLATFORMS),
+            default=_default_refresh_platforms(platform_status),
+            key="colored_consumption_refresh_platforms",
+            placeholder="请选择 Haloo、莆田或其他平台",
         )
         if st.button(
-            f"并发读取并更新最近 {LOOKBACK_DAYS} 天平台数据",
+            f"读取所选平台最近 {LOOKBACK_DAYS} 天数据",
             key="refresh_colored_90_day_api_model",
+            disabled=not selected_platforms,
         ):
-            model = _refresh_colored_model(supabase, current_date)
+            model = _refresh_colored_model(
+                supabase, current_date, selected_platforms
+            )
     _render_colored_model_result(model, visible_sizes)
 
 
-def _refresh_colored_model(supabase, current_date):
-    progress = st.progress(0, text="准备读取各平台 API")
+def _default_refresh_platforms(status):
+    pending_states = {
+        "未开始", "读取失败", "部分读取", "已读取｜日期待核对",
+    }
+    pending = set(status.loc[
+        status["读取状态"].isin(pending_states), "平台"
+    ].astype(str))
+    return [
+        platform for platform in DTF_PRODUCTION_PLATFORMS
+        if platform in pending
+    ]
+
+
+def _refresh_colored_model(supabase, current_date, platforms):
+    selected = tuple(platforms)
+    progress = st.progress(
+        0, text="准备读取：" + "、".join(selected)
+    )
 
     def report(done, total, message):
         progress.progress(
@@ -101,6 +130,7 @@ def _refresh_colored_model(supabase, current_date):
             current_date, st.secrets, report_progress=report,
             supabase=supabase,
             operator=get_current_operator_name(),
+            platforms=selected,
         )
     except Exception as error:
         progress.empty()
@@ -109,7 +139,9 @@ def _refresh_colored_model(supabase, current_date):
             current_date, supabase=supabase
         )
     progress.empty()
-    st.success(f"最近 {LOOKBACK_DAYS} 天统一衣服生产数据已更新。")
+    st.success(
+        f"已更新最近 {LOOKBACK_DAYS} 天：" + "、".join(selected)
+    )
     return model
 
 

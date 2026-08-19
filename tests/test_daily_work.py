@@ -8,6 +8,7 @@ from ui.daily_work.models import (
     completion_summary,
     editor_records,
     history_summary,
+    style_status_table,
 )
 from utils.auth.constants import NAV_SECTIONS, PAGE_ACCESS, ROLE_PERMISSIONS
 
@@ -25,7 +26,9 @@ class DailyWorkTests(unittest.TestCase):
     def test_editor_defaults_daily_pending_and_optional_not_applicable(self):
         editor = build_daily_editor(self.tasks, pd.DataFrame())
 
-        self.assertEqual(editor["状态"].tolist(), ["待处理", "不适用"])
+        self.assertEqual(
+            editor["状态"].tolist(), ["🟡 待处理", "⚪ 不适用"]
+        )
 
     def test_saved_records_override_defaults_and_round_trip(self):
         saved = pd.DataFrame([
@@ -33,7 +36,7 @@ class DailyWorkTests(unittest.TestCase):
         ])
         editor = build_daily_editor(self.tasks, saved)
 
-        self.assertEqual(editor.iloc[0]["状态"], "已完成")
+        self.assertEqual(editor.iloc[0]["状态"], "🟢 已完成")
         self.assertEqual(editor.iloc[0]["备注"], "已核对")
         records = editor_records(editor)
         self.assertEqual(records[0]["status"], "completed")
@@ -60,6 +63,17 @@ class DailyWorkTests(unittest.TestCase):
         self.assertEqual(summary.iloc[0]["已完成"], 1)
         self.assertEqual(summary.iloc[0]["待处理"], 1)
         self.assertEqual(summary.iloc[0]["完成率"], 50)
+
+    def test_history_status_cells_use_semantic_colors(self):
+        detail = pd.DataFrame({
+            "状态": ["🟢 已完成", "🟡 待处理", "⚪ 不适用"],
+        })
+
+        html = style_status_table(detail).to_html()
+
+        self.assertIn("background-color: #dcfce7", html)
+        self.assertIn("background-color: #fef3c7", html)
+        self.assertIn("background-color: #f3f4f6", html)
 
     def test_daily_work_follows_after_sales_full_access_rule(self):
         self.assertEqual(PAGE_ACCESS["daily_work"], "can_view_daily_work")

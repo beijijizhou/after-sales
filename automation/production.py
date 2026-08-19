@@ -11,6 +11,7 @@ from automation.api.hansen import (
     parse_hansen_records,
 )
 from automation.api.humbird import (
+    HumbirdAuthenticationError,
     fetch_humbird_production_records_http,
     fetch_open_production_records,
     parse_humbird_records,
@@ -89,6 +90,7 @@ def load_production_data(
             raise ValueError(
                 f"未配置 {platform} API token；不会启动浏览器读取"
             )
+        refresh_credentials = credentials.get("_refresh_credentials")
         if credentials.get("api_key"):
             try:
                 records = fetch_open_production_records(
@@ -96,7 +98,10 @@ def load_production_data(
                 )
                 api_source = "官方开放 API"
             except Exception as open_error:
-                if not credentials.get("token"):
+                fallback = credentials
+                if not fallback.get("token") and refresh_credentials:
+                    fallback = refresh_credentials(open_error)
+                if not fallback.get("token"):
                     raise
                 if report_progress:
                     report_progress(
@@ -104,6 +109,25 @@ def load_production_data(
                         "正在切换旧接口备用通道："
                         f"{open_error}"
                     )
+                try:
+                    records = fetch_humbird_production_records_http(
+                        platform,
+                        start_date,
+                        end_date,
+                        fallback,
+                        report_progress,
+                    )
+                except HumbirdAuthenticationError as token_error:
+                    if not refresh_credentials:
+                        raise
+                    fallback = refresh_credentials(token_error)
+                    records = fetch_humbird_production_records_http(
+                        platform, start_date, end_date, fallback,
+                        report_progress,
+                    )
+                api_source = "旧接口备用通道"
+        else:
+            try:
                 records = fetch_humbird_production_records_http(
                     platform,
                     start_date,
@@ -111,15 +135,14 @@ def load_production_data(
                     credentials,
                     report_progress,
                 )
-                api_source = "旧接口备用通道"
-        else:
-            records = fetch_humbird_production_records_http(
-                platform,
-                start_date,
-                end_date,
-                credentials,
-                report_progress,
-            )
+            except HumbirdAuthenticationError as token_error:
+                if not refresh_credentials:
+                    raise
+                refreshed = refresh_credentials(token_error)
+                records = fetch_humbird_production_records_http(
+                    platform, start_date, end_date, refreshed,
+                    report_progress,
+                )
             api_source = "直接 API"
         data = filter_production_time(
             parse_humbird_records(records, platform),

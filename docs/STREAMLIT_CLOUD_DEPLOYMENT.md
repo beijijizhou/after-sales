@@ -39,8 +39,11 @@ secret values from the UI.
 
 ## Shared Humbird ERP authorization
 
-Haloo 优先使用蜂鸟官方开放平台。在 Streamlit Secrets 中配置
-`HUMBIRD_OPEN_API_KEY`；官方文档与接口清单见
+Haloo、莆田和隆丰优先使用蜂鸟官方开放平台。在 Streamlit Secrets 中按账号
+分别配置 `humbird_open_api."Haloo".api_key`、
+`humbird_open_api."莆田".api_key` 和
+`humbird_open_api."隆丰".api_key`；各账号的 Key 不能混用。旧的全局
+`HUMBIRD_OPEN_API_KEY` 仅作为 Haloo 的兼容配置。官方文档与接口清单见
 `docs/HUMBIRD_OPEN_API.md`。该模式不需要 Chrome、网页登录或 token 刷新。
 原有数据库加密 token 继续保留为生产和物流数据备用通道，官方 API 暂时不可
 用时会自动回退；不要在启用 API Key 后删除旧 token。Streamlit Cloud 无法

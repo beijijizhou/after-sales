@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from automation.production import ProductionDataResult
+from automation.production_batch import ALL_CLOTHING_PLATFORMS
 from automation.sync.colored_period import (
     LOOKBACK_DAYS,
     _date_chunks,
@@ -16,6 +17,9 @@ from automation.sync.colored_period import (
     load_colored_api_period_model,
     persist_cached_colored_api_period,
     refresh_colored_api_period,
+)
+from ui.inventory.planning.colored_consumption import (
+    _default_refresh_platforms,
 )
 
 
@@ -172,6 +176,67 @@ class ColoredPeriodModelTests(unittest.TestCase):
         self.assertEqual(cached.data.iloc[0]["尺码"], "L")
         self.assertEqual(cached.data.iloc[0]["平台生产日均"], 50)
         self.assertEqual(cached.source, "local_cache")
+
+    def test_selected_platform_refresh_keeps_other_platform_cache(self):
+        platform_a = pd.DataFrame([{
+            **_production_row("红色", "L", 40, "品牌A"),
+            "运营商": "平台A",
+        }])
+        platform_b = pd.DataFrame([{
+            **_production_row("黄色", "M", 60, "品牌B"),
+            "运营商": "平台B",
+        }])
+        calls = []
+
+        def load(platform, start_date, end_date, credentials=None):
+            calls.append(platform)
+            return ProductionDataResult(platform_b.copy(), f"{platform} API")
+
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "automation.production_cache.CACHE_DIR", Path(directory)
+        ), patch(
+            "automation.sync.colored_period.DTF_PRODUCTION_PLATFORMS",
+            ("平台A", "平台B"),
+        ), patch(
+            "automation.sync.colored_period.load_platform_credentials",
+            side_effect=lambda platform, _secrets: {"token": platform},
+        ), patch(
+            "automation.sync.colored_period.load_production_data",
+            side_effect=load,
+        ):
+            from automation.production_cache import save_production_cache
+            save_production_cache(
+                ALL_CLOTHING_PLATFORMS,
+                date(2026, 8, 16), date(2026, 8, 16),
+                platform_a, "已有平台A",
+                extra_metadata={
+                    "included_platforms": ["平台A"],
+                    "platform_coverage_days": {"平台A": 1},
+                },
+            )
+            model = refresh_colored_api_period(
+                date(2026, 8, 17), {}, days=1, chunk_days=1,
+                max_workers=1, platforms=("平台B",),
+            )
+
+        self.assertEqual(calls, ["平台B"])
+        self.assertEqual(set(model.included_platforms), {"平台A", "平台B"})
+        self.assertEqual(set(model.data["颜色"]), {"红色", "黄色"})
+
+    def test_refresh_defaults_to_incomplete_platforms_only(self):
+        status = pd.DataFrame([
+            {"平台": "Haloo", "读取状态": "未开始"},
+            {"平台": "莆田", "读取状态": "读取失败"},
+            {"平台": "S2B", "读取状态": "已读取"},
+        ])
+        with patch(
+            "ui.inventory.planning.colored_consumption."
+            "DTF_PRODUCTION_PLATFORMS",
+            ("Haloo", "莆田", "S2B"),
+        ):
+            selected = _default_refresh_platforms(status)
+
+        self.assertEqual(selected, ["Haloo", "莆田"])
 
     def test_deployment_prefers_persisted_database_model(self):
         persisted = pd.DataFrame([{

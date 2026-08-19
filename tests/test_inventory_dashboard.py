@@ -283,7 +283,7 @@ class InventoryDashboardTests(unittest.TestCase):
             ],
         )
 
-    def test_uv_preview_marks_iphone_outside_statistics_and_deduction(self):
+    def test_uv_preview_routes_iphone_to_model_allocation(self):
         uv = AUTOMATIC_DAILY_FLOWS[1]
         preview_rows = pd.DataFrame([
             {
@@ -292,7 +292,7 @@ class InventoryDashboardTests(unittest.TestCase):
             },
             {
                 "表格产品": "Iphone", "当日消耗": 500,
-                "预计扣减": 0, "状态": "待分配 SKU（本次不扣）",
+                "预计扣减": 0, "状态": "待分配手机壳型号",
             },
         ])
         with (
@@ -319,8 +319,8 @@ class InventoryDashboardTests(unittest.TestCase):
 
         self.assertEqual(result.state, "ready")
         self.assertEqual(result.quantity, 2000)
-        self.assertIn("Iphone（手机壳） 500 件", result.message)
-        self.assertIn("未进入统计及库存扣减", result.message)
+        self.assertIn("手机壳 500 件待按材质和型号分配", result.message)
+        self.assertIn("UV 系统库存扣减", result.message)
 
     def test_applied_result_reports_refreshed_completion_state(self):
         movement_date = date(2026, 8, 3)

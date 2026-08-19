@@ -4,10 +4,38 @@ import unittest
 from unittest.mock import patch
 
 from automation.api.humbird import local_auth
-from automation.api.humbird.config import load_humbird_credentials
+from automation.api.humbird.config import (
+    load_humbird_credentials,
+    load_humbird_credentials_with_local_refresh,
+)
+from db.automation_credentials import CredentialExpiredError
 
 
 class HumbirdLocalAuthTest(unittest.TestCase):
+    @patch("automation.api.humbird.local_auth.refresh_local_humbird_token")
+    @patch("automation.api.humbird.local_auth.local_humbird_login_available")
+    @patch("automation.api.humbird.config.load_humbird_credentials")
+    def test_expired_production_token_refreshes_locally_and_continues(
+        self, load_credentials, local_available, refresh,
+    ):
+        load_credentials.side_effect = [
+            CredentialExpiredError("莆田共享授权已失效"),
+            {"token": "refreshed", "credential_source": "database"},
+        ]
+        local_available.return_value = True
+        progress = []
+
+        result = load_humbird_credentials_with_local_refresh(
+            {"SUPABASE_KEY": "key"},
+            "莆田",
+            supabase=object(),
+            report_progress=progress.append,
+        )
+
+        self.assertEqual(result["token"], "refreshed")
+        refresh.assert_called_once()
+        self.assertTrue(any("第3级" in message for message in progress))
+
     @patch(
         "automation.api.humbird.config._load_legacy_credentials",
         return_value=None,
@@ -45,6 +73,28 @@ class HumbirdLocalAuthTest(unittest.TestCase):
         )
 
         self.assertEqual(credentials["api_key"], "longfeng-key")
+
+    @patch(
+        "automation.api.humbird.config._load_legacy_credentials",
+        side_effect=RuntimeError("expired legacy token"),
+    )
+    def test_putian_uses_its_own_open_api_key_when_legacy_token_expired(
+        self, _legacy
+    ):
+        credentials = load_humbird_credentials(
+            {
+                "humbird_open_api": {
+                    "Haloo": {"api_key": "haloo-key"},
+                    "莆田": {"api_key": "putian-key"},
+                },
+            },
+            "莆田",
+        )
+
+        self.assertEqual(credentials["api_key"], "putian-key")
+        self.assertEqual(
+            credentials["credential_source"], "humbird_open_api"
+        )
 
     @patch(
         "automation.api.humbird.config._load_legacy_credentials",

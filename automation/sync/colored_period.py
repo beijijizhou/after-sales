@@ -262,21 +262,32 @@ def build_colored_platform_status(model, platforms=None):
 def refresh_colored_api_period(
     current_date, secrets, days=LOOKBACK_DAYS, chunk_days=7,
     max_workers=8, report_progress=None, supabase=None, operator="system",
+    platforms=None,
 ):
     end_date = current_date - timedelta(days=1)
     start_date = end_date - timedelta(days=int(days) - 1)
+    requested = _requested_platforms(platforms)
     chunks = _date_chunks(start_date, end_date, chunk_days)
     report = report_progress or (lambda _done, _total, _message: None)
     credentials, credential_errors = {}, {}
-    for platform in DTF_PRODUCTION_PLATFORMS:
+    for platform in requested:
         try:
-            credentials[platform] = load_platform_credentials(platform, secrets)
+            credential_options = {}
+            if supabase is not None:
+                credential_options = {
+                    "supabase": supabase,
+                    "report_progress": lambda message: report(0, 1, message),
+                    "updated_by": operator,
+                }
+            credentials[platform] = load_platform_credentials(
+                platform, secrets, **credential_options
+            )
         except Exception as error:
             credential_errors[platform] = str(error)
 
     tasks = [
         (platform, chunk_start, chunk_end)
-        for platform in DTF_PRODUCTION_PLATFORMS
+        for platform in requested
         if platform not in credential_errors
         for chunk_start, chunk_end in _platform_chunks(
             platform, start_date, end_date, chunks
@@ -284,7 +295,7 @@ def refresh_colored_api_period(
     ]
     frames, errors = [], dict(credential_errors)
     persistence_errors = {}
-    coverage_days = {platform: 0 for platform in DTF_PRODUCTION_PLATFORMS}
+    coverage_days = {platform: 0 for platform in requested}
     completed = 0
     with ThreadPoolExecutor(
         max_workers=max(1, min(int(max_workers), len(tasks) or 1))
@@ -302,6 +313,14 @@ def refresh_colored_api_period(
             completed += 1
             try:
                 frame, source = future.result()
+                frame = frame.copy()
+                if "运营商" not in frame:
+                    frame["运营商"] = platform
+                else:
+                    blank_platform = (
+                        frame["运营商"].fillna("").astype(str).str.strip().eq("")
+                    )
+                    frame.loc[blank_platform, "运营商"] = platform
                 frames.append(frame)
                 coverage_days[platform] += (chunk_end - chunk_start).days + 1
                 if supabase is not None:
@@ -347,26 +366,105 @@ def refresh_colored_api_period(
     failed_platforms = {
         key.split(":", 1)[0] for key in errors
     }
-    included = sorted(set(DTF_PRODUCTION_PLATFORMS) - failed_platforms)
-    available = sorted({
-        str(value) for value in combined.get(
-            "运营商", pd.Series(dtype=str)
-        ).dropna().astype(str) if str(value)
-    })
+    aggregate, metadata = _merge_aggregate_refresh(
+        start_date, end_date, requested, combined, failed_platforms,
+        coverage_days, errors, persistence_errors,
+    )
     save_production_cache(
-        ALL_CLOTHING_PLATFORMS, start_date, end_date, combined,
-        f"最近 {days} 天彩色短袖平台 API 并发读取",
-        extra_metadata={
-            "included_platforms": included,
-            "missing_platforms": sorted(failed_platforms),
-            "available_platforms": available,
-            "platform_coverage_days": coverage_days,
-            "platform_errors": errors,
-            "persistence_errors": persistence_errors,
-            "is_complete": not errors and not persistence_errors,
-        },
+        ALL_CLOTHING_PLATFORMS, start_date, end_date, aggregate,
+        f"最近 {days} 天衣服平台 API 选择读取",
+        extra_metadata=metadata,
     )
     return load_colored_api_period_model(current_date, days, supabase)
+
+
+def _requested_platforms(platforms):
+    if platforms is None:
+        return tuple(DTF_PRODUCTION_PLATFORMS)
+    selected = {
+        str(platform).strip() for platform in platforms
+        if str(platform).strip()
+    }
+    unknown = sorted(selected - set(DTF_PRODUCTION_PLATFORMS))
+    if unknown:
+        raise ValueError("未接入的生产平台：" + "、".join(unknown))
+    requested = tuple(
+        platform for platform in DTF_PRODUCTION_PLATFORMS
+        if platform in selected
+    )
+    if not requested:
+        raise ValueError("请至少选择一个生产平台")
+    return requested
+
+
+def _merge_aggregate_refresh(
+    start_date, end_date, requested, refreshed, failed_platforms,
+    coverage_days, errors, persistence_errors,
+):
+    """Replace selected providers without erasing other provider data."""
+    existing = load_production_cache(
+        ALL_CLOTHING_PLATFORMS, start_date, end_date
+    )
+    old_rows = existing.data.copy() if existing is not None else pd.DataFrame()
+    old_metadata = dict(existing.metadata or {}) if existing is not None else {}
+    if not old_rows.empty and "运营商" in old_rows:
+        old_rows = old_rows[
+            ~old_rows["运营商"].fillna("").astype(str).isin(requested)
+        ]
+    elif set(requested) == set(DTF_PRODUCTION_PLATFORMS):
+        old_rows = pd.DataFrame()
+    frames = [frame for frame in (old_rows, refreshed) if not frame.empty]
+    aggregate = (
+        pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    )
+
+    included = set(old_metadata.get("included_platforms") or ())
+    missing = set(old_metadata.get("missing_platforms") or ())
+    included.difference_update(requested)
+    missing.difference_update(requested)
+    included.update(set(requested) - set(failed_platforms))
+    missing.update(failed_platforms)
+
+    merged_coverage = dict(old_metadata.get("platform_coverage_days") or {})
+    merged_coverage.update(coverage_days)
+    merged_errors = _replace_selected_errors(
+        old_metadata.get("platform_errors"), requested, errors
+    )
+    merged_persistence_errors = _replace_selected_errors(
+        old_metadata.get("persistence_errors"), requested,
+        persistence_errors,
+    )
+    available = {
+        str(value).strip() for value in aggregate.get(
+            "运营商", pd.Series(dtype=str)
+        ).dropna().astype(str) if str(value).strip()
+    }
+    return aggregate, {
+        "included_platforms": sorted(included),
+        "missing_platforms": sorted(missing),
+        "available_platforms": sorted(available),
+        "platform_coverage_days": merged_coverage,
+        "platform_errors": merged_errors,
+        "persistence_errors": merged_persistence_errors,
+        "is_complete": (
+            set(DTF_PRODUCTION_PLATFORMS).issubset(included)
+            and not merged_errors
+            and not merged_persistence_errors
+        ),
+    }
+
+
+def _replace_selected_errors(existing, requested, replacement):
+    selected = set(requested)
+    merged = {
+        str(key): str(value)
+        for key, value in dict(existing or {}).items()
+        if str(key).split(":", 1)[0] not in selected
+    }
+    merged.update({
+        str(key): str(value) for key, value in replacement.items()
+    })
+    return merged
 
 
 def _load_chunk(

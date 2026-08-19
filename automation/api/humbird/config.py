@@ -4,6 +4,10 @@ import tomllib
 from supabase import create_client
 
 from db.automation_credentials import load_erp_token, save_erp_token
+from db.automation_credentials import (
+    CredentialDecryptionError,
+    CredentialExpiredError,
+)
 
 
 LOCAL_CREDENTIALS = (
@@ -34,6 +38,60 @@ def load_humbird_credentials(streamlit_secrets, platform, supabase=None):
     raise ValueError(
         f"未配置 {platform} 开放平台 API Key 或备用 API token"
     )
+
+
+def load_humbird_credentials_with_local_refresh(
+    streamlit_secrets,
+    platform,
+    supabase=None,
+    updated_by="admin-browser-refresh",
+    report_progress=None,
+):
+    """Resolve credentials and refresh an unusable legacy token locally."""
+    report = report_progress or (lambda _message: None)
+
+    def refresh(reason):
+        from automation.api.humbird.local_auth import (
+            HumbirdLocalLoginRequired,
+            local_humbird_login_available,
+            refresh_local_humbird_token,
+        )
+
+        if not local_humbird_login_available():
+            raise HumbirdLocalLoginRequired(
+                f"{platform} Open API 和数据库 token 均不可用；"
+                "当前云端不能启动浏览器，请管理员在本地同步一次刷新授权"
+            ) from reason
+        report(
+            f"{platform} 数据库 token 不可用（{reason}）；"
+            "第3级：启动本地专用 Chrome 刷新授权。"
+        )
+        refresh_local_humbird_token(
+            platform,
+            streamlit_secrets,
+            supabase=supabase,
+            updated_by=updated_by,
+            report_progress=report_progress,
+        )
+        report("新 token 已加密写入数据库，正在继续本次生产同步。")
+        refreshed = load_humbird_credentials(
+            streamlit_secrets, platform, supabase
+        )
+        refreshed["_refresh_credentials"] = refresh
+        return refreshed
+
+    try:
+        credentials = load_humbird_credentials(
+            streamlit_secrets, platform, supabase
+        )
+    except (
+        CredentialDecryptionError,
+        CredentialExpiredError,
+        ValueError,
+    ) as error:
+        return refresh(error)
+    credentials["_refresh_credentials"] = refresh
+    return credentials
 
 
 def _load_legacy_credentials(streamlit_secrets, platform, supabase=None):

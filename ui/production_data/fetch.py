@@ -1,17 +1,9 @@
 import streamlit as st
 
-from automation.logistics.config import load_s2b_account
-from automation.api.diy19 import DIY19_BASE_URLS, load_diy19_credentials
-from automation.api.fangguo import load_fangguo_credentials
-from automation.api.hansen import load_hansen_credentials
-from automation.api.humbird.config import load_humbird_credentials
-from automation.api.sds import load_sds_credentials
 from automation.production import (
     DIAGNOSTIC_PATH,
     DTF_PRODUCTION_PLATFORMS,
-    ERP_PLATFORM_NAMES,
     ProductionLoginRequired,
-    SDS_PLATFORM_PROFILES,
     load_production_data,
     production_data_key,
 )
@@ -20,6 +12,7 @@ from automation.production_batch import (
     load_all_clothing_production,
 )
 from automation.production_cache import load_production_cache
+from automation.sync.credentials import load_platform_credentials
 from db.supabase_client import supabase
 from ui.production_data.cache_state import (
     aggregate_missing,
@@ -91,7 +84,9 @@ def fetch_and_store_production_data(
                 start_date,
                 end_date,
                 report_progress=report,
-                credentials=_credentials_for(platform, department),
+                credentials=_credentials_for(
+                    platform, department, report_progress=report
+                ),
                 start_hour=start_hour,
                 end_hour=end_hour,
                 account_name=department if platform == "S2B" else None,
@@ -146,7 +141,9 @@ def _fetch_all(
     requested = tuple(platforms or DTF_PRODUCTION_PLATFORMS)
     for platform in requested:
         try:
-            credentials[platform] = _credentials_for(platform, department)
+            credentials[platform] = _credentials_for(
+                platform, department, report_progress=report
+            )
         except Exception as error:
             credential_errors[platform] = str(error)
     batch = load_all_clothing_production(
@@ -205,20 +202,14 @@ def _fetch_all(
     return source, batch.errors
 
 
-def _credentials_for(platform, department="DTF"):
-    if platform in ERP_PLATFORM_NAMES:
-        return load_humbird_credentials(st.secrets, platform, supabase)
-    if platform == "S2B":
-        account = department if department in {"DTF", "UV", "3D"} else "DTF"
-        return load_s2b_account(st.secrets, account)
-    if platform in SDS_PLATFORM_PROFILES:
-        return load_sds_credentials(
-            st.secrets, SDS_PLATFORM_PROFILES[platform]
-        )
-    if platform == "汉森":
-        return load_hansen_credentials(st.secrets)
-    if platform == "方果":
-        return load_fangguo_credentials(st.secrets)
-    if platform in DIY19_BASE_URLS:
-        return load_diy19_credentials(st.secrets, platform)
-    return None
+def _credentials_for(
+    platform, department="DTF", report_progress=None,
+):
+    return load_platform_credentials(
+        platform,
+        st.secrets,
+        supabase=supabase,
+        report_progress=report_progress,
+        updated_by="production-data-local-refresh",
+        department=department,
+    )

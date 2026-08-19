@@ -2,6 +2,7 @@ import unittest
 import pandas as pd
 
 from ui.inventory.category_routing import (
+    apply_phone_case_display_scope,
     exclude_consumable_dimensions,
     is_consumable_category,
 )
@@ -29,6 +30,20 @@ class InventoryCategoryRoutingTests(unittest.TestCase):
         self.assertEqual(
             result["category"].tolist(), ["黑白短袖", "铁板画"]
         )
+
+    def test_uv_general_view_hides_phone_cases_but_phone_view_is_formal_only(self):
+        rows = pd.DataFrame([
+            {"category": "铁板画", "material": "铁牌", "size": "2030"},
+            {"category": "手机壳", "material": "磨砂 TPU", "size": "IPHONE 15"},
+            {"category": "手机壳", "material": "", "size": "IPHONE 15"},
+        ])
+
+        general = apply_phone_case_display_scope(rows, "UV", "")
+        phone = apply_phone_case_display_scope(rows, "UV", "手机壳")
+
+        self.assertEqual(general["category"].tolist(), ["铁板画"])
+        self.assertEqual(len(phone), 1)
+        self.assertEqual(phone.iloc[0]["material"], "磨砂 TPU")
 
 
 if __name__ == "__main__":

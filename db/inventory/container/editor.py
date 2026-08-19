@@ -78,6 +78,193 @@ def _value(value):
     return str(value).strip()
 
 
+def build_posted_container_identity_correction_plan(
+    rows, identity_updates, inventory,
+):
+    """Plan a SKU reclassification without increasing total inventory."""
+    inventory_map = {
+        _sku_key(row): int(row.get("quantity") or 0)
+        for row in inventory
+    }
+    planned_identities = []
+    plan = []
+    for row in rows:
+        item_id = str(row["id"])
+        target = {
+            column: str(
+                identity_updates.get(item_id, {}).get(
+                    column, row.get(column)
+                ) or ""
+            ).strip()
+            for column in ["category", "brand", "material", "color", "size"]
+        }
+        if target["category"] != str(row.get("category") or "").strip():
+            raise ValueError("已入库货柜SKU更正暂不支持跨品类移动")
+        target_key = _sku_key({**row, **target})
+        planned_identities.append(target_key)
+        source_key = _sku_key(row)
+        if target_key == source_key:
+            continue
+        available = inventory_map.get(source_key, 0)
+        quantity = int(row.get("quantity") or 0)
+        moved_quantity = min(quantity, available)
+        inventory_map[source_key] = available - moved_quantity
+        inventory_map[target_key] = (
+            inventory_map.get(target_key, 0) + moved_quantity
+        )
+        plan.append({
+            **row,
+            "target": target,
+            "moved_quantity": moved_quantity,
+            "unresolved_history": quantity - moved_quantity,
+        })
+    if len(set(planned_identities)) != len(planned_identities):
+        raise ValueError("更正后货柜中存在重复SKU明细")
+    return plan
+
+
+def correct_posted_container_identities(
+    supabase, container_key, identity_updates, operated_by,
+):
+    """Reclassify posted cargo and its remaining stock as one audit batch."""
+    rows = (
+        supabase.table("inventory_container_imports").select(
+            "id,container_no,status,department,category,brand,material,color,"
+            "size,quantity,unit_cost"
+        ).eq("container_key", container_key).execute().data or []
+    )
+    if not rows or any(row.get("status") != "已入库" for row in rows):
+        raise ValueError("只有已入库货柜可以更正SKU归属")
+    inventory = []
+    for department in sorted({row["department"] for row in rows}):
+        inventory.extend(
+            supabase.table("inventory_items").select(
+                "department,category,brand,material,color,size,quantity,is_active"
+            ).eq("department", department).execute().data or []
+        )
+    active_keys = {
+        _sku_key(row) for row in inventory if row.get("is_active", True)
+    }
+    plan = build_posted_container_identity_correction_plan(
+        rows, identity_updates, inventory
+    )
+    for row in plan:
+        if _sku_key({**row, **row["target"]}) not in active_keys:
+            target = row["target"]
+            raise ValueError(
+                "目标SKU不存在或已停用："
+                f"{target['material']} / {target['color']} / {target['size']}"
+            )
+    if not plan:
+        return {"rows": 0, "inventory_change": 0, "unresolved_history": 0}
+
+    batch_id = str(uuid4())
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    applied_groups = []
+    try:
+        adjustments = []
+        for row in plan:
+            quantity = row["moved_quantity"]
+            if quantity <= 0:
+                continue
+            source_label = f"{row['material']}/{row['color']}/{row['size']}"
+            target = row["target"]
+            target_label = (
+                f"{target['material']}/{target['color']}/{target['size']}"
+            )
+            common = {
+                "日期": today,
+                "数量": quantity,
+                "备注": (
+                    f"货柜入库SKU更正：{container_key}｜"
+                    f"{source_label} → {target_label}"
+                ),
+            }
+            adjustments.extend([
+                {
+                    **common, "操作": "扣减", "品牌": row["brand"],
+                    "材质": row["material"], "颜色": row["color"],
+                    "尺码": row["size"], "成本": pd.NA,
+                    "department": row["department"],
+                    "category": row["category"],
+                },
+                {
+                    **common, "操作": "增加", "品牌": target["brand"],
+                    "材质": target["material"], "颜色": target["color"],
+                    "尺码": target["size"], "成本": row["unit_cost"],
+                    "department": row["department"],
+                    "category": target["category"],
+                },
+            ])
+        frame = pd.DataFrame(adjustments)
+        if not frame.empty:
+            for (department, category), group in frame.groupby(
+                ["department", "category"], dropna=False
+            ):
+                apply_adjustment_rows(
+                    supabase, department, category,
+                    group.drop(columns=["department", "category"]),
+                    created_by=operated_by, source_type="bulk",
+                    batch_id=batch_id,
+                )
+                applied_groups.append((department, category))
+        for row in plan:
+            target = row["target"]
+            supabase.table("inventory_container_imports").update({
+                **target,
+                "品牌": target["brand"],
+                "材质": target["material"],
+            }).eq("id", row["id"]).execute()
+        details = "；".join(
+            f"{row['material']}/{row['color']}/{row['size']} → "
+            f"{row['target']['material']}/{row['target']['color']}/"
+            f"{row['target']['size']}，当前库存转移"
+            f"{row['moved_quantity']}件，历史已消耗"
+            f"{row['unresolved_history']}件"
+            for row in plan
+        )
+        supabase.table("inventory_container_events").insert({
+            "container_key": container_key,
+            "container_no": rows[0].get("container_no") or container_key,
+            "event_type": "入库后SKU更正",
+            "effective_date": today.isoformat(),
+            "previous_status": "已入库",
+            "new_status": "已入库",
+            "operated_by": operated_by,
+            "note": f"{details}｜库存批次：{batch_id}",
+        }).execute()
+    except Exception:
+        for row in plan:
+            supabase.table("inventory_container_imports").update({
+                "category": row["category"], "brand": row["brand"],
+                "material": row["material"], "color": row["color"],
+                "size": row["size"], "品牌": row["brand"],
+                "材质": row["material"],
+            }).eq("id", row["id"]).execute()
+        if applied_groups:
+            try:
+                reverse_batch(
+                    supabase,
+                    BatchReference(
+                        BatchKind.INVENTORY, batch_id,
+                        applied_groups[0][0], applied_groups[0][1],
+                    ),
+                    operated_by,
+                )
+            except Exception:
+                pass
+        raise
+    return {
+        "rows": len(plan),
+        "inventory_change": 0,
+        "moved_quantity": sum(row["moved_quantity"] for row in plan),
+        "unresolved_history": sum(
+            row["unresolved_history"] for row in plan
+        ),
+        "batch_id": batch_id,
+    }
+
+
 def build_posted_container_correction_plan(rows, quantity_updates, inventory):
     inventory_map = {
         _sku_key(row): int(row.get("quantity") or 0)

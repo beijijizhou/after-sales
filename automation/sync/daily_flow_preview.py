@@ -9,6 +9,7 @@ from automation.sync.dtf_colored_inventory import (
     load_colored_day_deducted_total,
 )
 from automation.sync.uv_daily_operation import (
+    PHONE_CASE_PENDING_STATUS,
     SYNCABLE_STATUSES,
     build_daily_sync_preview,
 )
@@ -109,6 +110,9 @@ def _uv_preview(
     exclusion_note = uv_exclusion_note(
         rows[rows["状态"] == "待分配 SKU（本次不扣）"]
     )
+    phone_note = phone_case_allocation_note(
+        rows[rows["状态"] == PHONE_CASE_PENDING_STATUS]
+    )
     blocking = rows[~rows["状态"].isin(SYNCABLE_STATUSES)]
     quantity = int(pd.to_numeric(rows["预计扣减"], errors="coerce").fillna(0).sum())
     if not blocking.empty:
@@ -118,9 +122,24 @@ def _uv_preview(
         )
         return preview_type(
             flow, "blocked", quantity, rows,
-            "；".join(filter(None, [problems, exclusion_note])),
+            "；".join(filter(None, [problems, exclusion_note, phone_note])),
         )
-    return preview_type(flow, "ready", quantity, rows, exclusion_note)
+    return preview_type(
+        flow, "ready", quantity, rows,
+        "；".join(filter(None, [exclusion_note, phone_note])),
+    )
+
+
+def phone_case_allocation_note(rows):
+    if rows is None or rows.empty:
+        return ""
+    quantity = int(pd.to_numeric(
+        rows["当日消耗"], errors="coerce"
+    ).fillna(0).sum())
+    return (
+        f"手机壳 {quantity:,} 件待按材质和型号分配；"
+        "请到 UV 系统库存扣减的“手机壳”分类处理"
+    )
 
 
 def uv_exclusion_note(excluded_rows):

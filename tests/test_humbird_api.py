@@ -53,6 +53,36 @@ class HumbirdApiTests(unittest.TestCase):
         self.assertIn("旧接口备用通道", result.source)
         self.assertTrue(any("切换旧接口" in item for item in progress))
 
+    @patch("automation.production.fetch_humbird_production_records_http")
+    @patch("automation.production.fetch_open_production_records")
+    def test_open_and_token_failure_refreshes_browser_then_retries_legacy(
+        self, fetch_open, fetch_legacy,
+    ):
+        fetch_open.side_effect = RuntimeError("official unavailable")
+        fetch_legacy.side_effect = [
+            HumbirdAuthenticationError("expired token"),
+            [],
+        ]
+        refreshed = []
+
+        result = load_production_data(
+            "莆田",
+            date(2026, 8, 12),
+            date(2026, 8, 12),
+            credentials={
+                "api_key": "putian-open",
+                "token": "expired",
+                "_refresh_credentials": lambda error: (
+                    refreshed.append(str(error))
+                    or {"token": "new-token"}
+                ),
+            },
+        )
+
+        self.assertEqual(refreshed, ["expired token"])
+        self.assertEqual(fetch_legacy.call_count, 2)
+        self.assertIn("旧接口备用通道", result.source)
+
     def test_open_api_uses_api_key_and_public_router(self):
         response = type("Response", (), {
             "status_code": 200,

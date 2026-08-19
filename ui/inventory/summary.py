@@ -25,7 +25,10 @@ from ui.inventory.history.workflows.page import (
 )
 from ui.inventory.history.core.filters import movement_type_options
 from ui.inventory.i18n import get_language, render_language_selector, t
-from ui.inventory.category_routing import exclude_consumable_dimensions
+from ui.inventory.category_routing import (
+    apply_phone_case_display_scope,
+    exclude_consumable_dimensions,
+)
 from ui.inventory.operations.outbound_feedback import (
     render_saved_outbound_audit_feedback,
 )
@@ -90,6 +93,8 @@ def render_inventory_summary(supabase):
     filter_title = build_inventory_filter_title(
         category, brands, materials, colors, selected_sizes
     )
+    if department == "UV" and not category:
+        filter_title = "UV 生产库存（不含手机壳）"
     can_edit = has_permission("can_edit_inventory")
     flow = inventory_daily_consumption_flow(department, category)
     if can_edit and flow:
@@ -104,6 +109,9 @@ def render_inventory_summary(supabase):
     try:
         complete_category_raw_df = load_inventory_items(
             supabase, department, category
+        )
+        complete_category_raw_df = apply_phone_case_display_scope(
+            complete_category_raw_df, department, category
         )
         focused_outbound_date = st.session_state.get(
             "daily_outbound_focus_date"

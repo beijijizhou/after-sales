@@ -52,6 +52,15 @@ def build_stock_review_comparison(preview):
         "当前库存", "本次变动", "调整后库存",
     }.issubset(comparison.columns):
         return comparison
+    if {
+        "当前库存", "本次变动", "操作后库存",
+    }.issubset(comparison.columns):
+        # Package-based entry previews already expose the three business
+        # quantities in their selected entry unit.  They may additionally
+        # carry explicit box columns for audit detail.  Renaming those box
+        # columns here would create duplicate ``当前库存``/``本次变动`` labels,
+        # which pandas cannot normalize as a one-dimensional Series.
+        return comparison.rename(columns={"操作后库存": "调整后库存"})
     if "本次变动（箱）" in comparison:
         return comparison.rename(columns={
             "当前库存（箱）": "当前库存",
