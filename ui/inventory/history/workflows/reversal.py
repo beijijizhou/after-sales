@@ -14,6 +14,7 @@ from db.inventory.operations.outbound_audit import load_outbound_inventory
 from ui.inventory.container.item_editor import (
     render_posted_container_correction,
 )
+from ui.inventory.container.reversal import render_container_undo_action
 from ui.inventory.history.core.batches import add_movement_batch_key
 from ui.inventory.history.core.tables import render_movement_table
 from ui.inventory.history.workflows.daily_outbound import (
@@ -44,41 +45,92 @@ def render_selected_movement(
         key=f"inventory_movement_detail_{key_scope}_{selected_batch}",
     )
     reversed_ids = reversed_record_ids(movements)
+    container_target = load_container_batch_target(supabase, selected)
+    if not container_target.empty:
+        if allow_undo:
+            render_container_batch_management(
+                supabase, container_target, key_scope
+            )
+        else:
+            st.info(
+                "这是货柜入库批次。数量、成本和整批撤销请统一前往"
+                "“批次修改与撤销”处理。"
+            )
+        return
     if allow_undo:
         render_movement_undo(
             supabase, selected, reversed_ids, key_scope=key_scope
         )
     else:
-        if not render_container_batch_correction(supabase, selected):
-            render_selected_batch_correction(
-                supabase, selected, reversed_ids, key_scope=key_scope
-            )
+        render_selected_batch_correction(
+            supabase, selected, reversed_ids, key_scope=key_scope
+        )
 
 
-def render_container_batch_correction(supabase, selected):
-    if selected.empty or not has_permission("can_edit_inventory"):
-        return False
+def load_container_batch_target(supabase, selected):
+    if selected.empty:
+        return pd.DataFrame()
     if not selected["quantity_change"].gt(0).all():
-        return False
+        return pd.DataFrame()
+    reasons = selected.get(
+        "reason", pd.Series("", index=selected.index, dtype=str)
+    ).fillna("").astype(str)
+    if not reasons.str.startswith("货柜入库：").all():
+        return pd.DataFrame()
     batch_ids = selected.get("batch_id", pd.Series(dtype=str)).dropna(
     ).astype(str).unique()
     if len(batch_ids) != 1:
-        return False
+        return pd.DataFrame()
     try:
         target = load_posted_container_by_inventory_batch(
             supabase, batch_ids[0]
         )
     except Exception as error:
         st.caption(f"货柜批次更正入口暂时无法加载：{error}")
-        return False
+        return pd.DataFrame()
+    return pd.DataFrame(target)
+
+
+def render_container_batch_management(supabase, target, key_scope):
     target = pd.DataFrame(target)
     if target.empty:
-        return False
+        return
     st.divider()
-    render_posted_container_correction(
-        supabase, target, str(target.iloc[0]["container_key"])
+    container_key = str(target.iloc[0]["container_key"])
+    statuses = set(
+        target["status"].fillna("").astype(str).str.strip()
     )
-    return True
+    if statuses != {"已入库"}:
+        st.success("这个货柜入库批次已经撤销，货柜与库存状态均已同步。")
+        return
+    st.markdown("#### 货柜入库批次维护")
+    st.caption(
+        "这里是已入库货柜的唯一修改入口；保存后会同时更新库存、"
+        "成本、货柜明细和审计历史。"
+    )
+    can_correct = has_permission("can_edit_inventory")
+    can_reverse = has_permission("can_edit_container")
+    options = []
+    if can_correct:
+        options.append("修改数量与成本")
+    if can_reverse:
+        options.append("撤销整笔入库")
+    if not options:
+        st.info("当前账号可以查看这个货柜批次，但没有修改或撤销权限。")
+        return
+    action = st.segmented_control(
+        "处理方式", options, default=options[0],
+        key=f"container_batch_action_{key_scope}_{container_key}",
+    ) or options[0]
+    if action == "修改数量与成本":
+        render_posted_container_correction(
+            supabase, target, container_key
+        )
+        return
+    render_container_undo_action(
+        supabase, target, container_key,
+        f"inventory_container_batch_{key_scope}", embedded=True,
+    )
 
 
 def render_selected_batch_correction(

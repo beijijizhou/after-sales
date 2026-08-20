@@ -29,7 +29,10 @@ def render_container_item_editor(supabase, target, container_key, can_edit):
         return
     statuses = set(target["status"].fillna("").astype(str))
     if statuses == {"已入库"}:
-        st.caption("已入库货柜请在“库存 → 库存流水”选择原入库批次统一更正。")
+        st.caption(
+            "已入库货柜请在“库存 → 批次修改与撤销”选择"
+            "“货柜入库”批次统一更正。"
+        )
         return
     source = build_container_item_editor_source(target)
     st.subheader("修改货柜明细")

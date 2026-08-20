@@ -207,7 +207,9 @@ def _normalize_cost_rows(
         result["unit_cost"], errors="coerce"
     )
     result["amount"] = result["quantity"] * result["unit_cost"].fillna(0)
-    result["missing_cost"] = result["unit_cost"].isna()
+    result["missing_cost"] = (
+        result["unit_cost"].isna() | result["unit_cost"].le(0)
+    )
     result["business_batch_key"] = ""
     result["business_batch_label"] = ""
     result["inventory_domain"] = "生产库存"
@@ -225,6 +227,7 @@ from db.finance.consumable_repository import (  # noqa: E402
 )
 from db.finance.cost_maintenance import (  # noqa: E402
     exclude_stocktake_batches as _exclude_stocktake_batches,
+    load_inbound_cost_history,
     load_missing_consumable_cost_movements,
     load_missing_inventory_cost_lots,
     update_consumable_movement_cost,

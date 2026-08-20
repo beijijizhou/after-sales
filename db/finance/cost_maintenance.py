@@ -7,6 +7,49 @@ import pandas as pd
 from db.finance.repository import _fetch_pages, _normalize_cost_rows
 
 
+def load_inbound_cost_history(supabase):
+    """Load every active inbound cost record for the shared cost ledger."""
+    rows = _fetch_pages(
+        lambda start, end: (
+            supabase.table("inventory_cost_lots")
+            .select(
+                "id,inbound_movement_id,batch_id,received_quantity,"
+                "remaining_quantity,unit_cost,source_type,movement_date,"
+                "created_at,reversed_at,inventory_items!"
+                "inventory_cost_lots_inventory_item_id_fkey!inner"
+                "(department,category,brand,material,color,size)"
+            )
+            .is_("reversed_at", "null")
+            .order("movement_date", desc=True).order("id")
+            .range(start, end).execute().data
+        )
+    )
+    inventory = _normalize_cost_rows(
+        rows, "inventory_items", "received_quantity", "入库",
+        date_column="movement_date",
+    )
+    inventory = exclude_stocktake_batches(supabase, inventory)
+    if not inventory.empty:
+        from db.finance.inbound_linking import attach_container_batches
+
+        inventory = attach_container_batches(
+            supabase, inventory, date(2000, 1, 1),
+            date.today() + timedelta(days=1),
+        )
+
+    from db.finance.consumable_repository import (
+        load_consumable_frames, normalize_consumable_finance_rows,
+    )
+
+    consumables = normalize_consumable_finance_rows(
+        *load_consumable_frames(supabase),
+        date(2000, 1, 1), date.today() + timedelta(days=1),
+    )
+    if not consumables.empty:
+        consumables = consumables[consumables["direction"] == "入库"]
+    return pd.concat([inventory, consumables], ignore_index=True)
+
+
 def load_missing_inventory_cost_lots(supabase):
     rows = _fetch_pages(
         lambda start, end: (
@@ -18,7 +61,8 @@ def load_missing_inventory_cost_lots(supabase):
                 "inventory_cost_lots_inventory_item_id_fkey!inner"
                 "(department,category,brand,material,color,size)"
             )
-            .is_("reversed_at", "null").is_("unit_cost", "null")
+            .is_("reversed_at", "null")
+            .or_("unit_cost.is.null,unit_cost.eq.0")
             .order("movement_date", desc=True).order("id")
             .range(start, end).execute().data
         )

@@ -11,6 +11,7 @@ from db.batches import (
 )
 from utils.auth import get_current_operator_name
 from utils.sku_sorting import sort_sku_rows
+from ui.table_layout import fit_table_height
 
 
 SOURCE_LABELS = {
@@ -84,6 +85,7 @@ def render_inbound_cost_editor(supabase, finance_df):
                 format="$%.4f",
             ),
         },
+        height=fit_table_height(inbound),
         key=f"finance_inbound_cost_editor_{version}_{signature}",
     ))
     if not st.button(
@@ -131,7 +133,8 @@ def build_cost_batch_summary(finance_df):
     if prepared.empty:
         return pd.DataFrame(columns=columns)
     data = prepared.copy()
-    data["_missing"] = data["unit_cost"].isna().astype(int)
+    costs = pd.to_numeric(data["unit_cost"], errors="coerce")
+    data["_missing"] = (costs.isna() | costs.le(0)).astype(int)
     result = (
         data.groupby("_batch_key", as_index=False)
         .agg(
@@ -172,6 +175,9 @@ def _prepare_inbound(finance_df):
     batch_ids = inbound.get(
         "batch_id", pd.Series("", index=inbound.index)
     ).fillna("").astype(str)
+    business_keys = inbound.get(
+        "business_batch_key", pd.Series("", index=inbound.index)
+    ).fillna("").astype(str)
     legacy_keys = (
         "初始化::"
         + inbound["date"].astype(str)
@@ -179,8 +185,11 @@ def _prepare_inbound(finance_df):
         + "::" + inbound["department"].fillna("").astype(str)
         + "::" + inbound["category"].fillna("").astype(str)
     )
-    inbound["_batch_key"] = batch_ids.where(
-        batch_ids.str.strip() != "", legacy_keys
+    inbound["_batch_key"] = business_keys.where(
+        business_keys.str.strip() != "", batch_ids
+    )
+    inbound["_batch_key"] = inbound["_batch_key"].where(
+        inbound["_batch_key"].str.strip() != "", legacy_keys
     )
     return inbound
 
@@ -210,9 +219,10 @@ def _build_editor_data(finance_df):
     inbound["source_type"] = inbound["source_type"].map(
         SOURCE_LABELS
     ).fillna(inbound["source_type"])
-    inbound["成本状态"] = inbound["unit_cost"].apply(
-        lambda value: "缺成本" if pd.isna(value) else "已填写"
-    )
+    costs = pd.to_numeric(inbound["unit_cost"], errors="coerce")
+    inbound["成本状态"] = (
+        costs.isna() | costs.le(0)
+    ).map({True: "缺成本", False: "已填写"})
     result = inbound.rename(columns={
         "record_id": "批次ID",
         "date": "日期",

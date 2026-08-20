@@ -273,9 +273,15 @@ class OutboundStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             filter_reversal_scope(
-                batches, "其他出入库"
+                batches, "货柜入库"
             )["数量"].tolist(),
             [500],
+        )
+        self.assertEqual(
+            filter_reversal_scope(
+                batches, "其他出入库"
+            )["数量"].tolist(),
+            [],
         )
 
     def test_recognizes_daily_outbound_reasons_on_current_dates(self):

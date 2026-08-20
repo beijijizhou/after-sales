@@ -17,6 +17,10 @@ from db.finance.repository import (
     normalize_consumable_finance_rows,
 )
 from ui.finance.cost_editor import build_cost_batch_summary, find_cost_changes
+from ui.finance.cost_catalog import (
+    build_sku_cost_history,
+    build_sku_cost_overview,
+)
 from ui.finance.inbound_batches import build_inbound_batch_summary
 from ui.finance.pending_costs import build_pending_cost_batch_summary
 from ui.finance.page import _build_two_week_daily_amounts
@@ -63,7 +67,7 @@ class FinanceSummaryTests(unittest.TestCase):
             patch.object(finance_page, "load_inventory_finance_month", return_value=empty) as finance,
             patch.object(finance_page, "load_pending_cost_batches", return_value=empty) as pending,
             patch.object(finance_page, "load_inventory_value_snapshot") as snapshot,
-            patch.object(finance_page, "load_missing_inventory_cost_lots") as missing,
+            patch.object(finance_page, "load_inbound_cost_history") as history,
             patch.object(finance_page, "load_container_finance_month") as containers,
             patch.object(finance_page, "_render_inbound_batches") as render,
         ):
@@ -72,7 +76,7 @@ class FinanceSummaryTests(unittest.TestCase):
         pending.assert_called_once()
         render.assert_called_once()
         snapshot.assert_not_called()
-        missing.assert_not_called()
+        history.assert_not_called()
         containers.assert_not_called()
 
     def test_stocktake_batches_are_not_reported_as_purchase_inbound(self):
@@ -326,6 +330,41 @@ class FinanceSummaryTests(unittest.TestCase):
             {"批次ID": "c", "单位成本": 0},
         ])
         self.assertEqual(find_cost_changes(original, edited), [("a", 2.12)])
+
+    def test_cost_catalog_lists_zero_price_as_missing_and_keeps_history(self):
+        values = pd.DataFrame([{
+            "department": "UV", "category": "铁板画", "brand": "",
+            "material": "铁牌", "color": "白", "size": "2030",
+            "inventory_quantity": 100000, "tracked_quantity": 15000,
+            "inventory_value": 3000, "missing_cost_quantity": 85000,
+        }])
+        history = pd.DataFrame([
+            {
+                "record_id": "lot-1", "batch_id": "batch-1",
+                "business_batch_label": "第十一柜｜柜号 HAMU4767628",
+                "date": "2026-08-05", "recorded_at": "2026-08-05T12:00:00Z",
+                "direction": "入库", "department": "UV", "category": "铁板画",
+                "brand": "", "material": "铁牌", "color": "白", "size": "2030",
+                "quantity": 85000, "unit_cost": 0, "source_type": "bulk",
+            },
+            {
+                "record_id": "lot-2", "batch_id": "batch-2",
+                "business_batch_label": "第九柜",
+                "date": "2026-07-20", "recorded_at": "2026-07-20T12:00:00Z",
+                "direction": "入库", "department": "UV", "category": "铁板画",
+                "brand": "", "material": "铁牌", "color": "白", "size": "2030",
+                "quantity": 15000, "unit_cost": 0.2, "source_type": "bulk",
+            },
+        ])
+
+        overview = build_sku_cost_overview(values, history)
+        detail = build_sku_cost_history(history, overview.iloc[0]["sku_key"])
+
+        self.assertEqual(overview.iloc[0]["cost_status"], "缺成本")
+        self.assertEqual(overview.iloc[0]["missing_batches"], 1)
+        self.assertEqual(overview.iloc[0]["latest_cost"], 0.2)
+        self.assertEqual(detail.iloc[0]["批次"], "第十一柜｜柜号 HAMU4767628")
+        self.assertEqual(detail.iloc[0]["成本状态"], "缺成本")
 
     def test_cost_batches_group_legacy_opening_skus(self):
         rows = pd.DataFrame([

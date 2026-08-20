@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import pandas as pd
 
@@ -10,6 +11,17 @@ from ui.inventory.container.search import (
 
 
 class ContainerSearchTests(unittest.TestCase):
+    def test_search_section_routes_posted_edits_to_inventory_batch(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "ui/inventory/container/search.py"
+        ).read_text()
+
+        self.assertIn('st.subheader("查找与修改货柜")', source)
+        self.assertIn("已入库货柜在这里保持只读", source)
+        self.assertIn("库存 → 批次修改与撤销", source)
+        self.assertNotIn("render_posted_container_correction", source)
+
     def test_choices_are_unique_per_container(self):
         rows = pd.DataFrame([
             {

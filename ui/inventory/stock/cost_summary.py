@@ -3,6 +3,10 @@ import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
 from db.inventory.core.costs import update_inventory_unit_costs
+from ui.inventory.display_scope import (
+    apply_routine_display_scope,
+    routine_hidden_columns,
+)
 from ui.inventory.i18n import t
 from ui.inventory.operations.adjustment_costs import (
     ROW_COLUMN,
@@ -86,7 +90,7 @@ def render_inventory_cost_summary(
     else:
         total_cost = float(cost_df["库存金额"].sum())
         st.metric(t("当前库存总成本"), f"${total_cost:,.2f}")
-        _render_cost_table(cost_df)
+        _render_cost_table(cost_df, department)
 
     _render_missing_costs(
         supabase,
@@ -97,14 +101,21 @@ def render_inventory_cost_summary(
     )
 
 
-def _render_cost_table(cost_df):
+def _render_cost_table(cost_df, department):
+    hidden = routine_hidden_columns(department)
     st.dataframe(
         cost_df, hide_index=True, width="stretch",
         column_config={
             "品类": st.column_config.TextColumn(t("品类")),
-            "品牌": st.column_config.TextColumn(t("品牌")),
+            "品牌": (
+                None if "品牌" in hidden
+                else st.column_config.TextColumn(t("品牌"))
+            ),
             "材质": st.column_config.TextColumn(t("材质")),
-            "颜色": st.column_config.TextColumn(t("颜色")),
+            "颜色": (
+                None if "颜色" in hidden
+                else st.column_config.TextColumn(t("颜色"))
+            ),
             "尺码": st.column_config.TextColumn(t("尺码")),
             "型号": st.column_config.TextColumn(t("型号")),
             "单位成本": st.column_config.NumberColumn(
@@ -127,10 +138,14 @@ def _render_missing_costs(
     st.subheader(t("未填写成本库存"))
     if _uses_models(missing_df):
         if not can_manage_cost:
-            st.dataframe(
+            display = apply_routine_display_scope(
                 missing_df[
                     ["品类", "品牌", "材质", "颜色", "size"]
                 ].drop_duplicates(),
+                department,
+            )
+            st.dataframe(
+                display,
                 hide_index=True,
                 width="stretch",
             )
@@ -141,9 +156,11 @@ def _render_missing_costs(
         )
         return
     st.dataframe(
-        missing_df[
-            ["品牌", "材质", "颜色"]
-        ].drop_duplicates().reset_index(drop=True),
+        apply_routine_display_scope(
+            missing_df[["品牌", "材质", "颜色"]]
+            .drop_duplicates().reset_index(drop=True),
+            department,
+        ),
         hide_index=True,
         width="stretch",
     )
@@ -188,14 +205,21 @@ def _render_missing_model_costs(
     )
     sku_df["成本"] = None
     version = st.session_state.get("inventory_model_cost_version", 0)
+    hidden = routine_hidden_columns(department)
     edited = pd.DataFrame(st.data_editor(
         sku_df, hide_index=True, width="stretch",
         disabled=["品类", "品牌", "材质", "颜色", "型号"],
         column_config={
             "品类": st.column_config.TextColumn(t("品类")),
-            "品牌": st.column_config.TextColumn(t("品牌")),
+            "品牌": (
+                None if "品牌" in hidden
+                else st.column_config.TextColumn(t("品牌"))
+            ),
             "材质": st.column_config.TextColumn(t("材质")),
-            "颜色": st.column_config.TextColumn(t("颜色")),
+            "颜色": (
+                None if "颜色" in hidden
+                else st.column_config.TextColumn(t("颜色"))
+            ),
             "型号": st.column_config.TextColumn(t("型号")),
             "成本": st.column_config.NumberColumn(
                 t("成本"), min_value=0.0, step=0.0001, format="%.4f"

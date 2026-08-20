@@ -5,6 +5,10 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
+from ui.inventory.display_scope import (
+    apply_routine_display_scope,
+    routine_hidden_columns,
+)
 from ui.inventory.i18n import t
 from ui.inventory.stock.table_editor import render_inventory_table_editor
 from ui.inventory.stock.table_filters import render_inventory_table_filters
@@ -77,6 +81,8 @@ def render_inventory_table(
             for size in SIZE_COLUMNS
         },
     }
+    for column in routine_hidden_columns(department):
+        column_config[column] = None
     table_height = min(max((len(display_df) + 1) * 35 + 8, 220), 900)
     if editable:
         render_inventory_table_editor(
@@ -94,6 +100,7 @@ def render_sku_update_times(raw_df, department, visible_sizes=None):
     update_table = build_sku_update_time_table(
         raw_df, department, visible_sizes
     )
+    update_table = apply_routine_display_scope(update_table, department)
     if update_table.empty:
         return
     with st.expander(t("SKU 上次库存更新时间（纽约）"), expanded=False):

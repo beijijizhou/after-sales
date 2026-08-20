@@ -42,8 +42,6 @@ def render_inventory_container_page(supabase):
     saved_message = st.session_state.pop("container_saved_message", None)
     if saved_message:
         st.success(saved_message)
-    render_container_search(supabase)
-    st.divider()
     try:
         dimensions = load_container_dimensions(supabase)
     except Exception:
@@ -72,6 +70,8 @@ def render_inventory_container_page(supabase):
         not pending_df.empty,
     )
     tabs = dict(zip(tab_names, st.tabs(tab_names)))
+    with tabs["查找与修改货柜"]:
+        render_container_search(supabase)
     with tabs["在途货柜"]:
         week_start, week_end = render_week_selector(
             today,

@@ -22,7 +22,9 @@ def container_tab_names(has_today_arrivals, has_pending_posting=False):
         names.append("待确认入库")
     if has_today_arrivals:
         names.append("今日到柜")
-    names.extend(["在途货柜", "新增货柜", "到柜及入库历史"])
+    names.extend([
+        "在途货柜", "查找与修改货柜", "新增货柜", "到柜及入库历史",
+    ])
     if not has_today_arrivals:
         names.append("今日到柜")
     if not has_pending_posting:

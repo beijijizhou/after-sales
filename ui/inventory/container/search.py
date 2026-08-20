@@ -11,9 +11,6 @@ from db.inventory.container.repository import load_container_search_records
 from db.inventory.container.labels import get_container_display_label
 from db.inventory.container.tables import build_container_display
 from ui.inventory.container.events import render_status_update
-from ui.inventory.container.item_editor import (
-    render_posted_container_correction,
-)
 from ui.inventory.container.posting import render_container_posting_action
 from ui.inventory.container.reversal import render_container_undo_action
 from ui.inventory.container.tables import render_container_detail
@@ -76,6 +73,11 @@ def filter_container_search_choices(raw_df, choices, search_text):
 
 
 def render_container_search(supabase):
+    st.subheader("查找与修改货柜")
+    st.caption(
+        "搜索货柜后可查看完整明细；未入库货柜可在这里维护和确认，"
+        "已入库货柜的数量、成本与撤销统一在库存批次中处理。"
+    )
     saved = st.session_state.pop("container_undo_saved", None)
     if saved:
         st.success(saved)
@@ -103,7 +105,10 @@ def render_container_search(supabase):
         return
     search_options = ["", *visible_choices]
     _reset_invalid_selectbox("container_search_dropdown", search_options)
-    st.caption("搜索支持实体货柜号、业务备注名称、部门和品类；结果优先显示业务备注名称。")
+    st.caption(
+        "搜索支持实体货柜号、业务备注名称、部门和品类；"
+        "结果优先显示业务备注名称。"
+    )
     container_key = st.selectbox(
         "选择匹配货柜",
         search_options,
@@ -148,16 +153,10 @@ def _render_search_action(supabase, target, container_key):
     action = get_container_search_action(target)
     if action == "completed":
         st.success("这个货柜已经完成入库")
-        if has_permission("can_edit_container"):
-            with st.expander("入库后更正与撤销", expanded=True):
-                render_posted_container_correction(
-                    supabase, target, container_key
-                )
-                st.divider()
-                render_container_undo_action(
-                    supabase, target, container_key, "container_search",
-                    embedded=True,
-                )
+        st.info(
+            "已入库货柜在这里保持只读。需要修改数量、成本或撤销入库时，"
+            "请前往“库存 → 批次修改与撤销”，选择“货柜入库”。"
+        )
         return
     if action == "inconsistent":
         st.warning("这个货柜的明细状态不一致，请先核对货柜数据。")

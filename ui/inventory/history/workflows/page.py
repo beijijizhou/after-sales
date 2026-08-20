@@ -116,7 +116,7 @@ def _render_reversal_filters(selected, department_key):
     )
     scope = st.segmented_control(
         "撤销记录类型",
-        ["全部可撤销记录", "仓库每日出库", "系统库存扣减",
+        ["全部可撤销记录", "货柜入库", "仓库每日出库", "系统库存扣减",
          "临时库存调整", "库存设置", "其他出入库"],
         default="全部可撤销记录",
         key=f"inventory_{department_key}_reversal_scope",

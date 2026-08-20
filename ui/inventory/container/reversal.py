@@ -41,23 +41,37 @@ def render_container_undo_action(
         else "货柜恢复到确认前状态，并清除实际到柜日期；"
         "原确认和撤销记录都会保留。"
     )
-    if kind == "posting":
-        render_container_inventory_change_review(
-            supabase, target_df, "扣减", "撤销入库后的库存核对"
-        )
     if embedded:
         embedded_title = (
             "撤销整笔入库" if kind == "posting" else "撤销到柜"
         )
         st.markdown(f"#### {embedded_title}")
-        _render_undo_controls(
-            supabase, container_key, key_prefix, embedded_title, label, effect
+        _render_undo_workflow(
+            supabase, target_df, container_key, key_prefix, embedded_title,
+            label, effect, kind,
         )
         return
     with st.expander(title, expanded=False):
-        _render_undo_controls(
-            supabase, container_key, key_prefix, title, label, effect
+        _render_undo_workflow(
+            supabase, target_df, container_key, key_prefix, title,
+            label, effect, kind,
         )
+
+
+def _render_undo_workflow(
+    supabase, target_df, container_key, key_prefix, title, label, effect, kind,
+):
+    if kind == "posting":
+        st.caption(
+            "库存核对与“库存管理 → 批次修改与撤销”使用同一套"
+            "当前库存、本次出库和撤销后库存口径。"
+        )
+        render_container_inventory_change_review(
+            supabase, target_df, "扣减", "撤销入库后的库存核对"
+        )
+    _render_undo_controls(
+        supabase, container_key, key_prefix, title, label, effect
+    )
 
 
 def _render_undo_controls(
@@ -93,4 +107,9 @@ def _render_undo_controls(
     st.session_state["container_undo_saved"] = (
         f"{label} 已完成{title}，当前状态：{result['status']}"
     )
+    if result.get("kind") == "posting":
+        st.session_state["inventory_saved_message"] = (
+            f"{label} 的入库批次已撤销；库存管理已同步生成反向流水，"
+            "当前库存已恢复。"
+        )
     st.rerun()

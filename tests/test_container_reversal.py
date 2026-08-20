@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import ANY, patch
 
+import pandas as pd
+
 from db.inventory.container.workflow.reversal import (
     extract_inventory_batch_id,
     get_container_undo_kind,
@@ -32,6 +34,123 @@ class _Supabase:
 
 
 class ContainerReversalTests(unittest.TestCase):
+    def test_inventory_batch_resolves_back_to_posted_container(self):
+        from ui.inventory.history.workflows import reversal as history_ui
+
+        selected = pd.DataFrame([{
+            "batch_id": "inventory-batch-1", "quantity_change": 100,
+            "reason": "货柜入库：HAMU4767628",
+        }])
+        target = pd.DataFrame([{
+            "container_key": "11柜", "status": "已入库",
+        }])
+        with patch.object(
+            history_ui, "load_posted_container_by_inventory_batch",
+            return_value=target,
+        ) as loader:
+            result = history_ui.load_container_batch_target(
+                object(), selected
+            )
+
+        loader.assert_called_once_with(ANY, "inventory-batch-1")
+        self.assertEqual(result.iloc[0]["container_key"], "11柜")
+
+    def test_posted_container_batch_uses_container_aware_correction(self):
+        from ui.inventory.history.workflows import reversal as history_ui
+
+        target = pd.DataFrame([{
+            "container_key": "11柜", "status": "已入库",
+        }])
+        with (
+            patch.object(history_ui, "st") as streamlit,
+            patch.object(history_ui, "has_permission", return_value=True),
+            patch.object(
+                history_ui, "render_posted_container_correction"
+            ) as correction,
+            patch.object(history_ui, "render_container_undo_action") as undo,
+        ):
+            streamlit.segmented_control.return_value = "修改数量与成本"
+            history_ui.render_container_batch_management(
+                object(), target, "test"
+            )
+
+        correction.assert_called_once()
+        pd.testing.assert_frame_equal(correction.call_args.args[1], target)
+        self.assertEqual(correction.call_args.args[2], "11柜")
+        undo.assert_not_called()
+
+    def test_container_batch_never_uses_generic_inventory_undo(self):
+        from ui.inventory.history.workflows import reversal as history_ui
+
+        movements = pd.DataFrame([{
+            "batch_key": "movement|inventory-batch-1",
+            "batch_id": "inventory-batch-1",
+            "quantity_change": 100,
+            "reason": "货柜入库：HAMU4767628",
+        }])
+        target = pd.DataFrame([{
+            "container_key": "11柜", "status": "已入库",
+        }])
+        with (
+            patch.object(
+                history_ui, "add_movement_batch_key",
+                return_value=movements,
+            ),
+            patch.object(history_ui, "render_movement_table"),
+            patch.object(
+                history_ui, "load_container_batch_target",
+                return_value=target,
+            ),
+            patch.object(
+                history_ui, "render_container_batch_management"
+            ) as container_management,
+            patch.object(history_ui, "render_movement_undo") as generic_undo,
+        ):
+            history_ui.render_selected_movement(
+                object(), movements, "movement|inventory-batch-1",
+                allow_undo=True,
+            )
+
+        container_management.assert_called_once()
+        generic_undo.assert_not_called()
+
+    def test_posting_review_is_rendered_inside_the_undo_panel(self):
+        from ui.inventory.container import reversal as reversal_ui
+
+        events = []
+
+        class _Panel:
+            def __enter__(self):
+                events.append("panel_enter")
+
+            def __exit__(self, *_args):
+                events.append("panel_exit")
+
+        target = pd.DataFrame([{
+            "container_key": "11柜", "container_no": "HAMU4767628",
+            "status": "已入库", "department": "UV",
+            "category": "铁板画",
+        }])
+        with (
+            patch.object(reversal_ui, "has_permission", return_value=True),
+            patch.object(reversal_ui.st, "expander", return_value=_Panel()),
+            patch.object(
+                reversal_ui, "render_container_inventory_change_review",
+                side_effect=lambda *_args: events.append("stock_review"),
+            ),
+            patch.object(
+                reversal_ui, "_render_undo_controls",
+                side_effect=lambda *_args: events.append("undo_controls"),
+            ),
+        ):
+            reversal_ui.render_container_undo_action(
+                object(), target, "11柜", "test"
+            )
+
+        self.assertEqual(events, [
+            "panel_enter", "stock_review", "undo_controls", "panel_exit",
+        ])
+
     def test_extracts_inventory_batch_from_event_note(self):
         batch_id = "09c429e7-9591-49a1-9622-27e1603e5116"
         self.assertEqual(

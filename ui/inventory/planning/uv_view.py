@@ -23,6 +23,7 @@ from db.inventory.planning.uv_consumption import (
     UV_GOOGLE_DRIVE_FOLDER_URL,
     load_uv_consumption_history,
 )
+from ui.inventory.display_scope import apply_routine_display_scope
 from ui.inventory.i18n import t
 from ui.table_layout import fit_table_height
 from ui.inventory.operations.system_deduction import system_deduction_comparison
@@ -150,7 +151,7 @@ def _render_preview(supabase, preview, current_date):
             action="出库",
             title="UV 生产库存每日扣减核对",
             identity_columns=[
-                "状态", "表格产品", "品类", "材质", "颜色", "型号",
+                "状态", "表格产品", "品类", "材质", "型号",
             ],
             extra_columns=["当日消耗"],
             unit="件",
@@ -276,9 +277,10 @@ def _render_uv_model_table(model):
     if model.empty:
         st.info("当前分类暂无已同步消耗数据。")
         return
+    display = apply_routine_display_scope(model, "UV")
     st.dataframe(
-        model, hide_index=True, width="stretch",
-        height=fit_table_height(model),
+        display, hide_index=True, width="stretch",
+        height=fit_table_height(display),
         column_config={
             "每日消耗": st.column_config.NumberColumn(format="%.1f"),
             "自然日均消耗": st.column_config.NumberColumn(format="%.1f"),

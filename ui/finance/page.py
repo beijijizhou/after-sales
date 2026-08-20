@@ -6,11 +6,12 @@ import streamlit as st
 
 from db.finance import (
     load_container_finance_month,
+    load_inbound_cost_history,
     load_inventory_finance_month,
     load_inventory_value_snapshot,
-    load_missing_inventory_cost_lots,
     load_pending_cost_batches,
 )
+from ui.finance.cost_catalog import render_sku_cost_catalog
 from ui.finance.cost_editor import render_inbound_cost_editor
 from ui.finance.inbound_batches import render_inbound_batch_browser
 from ui.finance.pending_costs import render_pending_cost_batches
@@ -82,13 +83,12 @@ def render_finance_page(supabase):
         _render_department_summary(finance_df)
     elif section == "成本维护":
         with st.spinner("正在读取成本维护数据..."):
-            finance_df = load_inventory_finance_month(
-                supabase, start_date, end_date
-            )
-            missing_cost_df = load_missing_inventory_cost_lots(supabase)
+            inbound_history_df = load_inbound_cost_history(supabase)
+            inventory_value_df = load_inventory_value_snapshot(supabase)
             pending_cost_df = load_pending_cost_batches(supabase)
         _render_cost_maintenance(
-            supabase, finance_df, missing_cost_df, pending_cost_df
+            supabase, inbound_history_df, inventory_value_df,
+            pending_cost_df,
         )
     elif section == "流水明细":
         with st.spinner("正在读取财务流水..."):
@@ -158,17 +158,20 @@ def _render_inbound_batches(supabase, finance_df, pending_cost_df):
 
 
 def _render_cost_maintenance(
-    supabase, finance_df, missing_cost_df, pending_cost_df,
+    supabase, inbound_history_df, inventory_value_df, pending_cost_df,
 ):
-    editor_source = pd.concat(
-        [missing_cost_df, finance_df], ignore_index=True
-    ).drop_duplicates(subset=["record_id"], keep="first")
-    edit_rows = _render_inventory_filters(
-        editor_source, key="finance_cost_edit_filters"
+    render_pending_cost_batches(pending_cost_df)
+    edit_rows = render_sku_cost_catalog(
+        inventory_value_df, inbound_history_df
     )
-    missing_lots = int(edit_rows["missing_cost"].sum()) if not edit_rows.empty else 0
+    missing_lots = int(
+        pd.to_numeric(
+            edit_rows.get("unit_cost"), errors="coerce"
+        ).fillna(0).le(0).sum()
+    ) if not edit_rows.empty else 0
     if missing_lots:
         st.info(
             f"当前筛选范围有 {missing_lots:,} 个批次缺少成本，已排在最前面。"
         )
+    st.subheader("按入库批次维护成本")
     render_inbound_cost_editor(supabase, edit_rows)

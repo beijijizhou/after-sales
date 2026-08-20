@@ -30,7 +30,7 @@ def build_inventory_audit_issues(forecast):
     ).reset_index(drop=True)
 
 
-def build_incoming_executive_view(forecast):
+def build_incoming_executive_view(forecast, hide_color=False):
     columns = [
         "SKU", "判断", "当前库存", "日耗", "可撑天数", "建议点货",
         "扣除在途后建议点货", "到货计划",
@@ -74,12 +74,17 @@ def build_incoming_executive_view(forecast):
     ).fillna(0).eq(0)
     result.loc[has_pending & no_allocated, "在途总量"] = pd.NA
     result["货柜衔接"] = result.apply(container_connection_status, axis=1)
-    result["SKU"] = result.apply(
-        lambda row: "｜".join(value for value in [
-            display_text(row.get("材质口径")) or display_text(row.get("品类")),
-            display_text(row.get("颜色")), display_text(row.get("规格")),
-        ] if value), axis=1,
-    )
+    def sku_label(row):
+        values = [
+            display_text(row.get("材质口径"))
+            or display_text(row.get("品类")),
+        ]
+        if not hide_color:
+            values.append(display_text(row.get("颜色")))
+        values.append(display_text(row.get("规格")))
+        return "｜".join(value for value in values if value)
+
+    result["SKU"] = result.apply(sku_label, axis=1)
     for column in ["建议点货量", "扣除在途后建议点货量"]:
         if column not in result:
             result[column] = 0

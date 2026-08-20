@@ -22,6 +22,7 @@ from db.inventory.planning.uv_consumption import (
     load_uv_consumption_history,
 )
 from ui.inventory.i18n import t
+from ui.inventory.display_scope import apply_routine_display_scope
 from ui.planning import render_planning_summary
 
 
@@ -141,7 +142,9 @@ def render_incoming_inventory_forecast(
                 "核对建议": st.column_config.TextColumn(width="large"),
             },
         )
-    executive_view = build_incoming_executive_view(forecast)
+    executive_view = build_incoming_executive_view(
+        forecast, hide_color=department == "UV"
+    )
     st.dataframe(
         executive_view,
         hide_index=True, width="stretch",
@@ -161,8 +164,9 @@ def render_incoming_inventory_forecast(
         },
     )
     with st.expander(t("查看完整计算明细")):
+        full_detail = apply_routine_display_scope(forecast, department)
         st.dataframe(
-            forecast, hide_index=True, width="stretch",
+            full_detail, hide_index=True, width="stretch",
             column_config={
                 "当前库存": st.column_config.NumberColumn(format="%d"),
                 "系统日均": st.column_config.NumberColumn(format="%.1f"),

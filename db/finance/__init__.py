@@ -1,5 +1,6 @@
 from db.finance.repository import (
     load_container_finance_month,
+    load_inbound_cost_history,
     load_inventory_finance_month,
     load_missing_inventory_cost_lots,
     load_inventory_value_snapshot,
@@ -25,6 +26,7 @@ __all__ = [
     "build_finance_overview",
     "build_inventory_value_overview",
     "load_container_finance_month",
+    "load_inbound_cost_history",
     "load_inventory_finance_month",
     "load_missing_inventory_cost_lots",
     "load_pending_cost_batches",

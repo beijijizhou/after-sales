@@ -33,6 +33,15 @@ class ContainerStateMachineTests(unittest.TestCase):
         self.assertEqual(names[-1], "待确认入库")
         self.assertIn("在途货柜", names)
 
+    def test_container_search_and_edit_is_a_standalone_tab(self):
+        names = container_tab_names(
+            has_today_arrivals=False,
+            has_pending_posting=False,
+        )
+
+        self.assertIn("查找与修改货柜", names)
+        self.assertEqual(names.count("查找与修改货柜"), 1)
+
     def test_legacy_statuses_are_normalized_in_code(self):
         self.assertEqual(
             normalize_container_state("未到货"), STATE_IN_TRANSIT

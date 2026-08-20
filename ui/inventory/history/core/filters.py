@@ -91,14 +91,19 @@ def filter_reversal_scope(batch_df, scope):
     reasons = batch_df["备注"].fillna("").astype(str)
     directions = batch_df["类型"].fillna("").astype(str)
     sources = reasons.map(daily_consumption_source)
+    is_container_inbound = (
+        directions.eq("入库")
+        & reasons.str.contains("货柜入库：", regex=False)
+    )
     masks = {
+        "货柜入库": is_container_inbound,
         "仓库每日出库": directions.eq("出库") & sources.eq(ENTRY_MANUAL),
         "系统库存扣减": directions.eq("出库") & sources.eq(ENTRY_SYSTEM),
         "临时库存调整": reasons.str.contains(
             "临时库存调整", regex=False
         ),
         "库存设置": reasons.map(is_stocktake_reason),
-        "其他出入库": sources.eq("") & ~reasons.str.contains(
+        "其他出入库": sources.eq("") & ~is_container_inbound & ~reasons.str.contains(
             "临时库存调整", regex=False
         ) & ~reasons.map(is_stocktake_reason),
     }

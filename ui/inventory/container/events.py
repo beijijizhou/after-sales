@@ -150,6 +150,13 @@ def render_container_history(supabase, raw_df, selected_container_key=None):
     )
     container_key = choices[selected]
     target = raw_df[raw_df["container_key"] == container_key]
-    render_container_undo_action(
-        supabase, target, container_key, "container_history"
-    )
+    statuses = set(target["status"].fillna("").astype(str).str.strip())
+    if statuses == {"已入库"}:
+        st.caption(
+            "已入库货柜在此只展示历史；修改数量、成本或撤销入库请前往"
+            "“库存 → 批次修改与撤销”。"
+        )
+    else:
+        render_container_undo_action(
+            supabase, target, container_key, "container_history"
+        )
