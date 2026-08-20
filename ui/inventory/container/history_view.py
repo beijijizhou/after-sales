@@ -29,7 +29,11 @@ def render_arrival_history_table(
     supabase, start_date, end_date, department, category,
     brands, materials, colors, sizes,
 ):
-    st.subheader("到柜记录")
+    st.subheader("到柜及入库历史")
+    st.caption(
+        "这里记录货柜到柜和入库时的批次数量，不代表当前剩余库存；"
+        "当前库存、后续出库和批次更正统一以库存页面为准。"
+    )
     try:
         raw_df = load_inventory_containers(
             supabase, start_date, end_date, department, category,
@@ -53,13 +57,16 @@ def render_arrival_history_table(
         raw_df["quantity"], errors="coerce"
     ).fillna(0)
     col1, col2 = st.columns(2)
-    col1.metric("到柜总件数", int(quantities.sum()))
-    col2.metric("到柜数量", raw_df["container_key"].nunique())
+    col1.metric("历史到柜总件数", int(quantities.sum()))
+    col2.metric("历史到柜批次", raw_df["container_key"].nunique())
     render_container_inventory_summary(
-        raw_df, "到柜库存汇总"
+        raw_df, "历史到柜货物汇总（非当前库存）"
     )
     st.subheader("到柜批次")
-    st.caption("每个货柜只显示一行；点选批次后查看该柜的完整 SKU 明细和操作记录。")
+    st.caption(
+        "每个货柜只显示一行；点选后查看该柜的入库 SKU 明细和操作记录。"
+        "已入库批次的数量、成本和撤销请在库存页面处理。"
+    )
     sort_label = st.segmented_control(
         "记录排序",
         ["按到柜时间", "按部门"],

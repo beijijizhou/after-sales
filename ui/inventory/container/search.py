@@ -11,14 +11,28 @@ from db.inventory.container.repository import load_container_search_records
 from db.inventory.container.labels import get_container_display_label
 from db.inventory.container.tables import build_container_display
 from ui.inventory.container.events import render_status_update
-from ui.inventory.container.posting import render_container_posting_action
-from ui.inventory.container.reversal import render_container_undo_action
 from ui.inventory.container.tables import render_container_detail
 from ui.table_layout import fit_table_height
 from utils.auth import has_permission
 
 
 ARRIVAL_STATUSES = {"未到货", "延迟", "在途"}
+
+
+def filter_editable_container_search_rows(raw_df):
+    """Keep only containers that still belong to the transit-edit workflow."""
+    if raw_df.empty or "status" not in raw_df.columns:
+        return raw_df.iloc[0:0].copy()
+    status = raw_df["status"].fillna("").astype(str).str.strip()
+    eligible_rows = raw_df[status.isin(ARRIVAL_STATUSES)]
+    eligible_keys = set(eligible_rows["container_key"].astype(str))
+    ineligible_keys = set(
+        raw_df.loc[~status.isin(ARRIVAL_STATUSES), "container_key"].astype(str)
+    )
+    eligible_keys -= ineligible_keys
+    return raw_df[
+        raw_df["container_key"].astype(str).isin(eligible_keys)
+    ].reset_index(drop=True)
 
 
 def build_container_search_choices(raw_df):
@@ -28,7 +42,8 @@ def build_container_search_choices(raw_df):
     for key, rows in raw_df.groupby("container_key", sort=False):
         row = rows.iloc[0].to_dict()
         key = row["container_key"]
-        number = row.get("container_no") or ""
+        raw_number = row.get("container_no")
+        number = str(raw_number).strip() if _has_value(raw_number) else ""
         notes = rows.get("note", pd.Series(dtype=str)).tolist()
         status = row.get("status") or "状态未知"
         actual = row.get("actual_arrival_date")
@@ -75,19 +90,21 @@ def filter_container_search_choices(raw_df, choices, search_text):
 def render_container_search(supabase):
     st.subheader("查找与修改货柜")
     st.caption(
-        "搜索货柜后可查看完整明细；未入库货柜可在这里维护和确认，"
-        "已入库货柜的数量、成本与撤销统一在库存批次中处理。"
+        "这里只查找和修改仍在运输中的货柜。已到柜货柜前往“待确认入库”；"
+        "已入库货柜前往“到柜及入库历史”，数量、成本与撤销在库存批次处理。"
     )
     saved = st.session_state.pop("container_undo_saved", None)
     if saved:
         st.success(saved)
     try:
-        raw_df = load_container_search_records(supabase)
+        all_rows = load_container_search_records(supabase)
     except Exception as error:
         st.error(f"货柜列表加载失败：{error}")
         return
+    raw_df = filter_editable_container_search_rows(all_rows)
     if raw_df.empty:
-        st.info("目前还没有货柜记录")
+        st.info("当前没有仍在运输中的货柜")
+        st.session_state.pop("container_search_dropdown", None)
         return
     choices = build_container_search_choices(raw_df)
     search_text = st.text_input(
@@ -99,8 +116,7 @@ def render_container_search(supabase):
         raw_df, choices, search_text
     )
     if str(search_text or "").strip() and not visible_choices:
-        st.warning(f"未找到货柜：{str(search_text).strip()}")
-        st.caption("数据库中没有匹配记录；如为新货柜，请前往“新增货柜”录入。")
+        _render_search_scope_message(all_rows, search_text)
         st.session_state.pop("container_search_dropdown", None)
         return
     search_options = ["", *visible_choices]
@@ -134,6 +150,36 @@ def _has_value(value):
     return value is not None and not pd.isna(value) and str(value).strip()
 
 
+def _render_search_scope_message(all_rows, search_text):
+    term = str(search_text or "").strip()
+    all_choices = build_container_search_choices(all_rows)
+    matches = filter_container_search_choices(
+        all_rows, all_choices, term
+    )
+    if not matches:
+        st.warning(f"未找到货柜：{term}")
+        st.caption("数据库中没有匹配记录；如为新货柜，请前往“新增货柜”录入。")
+        return
+    matched = all_rows[
+        all_rows["container_key"].astype(str).isin(
+            {str(key) for key in matches}
+        )
+    ]
+    statuses = set(
+        matched["status"].fillna("").astype(str).str.strip()
+    )
+    if statuses == {"已到柜"}:
+        st.info(f"{term} 已到柜，请前往“待确认入库”处理。")
+        return
+    if statuses and statuses.issubset({"已入库", "已到货"}):
+        st.info(
+            f"{term} 已入库，请前往“到柜及入库历史”查看；"
+            "修改请前往库存的“批次修改与撤销”。"
+        )
+        return
+    st.warning(f"{term} 当前状态不一致，请前往“到柜及入库历史”核对。")
+
+
 def get_container_search_action(raw_df):
     if raw_df.empty or "status" not in raw_df.columns:
         return None
@@ -154,7 +200,8 @@ def _render_search_action(supabase, target, container_key):
     if action == "completed":
         st.success("这个货柜已经完成入库")
         st.info(
-            "已入库货柜在这里保持只读。需要修改数量、成本或撤销入库时，"
+            "这里展示的是该货柜的入库批次明细，不是当前剩余库存。"
+            "需要修改数量、成本或撤销入库时，"
             "请前往“库存 → 批次修改与撤销”，选择“货柜入库”。"
         )
         return
@@ -168,15 +215,6 @@ def _render_search_action(supabase, target, container_key):
         render_status_update(
             supabase, target, container_key,
             key_prefix="container_search_status",
-        )
-    elif action == "posting":
-        st.subheader("确认入库")
-        render_container_posting_action(
-            supabase, target, container_key,
-            key_prefix="container_search_posting",
-        )
-        render_container_undo_action(
-            supabase, target, container_key, "container_search"
         )
 
 

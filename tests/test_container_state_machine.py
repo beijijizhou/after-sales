@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from db.inventory.container.tables import CONTAINER_STATUSES
 from db.inventory.container.workflow.state import (
@@ -12,6 +13,15 @@ from ui.inventory.container.today import container_tab_names
 
 
 class ContainerStateMachineTests(unittest.TestCase):
+    def test_arrival_history_is_not_labeled_as_current_inventory(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "ui/inventory/container/history_view.py"
+        ).read_text()
+
+        self.assertIn("历史到柜货物汇总（非当前库存）", source)
+        self.assertIn("当前库存、后续出库和批次更正统一以库存页面为准", source)
+
     def test_new_containers_only_allow_transit_or_cancel(self):
         self.assertEqual(CONTAINER_STATUSES, ["在途", "取消"])
 

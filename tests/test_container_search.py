@@ -5,6 +5,7 @@ import pandas as pd
 
 from ui.inventory.container.search import (
     build_container_search_choices,
+    filter_editable_container_search_rows,
     filter_container_search_choices,
     get_container_search_action,
 )
@@ -18,9 +19,34 @@ class ContainerSearchTests(unittest.TestCase):
         ).read_text()
 
         self.assertIn('st.subheader("查找与修改货柜")', source)
-        self.assertIn("已入库货柜在这里保持只读", source)
+        self.assertIn("这里只查找和修改仍在运输中的货柜", source)
+        self.assertIn("不是当前剩余库存", source)
         self.assertIn("库存 → 批次修改与撤销", source)
         self.assertNotIn("render_posted_container_correction", source)
+
+    def test_search_only_contains_containers_still_in_transit(self):
+        rows = pd.DataFrame([
+            {"container_key": "在途柜", "status": "在途"},
+            {"container_key": "延迟柜", "status": "延迟"},
+            {"container_key": "到柜", "status": "已到柜"},
+            {"container_key": "入库柜", "status": "已入库"},
+        ])
+
+        result = filter_editable_container_search_rows(rows)
+
+        self.assertEqual(
+            result["container_key"].tolist(), ["在途柜", "延迟柜"]
+        )
+
+    def test_mixed_status_container_does_not_remain_in_search(self):
+        rows = pd.DataFrame([
+            {"container_key": "状态切换柜", "status": "在途"},
+            {"container_key": "状态切换柜", "status": "已到柜"},
+        ])
+
+        result = filter_editable_container_search_rows(rows)
+
+        self.assertTrue(result.empty)
 
     def test_choices_are_unique_per_container(self):
         rows = pd.DataFrame([
@@ -84,6 +110,20 @@ class ContainerSearchTests(unittest.TestCase):
 
         self.assertTrue(choices["朱总第十六柜"].startswith("朱总第十六柜｜在途"))
         self.assertNotIn("柜号", choices["朱总第十六柜"])
+
+    def test_nan_physical_number_is_not_displayed_as_container_number(self):
+        rows = pd.DataFrame([{
+            "container_key": "朱总第十七柜", "container_no": float("nan"),
+            "status": "在途", "actual_arrival_date": None,
+            "expected_arrival_date": "2026-10-09", "department": "UV",
+            "category": "铁板画", "quantity": 105200,
+            "note": "朱总第十七柜",
+        }])
+
+        choices = build_container_search_choices(rows)
+
+        self.assertTrue(choices["朱总第十七柜"].startswith("朱总第十七柜｜在途"))
+        self.assertNotIn("nan", choices["朱总第十七柜"].casefold())
 
     def test_search_matches_physical_number_and_business_remark(self):
         rows = pd.DataFrame([
