@@ -18,6 +18,7 @@ from ui.daily_work.models import (
     history_summary,
     style_status_table,
 )
+from ui.table_layout import fit_table_height
 
 
 def render_daily_record(supabase, owner, actor, today):
@@ -51,6 +52,7 @@ def render_daily_record(supabase, owner, actor, today):
             ),
             "备注": st.column_config.TextColumn("备注", width="large"),
         },
+        height=fit_table_height(editor, row_height=42),
         row_height=42,
         key=f"daily_work_editor_{owner}_{selected_date.isoformat()}",
     )
@@ -102,6 +104,7 @@ def render_history(supabase, owner, today):
         return
     st.dataframe(
         summary, hide_index=True, width="stretch",
+        height=fit_table_height(summary),
         column_config={"完成率": st.column_config.ProgressColumn("完成率", min_value=0, max_value=100, format="%d%%")},
     )
     labels = {
@@ -112,9 +115,10 @@ def render_history(supabase, owner, today):
         "查看某天明细", list(labels), format_func=labels.get,
         key="daily_work_history_day",
     )
+    detail = history_detail(selected, records)
     st.dataframe(
-        style_status_table(history_detail(selected, records)),
-        hide_index=True, width="stretch",
+        style_status_table(detail), hide_index=True, width="stretch",
+        height=fit_table_height(detail),
     )
     day = next(row for row in days.to_dict("records") if str(row["id"]) == selected)
     st.caption(f"问题 / 阻塞：{day.get('blockers') or '无'}")

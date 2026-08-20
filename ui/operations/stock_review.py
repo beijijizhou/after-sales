@@ -10,6 +10,15 @@ def prepare_stock_change_display(comparison, action=None):
     result = pd.DataFrame(comparison).copy()
     if result.empty:
         return result, "本次变动 (+/-)"
+    # A workflow may carry both base-unit and package-unit audit columns.
+    # Older adapters could normalize both sets to the same display label,
+    # leaving pandas with duplicate columns.  Selecting one of those labels
+    # then returns a DataFrame instead of a Series and crashes the whole
+    # Streamlit page during numeric conversion.  The workflow adapter owns
+    # which unit is canonical; this shared rendering boundary guarantees that
+    # an accidental duplicate cannot take down any inventory-writing page.
+    if not result.columns.is_unique:
+        result = result.loc[:, ~result.columns.duplicated(keep="first")].copy()
     for column in ["当前库存", "本次变动", "调整后库存"]:
         if column not in result:
             raise ValueError(f"库存核对缺少字段：{column}")

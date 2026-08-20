@@ -65,6 +65,25 @@ class StockReviewContractTests(unittest.TestCase):
         self.assertEqual(comparison.loc[0, "调整后库存"], 3)
         self.assertIn("本次出库 (-)", display.columns)
 
+    def test_shared_renderer_survives_duplicate_normalized_columns(self):
+        comparison = pd.DataFrame(
+            [["白墨", 5, 50, -2, -20, 3, 30]],
+            columns=[
+                "耗材 SKU", "当前库存", "当前库存", "本次变动",
+                "本次变动", "调整后库存", "调整后库存",
+            ],
+        )
+
+        display, operation = prepare_stock_change_display(
+            comparison, action="领用"
+        )
+
+        self.assertTrue(display.columns.is_unique)
+        self.assertEqual(operation, "本次出库 (-)")
+        self.assertEqual(display.loc[0, "当前库存"], 5)
+        self.assertEqual(display.loc[0, operation], -2)
+        self.assertEqual(display.loc[0, "调整后库存"], 3)
+
     def test_active_inventory_writers_share_one_renderer(self):
         inventory_source = (
             ROOT / "ui/inventory/operations/inventory_review.py"

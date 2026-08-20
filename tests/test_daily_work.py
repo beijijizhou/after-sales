@@ -89,6 +89,13 @@ class DailyWorkTests(unittest.TestCase):
         self.assertIn('user.get("username")', page)
         self.assertNotIn('owner = "a"', page)
 
+    def test_every_daily_work_grid_expands_to_show_all_rows(self):
+        records = (PROJECT_ROOT / "ui/daily_work/records.py").read_text()
+        settings = (PROJECT_ROOT / "ui/daily_work/settings.py").read_text()
+
+        self.assertEqual(records.count("height=fit_table_height("), 3)
+        self.assertEqual(settings.count("height=fit_table_height("), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

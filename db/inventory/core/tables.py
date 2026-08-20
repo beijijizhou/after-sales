@@ -92,12 +92,22 @@ def build_inventory_table(
 
 
 def _build_model_inventory_table(inventory_df, include_cost=False):
+    inventory_df = inventory_df.copy()
+    if "updated_at" in inventory_df.columns:
+        inventory_df["_last_changed_at"] = pd.to_datetime(
+            inventory_df["updated_at"], errors="coerce", utc=True
+        )
+    else:
+        inventory_df["_last_changed_at"] = pd.NaT
     index_columns = ["category", "brand", "material", "color", "size"]
     if include_cost:
         index_columns.append("unit_cost")
     result = (
         inventory_df.groupby(index_columns, dropna=False, as_index=False)
-        .agg(quantity=("quantity", "sum"))
+        .agg(
+            quantity=("quantity", "sum"),
+            _last_changed_at=("_last_changed_at", "max"),
+        )
         .rename(columns={
             "category": "品类", "brand": "品牌", "material": "材质",
             "color": "颜色", "size": "型号", "unit_cost": "成本",
@@ -119,9 +129,16 @@ def _build_model_inventory_table(inventory_df, include_cost=False):
     )
     return (
         result.sort_values(
-            ["_material_order", "_model_order", "型号"], kind="stable"
+            [
+                "_last_changed_at", "_material_order", "_model_order", "型号",
+            ],
+            ascending=[False, True, True, True],
+            na_position="last",
+            kind="stable",
         )
-        .drop(columns=["_material_order", "_model_order"])
+        .drop(columns=[
+            "_last_changed_at", "_material_order", "_model_order",
+        ])
         .reset_index(drop=True)
     )
 

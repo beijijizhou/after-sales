@@ -2,6 +2,7 @@ import streamlit as st
 
 from db.daily_work import create_task, load_tasks, set_task_active
 from ui.daily_work.models import TASK_KIND_LABELS
+from ui.table_layout import fit_table_height
 
 
 def render_task_settings(supabase, owner, actor):
@@ -34,7 +35,10 @@ def render_task_settings(supabase, owner, actor):
     display = tasks[["section", "task_name", "task_kind", "sort_order", "is_active"]].copy()
     display.columns = ["分类", "工作事项", "类型", "顺序", "启用"]
     display["类型"] = display["类型"].map(TASK_KIND_LABELS)
-    st.dataframe(display, hide_index=True, width="stretch")
+    st.dataframe(
+        display, hide_index=True, width="stretch",
+        height=fit_table_height(display),
+    )
     labels = {
         str(row["id"]): f"{row['section']}｜{row['task_name']}"
         for row in tasks.to_dict("records")
