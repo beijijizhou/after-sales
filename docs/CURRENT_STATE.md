@@ -6,7 +6,8 @@ refactors, not after every small feature.
 ## Entry Points
 
 - Home/problem tracking: `app.py`
-- Registration: `pages/0_注册.py`
+- People management and employee registration: `pages/0_注册.py`, with UI
+  ownership in `ui/people/`
 - QA: `pages/1_质检.py`
 - Hotstamp: `pages/2_烫印.py`
 - Platform detail: `pages/3_平台.py`
@@ -26,6 +27,9 @@ refactors, not after every small feature.
 
 - Authentication and navigation: `utils/auth/`
 - User-role administration: `db/access.py` and `ui/access/`
+- Employee roster, registration, departure/reactivation and status audit:
+  `db/access.py`, `ui/people/`, and
+  `sql/access/role_management/12_people_management.sql`
 - Personal daily-work templates, dated records, and history:
   `db/daily_work.py` and `ui/daily_work/`
 - Inventory persistence and rules: `db/inventory/`

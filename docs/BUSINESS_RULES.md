@@ -620,6 +620,13 @@ forecast as an estimate.
 
 ## Access
 
+- Personnel management separates employee registration from employment-status
+  administration. Authorized people administrators can view employees without
+  login accounts, record departure or reactivation with an effective date,
+  reason, operator and append-only audit, and must never delete the employee's
+  historical work. Departure sets the shared employee account inactive so any
+  login access stops immediately. An administrator cannot process their own
+  departure.
 - The logistics tracking page is visible to supervisor, after-sales, and admin
   roles. Supervisors may query existing/database-cached and live USPS Tracking
   data, but only after-sales and admins may synchronize ERP data, run label

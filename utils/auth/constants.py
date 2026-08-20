@@ -31,6 +31,7 @@ PRODUCTION_ACCESS = {
 LOGISTICS_ACCESS = {"can_view_logistics"}
 LOGISTICS_MANAGE = {"can_manage_logistics"}
 ACCESS_MANAGE = {"can_manage_access"}
+PEOPLE_MANAGE = {"can_manage_people"}
 DAILY_WORK_ACCESS = {"can_view_daily_work"}
 INVENTORY_VIEW = {
     "can_view_inventory",
@@ -84,6 +85,7 @@ ALL_PERMISSIONS = set().union(
     LOGISTICS_ACCESS,
     LOGISTICS_MANAGE,
     ACCESS_MANAGE,
+    PEOPLE_MANAGE,
     DAILY_WORK_ACCESS,
 )
 
@@ -107,7 +109,7 @@ ROLE_PERMISSIONS = {
         ALL_PERMISSIONS
         - COST_VIEW - COST_MANAGE
         - FINANCE_REPORTS - FINANCE_DASHBOARD
-        - ACCESS_MANAGE
+        - ACCESS_MANAGE - PEOPLE_MANAGE
     ),
     ROLE_FINANCE: (
         INVENTORY_VIEW | CONSUMABLE_VIEW | COST_VIEW | FINANCE_REPORTS
@@ -117,7 +119,7 @@ ROLE_PERMISSIONS = {
 
 PAGE_ACCESS = {
     "app": "can_view_app",
-    "register": "can_register",
+    "register": ("can_register", "can_manage_people"),
     "qa": "can_view_qa",
     "hotstamp": "can_view_hotstamp",
     "platform": "can_view_platform",
@@ -148,7 +150,7 @@ NAV_SECTIONS = [
     (None, [
         ("operation_tracking", "问题件追踪", "app.py"),
         ("app", "售后查询", "pages/6_售后查询.py"),
-        ("register", "注册", "pages/0_注册.py"),
+        ("register", "人员管理", "pages/0_注册.py"),
         ("qa", "质检", "pages/1_质检.py"),
         ("hotstamp", "烫印", "pages/2_烫印.py"),
         ("platform", "平台", "pages/3_平台.py"),

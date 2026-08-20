@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from pathlib import Path
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -8,13 +9,17 @@ import pandas as pd
 from db.access import (
     create_employee,
     load_app_users,
+    load_employees,
     normalize_employee_departments,
     save_role_definition,
     update_user_access,
+    update_employee_status,
     validate_access_change,
+    validate_employee_status_change,
     validate_role_definition,
 )
 from ui.access.page import access_change_preview, filter_access_users
+from ui.people.models import employee_table, filter_employees
 from ui.access.permissions import (
     permission_group_matrix,
     permission_matrix,
@@ -120,6 +125,10 @@ class AccessManagementTests(unittest.TestCase):
         self.assertEqual(
             system_items,
             [("access_management", "权限管理", "pages/12_权限管理.py")],
+        )
+        self.assertIn(
+            ("register", "人员管理", "pages/0_注册.py"),
+            next(items for title, items in NAV_SECTIONS if title is None),
         )
 
     def test_supervisor_matrix_has_logistics_query_not_management(self):
@@ -267,6 +276,36 @@ class AccessManagementTests(unittest.TestCase):
         self.assertEqual(users["user_name"].tolist(), ["lead"])
         self.assertIsInstance(users.iloc[0]["user_name"], str)
 
+    def test_people_roster_includes_employees_without_login_account(self):
+        supabase = Mock()
+        execute = (
+            supabase.table.return_value.select.return_value
+            .order.return_value.execute
+        )
+        execute.return_value.data = [
+            {
+                "name": "烫印员工", "user_name": None,
+                "employee_id": "P1", "department": "烫印",
+                "job_title": "烫印", "role": None, "is_active": True,
+            },
+            {
+                "name": "离职质检", "user_name": "old-qa",
+                "employee_id": "Q1", "department": "质检",
+                "job_title": "质检", "role": "visitor", "is_active": False,
+            },
+        ]
+
+        employees = load_employees(supabase)
+
+        self.assertEqual(employees["employee_id"].tolist(), ["P1", "Q1"])
+        self.assertEqual(
+            filter_employees(employees, "已离职")["name"].tolist(),
+            ["离职质检"],
+        )
+        table = employee_table(employees)
+        self.assertEqual(table.iloc[0]["登录账号"], "—")
+        self.assertEqual(table.iloc[1]["状态"], "已离职")
+
     def test_update_access_uses_audited_database_function(self):
         supabase = Mock()
         execute = supabase.rpc.return_value.execute
@@ -341,13 +380,38 @@ class AccessManagementTests(unittest.TestCase):
         )
         self.assertEqual(result["employee_id"], "qa-new_id")
 
+    def test_departure_requires_reason_and_uses_audited_rpc(self):
+        with self.assertRaisesRegex(ValueError, "必须填写原因"):
+            validate_employee_status_change(
+                "E1", False, date(2026, 8, 19), "", "admin-user"
+            )
+
+        supabase = Mock()
+        supabase.rpc.return_value.execute.return_value.data = [{
+            "employee_id": "E1", "is_active": False,
+        }]
+        update_employee_status(
+            supabase, "E1", False, date(2026, 8, 19),
+            "员工主动离职", "admin-user",
+        )
+
+        supabase.rpc.assert_called_once_with(
+            "update_employee_employment_status",
+            {
+                "p_employee_id": "E1", "p_is_active": False,
+                "p_effective_date": "2026-08-19",
+                "p_reason": "员工主动离职",
+                "p_changed_by": "admin-user",
+            },
+        )
+
     def test_database_function_rechecks_active_admin_actor(self):
         sql_directory = (
             Path(__file__).resolve().parents[1]
             / "sql" / "access" / "role_management"
         )
         scripts = sorted(sql_directory.glob("[0-9][0-9]_*.sql"))
-        self.assertEqual(len(scripts), 11)
+        self.assertEqual(len(scripts), 12)
         self.assertTrue(all(
             len(script.read_text().splitlines()) < 200 for script in scripts
         ))
@@ -357,6 +421,9 @@ class AccessManagementTests(unittest.TestCase):
         self.assertIn("app_actor_can_manage_access", sql)
         self.assertIn("app_role_change_audit", sql)
         self.assertIn("upsert_app_role", sql)
+        self.assertIn("can_manage_people", sql)
+        self.assertIn("update_employee_employment_status", sql)
+        self.assertIn("cannot change own employment status", sql)
 
     def test_role_schema_archives_legacy_wide_permission_table(self):
         schema = (

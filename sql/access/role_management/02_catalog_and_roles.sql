@@ -5,7 +5,7 @@ insert into public.app_permissions (
 )
 values
     ('can_view_app', '查看售后查询', '基础页面', '', 10),
-    ('can_register', '使用注册页面', '基础页面', '', 20),
+    ('can_register', '新增员工', '基础页面', '', 20),
     ('can_view_qa', '查看质检', '生产与质检', '', 30),
     ('can_view_hotstamp', '查看烫印', '生产与质检', '', 40),
     ('can_view_platform', '查看平台', '生产与质检', '', 50),

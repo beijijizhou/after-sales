@@ -21,6 +21,10 @@ ROLE_PERMISSION_COLUMNS = "role_key,permission_key"
 ROLE_AUDIT_COLUMNS = (
     "id,role_key,action,old_snapshot,new_snapshot,changed_by,changed_at"
 )
+EMPLOYEE_STATUS_AUDIT_COLUMNS = (
+    "id,employee_id,employee_name,user_name,old_is_active,new_is_active,"
+    "effective_date,reason,changed_by,changed_at"
+)
 
 
 def load_app_users(supabase):
@@ -48,6 +52,39 @@ def load_app_users(supabase):
         frame["job_title"].map(_text) != "", frame["department"]
     )
     frame = frame.loc[frame["user_name"] != ""].copy()
+    frame["role"] = frame["role"].map(_text)
+    frame.loc[frame["role"] == "", "role"] = "visitor"
+    frame["is_active"] = frame["is_active"].fillna(True).astype(bool)
+    frame["departments"] = _load_user_departments(supabase, frame)
+    return frame.reset_index(drop=True)
+
+
+def load_employees(supabase):
+    """Load every employee, including staff without a login account."""
+    try:
+        rows = (
+            supabase.table("users").select(USER_ACCESS_COLUMNS)
+            .order("name").execute().data
+        )
+    except Exception as error:
+        if "job_title" not in str(error):
+            raise
+        rows = (
+            supabase.table("users")
+            .select(USER_ACCESS_COLUMNS.replace(",job_title", ""))
+            .order("name").execute().data
+        )
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        columns = USER_ACCESS_COLUMNS.split(",") + ["departments"]
+        return pd.DataFrame(columns=columns)
+    for column in ("name", "user_name", "employee_id", "department"):
+        frame[column] = frame[column].map(_text)
+    if "job_title" not in frame:
+        frame["job_title"] = frame["department"]
+    frame["job_title"] = frame["job_title"].map(_text).where(
+        frame["job_title"].map(_text) != "", frame["department"]
+    )
     frame["role"] = frame["role"].map(_text)
     frame.loc[frame["role"] == "", "role"] = "visitor"
     frame["is_active"] = frame["is_active"].fillna(True).astype(bool)
@@ -130,6 +167,31 @@ def create_employee(
         "employee_id": row.get("employee_id", f"{username or name}_id"),
         "departments": row.get("departments", department_codes),
     }
+
+
+def update_employee_status(
+    supabase, employee_id, is_active, effective_date, reason, changed_by,
+):
+    validate_employee_status_change(
+        employee_id, is_active, effective_date, reason, changed_by
+    )
+    response = supabase.rpc("update_employee_employment_status", {
+        "p_employee_id": str(employee_id).strip(),
+        "p_is_active": bool(is_active),
+        "p_effective_date": effective_date.isoformat(),
+        "p_reason": str(reason or "").strip(),
+        "p_changed_by": str(changed_by).strip(),
+    }).execute()
+    return response.data or []
+
+
+def load_employee_status_audit(supabase, limit=200):
+    rows = (
+        supabase.table("app_employee_status_audit")
+        .select(EMPLOYEE_STATUS_AUDIT_COLUMNS)
+        .order("changed_at", desc=True).limit(limit).execute().data
+    )
+    return pd.DataFrame(rows)
 
 
 def _load_user_departments(supabase, users):
@@ -223,6 +285,19 @@ def validate_access_change(username, role, is_active, changed_by):
         raise ValueError("请选择角色")
     if username == changed_by:
         raise ValueError("权限管理员不能修改自己的角色或启用状态")
+
+
+def validate_employee_status_change(
+    employee_id, is_active, effective_date, reason, changed_by,
+):
+    if not str(employee_id or "").strip():
+        raise ValueError("请选择员工")
+    if effective_date is None:
+        raise ValueError("请选择生效日期")
+    if not str(changed_by or "").strip():
+        raise ValueError("请先登录人员管理员账号")
+    if not is_active and not str(reason or "").strip():
+        raise ValueError("办理离职时必须填写原因")
 
 
 def validate_role_definition(role_key, role_name, permissions):

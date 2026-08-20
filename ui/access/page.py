@@ -56,7 +56,7 @@ def _render_setup_error(error):
     if any(table in message for table in tables):
         st.warning(
             "动态角色权限尚未初始化，请按顺序执行 "
-            "sql/access/role_management/ 下的 01–11 脚本。"
+            "sql/access/role_management/ 下的 01–12 脚本。"
         )
     else:
         st.error("权限数据暂时无法读取，请稍后重试。")

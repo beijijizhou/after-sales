@@ -5,7 +5,7 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 
 | 目录 | 用途 | 文件数 |
 | --- | --- | ---: |
-| `access/` | 权限、角色、初始账号和角色变更审计 | 11 个 SQL |
+| `access/` | 权限、角色、初始账号和人员/角色变更审计 | 12 个迁移 SQL |
 | `after_sales/` | 售后字段和条码修复 | 2 |
 | `production/` | 生产条码历史和多件订单刷新 | 2 |
 | `production/summaries/` | 人员平台、小时、配对工作流和区间汇总 | 5 |
@@ -45,5 +45,5 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 ## 动态角色权限安装顺序
 
 角色权限迁移按职责存放在 `access/role_management/`，从
-`01_schema.sql` 到 `06_login_and_grants.sql` 按编号执行。具体职责和
+`01_schema.sql` 到 `12_people_management.sql` 按编号执行。具体职责和
 安装后核验项目见该目录的 `README.md`。

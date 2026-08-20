@@ -192,6 +192,6 @@ def _access_error_message(error):
     if "update_app_user_access" in message:
         return (
             "动态角色数据库尚未安装，请按顺序执行 "
-            "sql/access/role_management/ 下的 01–11 脚本。"
+            "sql/access/role_management/ 下的 01–12 脚本。"
         )
     return message
