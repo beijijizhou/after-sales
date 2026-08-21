@@ -1,6 +1,6 @@
 """Inventory dashboard overview and completion status table."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import streamlit as st
 
@@ -53,13 +53,13 @@ def render_completion_overview(
     else:
         st.success(f"截至 {history_end:%Y-%m-%d} 的四类出库全部完成。")
     requested_flow = render_operation_table(
-        build_daily_operation_table(summary, completed, today)
+        build_daily_operation_table(summary, completed, today), today
     )
     st.caption("今日尚未结束，显示“进行中”属于正常进度，不计入待补日期。")
     return requested_flow
 
 
-def render_operation_table(operation_table):
+def render_operation_table(operation_table, today=None):
     widths = [1.25, 0.9, 0.8, 1.8, 0.8, 1.55, 0.85]
     headers = [
         "出库项目", "数据方式", "截止昨日", "待补日期",
@@ -79,13 +79,37 @@ def render_operation_table(operation_table):
         elif project == "黑白短袖":
             columns[6].page_link("pages/4_库存.py", label="去补录")
         elif project == "DTF 耗材":
-            columns[6].page_link("pages/9_耗材库存.py", label="去补录")
+            if columns[6].button(
+                "去补录", key="inventory_dashboard_consumable_makeup",
+                width="stretch",
+            ):
+                target_date = consumable_makeup_target(
+                    row["待补日期"], today
+                )
+                if target_date is not None:
+                    st.session_state["consumable_makeup_date"] = target_date
+                    st.session_state["daily_consumable_issue_date"] = target_date
+                st.switch_page("pages/9_耗材库存.py")
         elif columns[6].button(
             "预览补录", key=f"inventory_dashboard_preview_{project}",
             width="stretch",
         ):
             requested_flow = project
     return requested_flow
+
+
+def consumable_makeup_target(missing_text, today):
+    """Resolve the first missing business date for the consumables page."""
+    text = str(missing_text or "").strip()
+    if not text or text == "无" or today is None:
+        return None
+    first = text.split("、", 1)[0].strip()
+    try:
+        return datetime.strptime(
+            f"{today.year}/{first}", "%Y/%m/%d"
+        ).date()
+    except ValueError:
+        return None
 
 
 def history_period(today, start_date):

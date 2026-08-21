@@ -32,9 +32,22 @@ from ui.inventory.dashboard import (
     _filter_automatic_missing_dates,
     _format_applied_result,
 )
+from ui.inventory.dashboard_overview import consumable_makeup_target
 
 
 class InventoryDashboardTests(unittest.TestCase):
+    def test_consumable_makeup_link_prefills_first_missing_business_date(self):
+        self.assertEqual(
+            consumable_makeup_target("08/20", date(2026, 8, 21)),
+            date(2026, 8, 20),
+        )
+        self.assertEqual(
+            consumable_makeup_target(
+                "08/09、08/20", date(2026, 8, 21)
+            ),
+            date(2026, 8, 9),
+        )
+
     def test_completion_loader_reads_past_database_thousand_row_page(self):
         source = [
             {
