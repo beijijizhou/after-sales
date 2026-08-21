@@ -16,15 +16,22 @@ from automation.api.fangguo.finance import (
     normalize_fangguo_finance_lines,
     normalize_fangguo_sku_prices,
     recalculate_fangguo_finance,
+    update_fangguo_sku_prices,
 )
 from automation.api.fangguo.auth import (
     clear_fangguo_login_cache,
     login_fangguo_cached,
 )
+from automation.api.fangguo.price_catalog import latest_apparel_target_price
 from ui.finance.platform_finance import (
     _normalize_price_rules,
     _parse_group_ids,
 )
+from ui.finance.fangguo_sku_pricing import (
+    build_bulk_price_changes,
+    build_sku_price_changes,
+)
+from ui.finance.fangguo_sku_catalog import _upgrade_cached_rows
 from ui.finance.bill_workbook import build_bill_workbook
 
 
@@ -36,6 +43,21 @@ def _api_row(**values):
 
 
 class FangguoFinanceTests(unittest.TestCase):
+    def test_old_sku_cache_is_upgraded_with_technology_fields(self):
+        result = _upgrade_cached_rows(pd.DataFrame([{"skuId": 1}]))
+        self.assertEqual(result.iloc[0]["technologyName"], "")
+        self.assertEqual(result.iloc[0]["itemCode"], "")
+
+    def test_latest_catalog_treats_blank_and_back_as_single_only_double_as_double(self):
+        base = {"materialCode": "CVC_男T", "colorCode": "黑色", "modelCode": "S"}
+        self.assertEqual(latest_apparel_target_price({**base, "technologyName": ""}), 17.5)
+        self.assertEqual(latest_apparel_target_price({**base, "technologyName": "背面"}), 17.5)
+        self.assertEqual(latest_apparel_target_price({**base, "technologyName": "双面"}), 19.5)
+
+    def test_latest_catalog_uses_exact_price_even_when_it_decreases(self):
+        row = {"materialCode": "女连帽卫衣加绒", "colorCode": "黑色", "modelCode": "M", "technologyName": ""}
+        self.assertEqual(latest_apparel_target_price(row), 47)
+
     def test_finance_page_uses_provider_validated_large_page_size(self):
         self.assertEqual(PAGE_SIZE, 2_000)
 
@@ -100,6 +122,93 @@ class FangguoFinanceTests(unittest.TestCase):
         ], include_inactive=True)
         self.assertEqual(len(result), 2)
         self.assertEqual(int(result["skuActive"].sum()), 1)
+
+    def test_sku_catalog_preserves_same_identity_with_different_print_faces(self):
+        result = normalize_fangguo_sku_prices([
+            {"id": 1, "materialCode": "男T", "colorCode": "黑", "modelCode": "S", "technologyName": "背面", "price": 17.5, "status": True},
+            {"id": 2, "materialCode": "男T", "colorCode": "黑", "modelCode": "S", "technologyName": "双面", "price": 19.5, "status": True},
+        ], include_inactive=True)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result["technologyName"].tolist(), ["背面", "双面"])
+
+    def test_builds_only_selected_changed_sku_prices(self):
+        source = normalize_fangguo_sku_prices([{
+            "id": 12101698, "materialCode": "磨砂TPU",
+            "colorCode": "黑色", "modelCode": "iphone12promax",
+            "price": 11, "status": True,
+        }], include_inactive=True)
+        editor = pd.DataFrame([{
+            "选择": True, "方果 SKU ID": 12101698,
+            "材质 / 商品": "磨砂TPU", "颜色": "黑色",
+            "型号 / 尺码": "iphone12promax",
+            "当前价格": 11, "新价格": 12,
+        }])
+        changes = build_sku_price_changes(source, editor)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes.iloc[0]["newPrice"], 12)
+        self.assertEqual(changes.iloc[0]["sourcePayload"]["id"], 12101698)
+
+    def test_bulk_fixed_increase_applies_without_per_row_input(self):
+        source = normalize_fangguo_sku_prices([
+            {"id": 1, "materialCode": "男T", "colorCode": "黑", "modelCode": "S", "price": 10, "status": True},
+            {"id": 2, "materialCode": "男T", "colorCode": "黑", "modelCode": "M", "price": 12, "status": True},
+        ], include_inactive=True)
+        changes = build_bulk_price_changes(source, [1, 2], "fixed", 1.5)
+        self.assertEqual(changes["newPrice"].tolist(), [11.5, 13.5])
+        self.assertEqual(changes["increase"].tolist(), [1.5, 1.5])
+
+    def test_bulk_percentage_increase_uses_each_current_price(self):
+        source = normalize_fangguo_sku_prices([
+            {"id": 1, "materialCode": "男T", "colorCode": "黑", "modelCode": "S", "price": 10, "status": True},
+            {"id": 2, "materialCode": "男T", "colorCode": "黑", "modelCode": "M", "price": 20, "status": True},
+        ], include_inactive=True)
+        changes = build_bulk_price_changes(source, [1, 2], "percent", 10)
+        self.assertEqual(changes["newPrice"].tolist(), [11, 22])
+        self.assertEqual(changes["increase"].tolist(), [1, 2])
+
+    def test_old_cached_sku_rows_without_source_payload_do_not_crash(self):
+        old_cache = pd.DataFrame([{
+            "skuId": 1, "materialCode": "男T", "colorCode": "黑",
+            "modelCode": "S", "currentSkuPrice": 10,
+        }])
+        changes = build_bulk_price_changes(old_cache, [1], "fixed", 1)
+        self.assertTrue(changes.empty)
+
+    def test_update_sku_price_preserves_source_payload_and_changes_price(self):
+        class Response:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"code": 0, "msg": ""}
+
+        class Client:
+            def __init__(self):
+                self.calls = []
+
+            def post(self, url, **kwargs):
+                self.calls.append((url, kwargs))
+                return Response()
+
+        client = Client()
+        credentials = {"tenant_id": "tenant", "token": "token"}
+        source = {
+            "id": 12101698, "materialCode": "磨砂TPU",
+            "modelCode": "iphone12promax", "price": 11,
+        }
+        with patch(
+            "automation.api.fangguo.finance._authenticated_client",
+            return_value=(client, "token"),
+        ):
+            result = update_fangguo_sku_prices(credentials, [{
+                "skuId": 12101698, "newPrice": 12,
+                "sourcePayload": source,
+            }])
+        self.assertTrue(result.iloc[0]["success"])
+        sent = client.calls[0][1]["json"]
+        self.assertEqual(sent["materialCode"], "磨砂TPU")
+        self.assertEqual(sent["skuId"], 12101698)
+        self.assertEqual(sent["price"], 12)
 
     def test_current_sku_price_prefills_recalculation_price(self):
         lines = pd.DataFrame([{

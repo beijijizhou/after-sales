@@ -38,6 +38,7 @@ def render_finance_page(supabase):
     start_date, end_date = _month_range(month)
     report_date = _report_date(month, end_date)
     sections = [
+        "平台财务",
         "入库批次",
         "商品库存月报",
         "部门 / 品类",
@@ -45,7 +46,6 @@ def render_finance_page(supabase):
         "流水明细",
         "货柜采购",
         "UV生产月汇总",
-        "平台财务",
     ]
     section = st.radio(
         "财务模块",

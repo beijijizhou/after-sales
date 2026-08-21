@@ -14,6 +14,9 @@ API_URL = (
 SKU_PRICE_API_URL = (
     "https://fangguo.com/fgapp/warehouse/factory/encode/sku/pageFactorySku"
 )
+SKU_UPDATE_API_URL = (
+    "https://fangguo.com/fgapp/warehouse/factory/encode/sku/updateFactorySku"
+)
 NEW_YORK = ZoneInfo("America/New_York")
 PAGE_SIZE = 2_000
 MAX_PAGES = 500
@@ -116,7 +119,8 @@ def fetch_fangguo_sku_prices(
 def normalize_fangguo_sku_prices(rows, include_inactive=False):
     columns = [
         "skuId", "materialCode", "colorCode", "modelCode",
-        "currentSkuPrice", "skuActive", "skuUpdatedAt",
+        "technologyName", "itemCode", "currentSkuPrice", "skuActive",
+        "skuUpdatedAt", "sourcePayload",
     ]
     records = []
     for row in rows:
@@ -127,23 +131,67 @@ def normalize_fangguo_sku_prices(rows, include_inactive=False):
             "materialCode": row.get("materialCode") or row.get("materialName") or "",
             "colorCode": row.get("colorCode") or row.get("colorName") or "",
             "modelCode": row.get("modelCode") or row.get("modelName") or "",
+            "technologyName": row.get("technologyName") or "",
+            "itemCode": row.get("itemCode") or "",
             "currentSkuPrice": row.get("price"),
             "skuActive": bool(row.get("status")),
             "skuUpdatedAt": row.get("updateTime"),
+            "sourcePayload": row.copy(),
         })
     result = pd.DataFrame(records, columns=columns)
     if result.empty:
         return result
-    for field in ("materialCode", "colorCode", "modelCode"):
+    for field in (
+        "materialCode", "colorCode", "modelCode", "technologyName", "itemCode",
+    ):
         result[field] = result[field].fillna("").astype(str).str.strip()
     result["currentSkuPrice"] = pd.to_numeric(
         result["currentSkuPrice"], errors="coerce"
     )
     if not include_inactive:
         result = result[result["skuActive"]]
-    return result.drop_duplicates(
-        subset=["materialCode", "colorCode", "modelCode"], keep="last"
-    ).reset_index(drop=True)
+    return result.drop_duplicates(subset=["skuId"], keep="last").reset_index(drop=True)
+
+
+def update_fangguo_sku_prices(credentials, changes, report_progress=None):
+    report = report_progress or (lambda _message: None)
+    if not changes:
+        return pd.DataFrame(columns=["skuId", "requestedPrice", "success", "message"])
+    client, token = _authenticated_client(credentials)
+    headers = _build_headers(credentials, token)
+    results = []
+    for index, change in enumerate(changes, start=1):
+        sku_id = int(change["skuId"])
+        price = _money(change["newPrice"])
+        if price <= 0:
+            raise ValueError(f"SKU {sku_id} 的新价格必须大于 0")
+        source = change.get("sourcePayload")
+        if not isinstance(source, dict) or int(source.get("id") or 0) != sku_id:
+            raise ValueError(f"SKU {sku_id} 缺少可核对的方果原始资料")
+        payload = {**source, "id": sku_id, "skuId": sku_id, "price": price}
+        report(f"正在修改方果 SKU 价格 {index}/{len(changes)}")
+        try:
+            response = client.post(
+                SKU_UPDATE_API_URL,
+                headers={
+                    **headers,
+                    "Referer": "https://fangguo.com/factory/means/skuManage",
+                },
+                json=payload,
+                timeout=90,
+            )
+            response.raise_for_status()
+            response_payload = response.json()
+            success = response_payload.get("code") == 0
+            message = response_payload.get("msg") or ("成功" if success else "未知错误")
+        except Exception as error:
+            success = False
+            message = str(error)
+        results.append({
+            "skuId": sku_id, "requestedPrice": price,
+            "success": success, "message": message,
+        })
+    return pd.DataFrame(results)
 
 
 def apply_current_sku_prices(price_rules, sku_prices, price_rule_fields=None):

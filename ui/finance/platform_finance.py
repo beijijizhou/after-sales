@@ -36,13 +36,15 @@ def render_platform_finance(report_date):
         "订单可复用一小时缓存；方果当前 SKU 价格每次点击都会实时同步。"
         "按同步价格重算并导出核对，不会回写平台。"
     )
-    reconciliation_tab, sku_tab = st.tabs(["方果订单重算", "方果 SKU 当前价格"])
-    with reconciliation_tab:
-        _render_fangguo(report_date)
-    with sku_tab:
+    pricing_tab, reconciliation_tab = st.tabs([
+        "方果批量价格调整", "方果订单重算",
+    ])
+    with pricing_tab:
         credentials = _credentials_or_error()
         if credentials is not None:
             render_fangguo_sku_catalog(credentials)
+    with reconciliation_tab:
+        _render_fangguo(report_date)
 
 
 def _render_fangguo(report_date):

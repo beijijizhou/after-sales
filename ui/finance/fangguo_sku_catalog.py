@@ -8,6 +8,10 @@ from automation.api.fangguo import fetch_fangguo_sku_prices
 from db.inventory.core.constants import SIZE_COLUMNS
 from utils.option_values import ordered_values
 from utils.sku_sorting import sort_sku_rows
+from ui.finance.fangguo_sku_pricing import (
+    render_batch_price_editor,
+    render_price_reference,
+)
 
 
 STATE_ROWS = "finance_fangguo_sku_catalog"
@@ -16,6 +20,8 @@ NEW_YORK = ZoneInfo("America/New_York")
 
 
 def render_fangguo_sku_catalog(credentials):
+    render_price_reference()
+    st.divider()
     st.caption(
         "实时读取方果 SKU 管理页；不会复用订单缓存，也不会修改方果数据。"
     )
@@ -43,10 +49,13 @@ def render_fangguo_sku_catalog(credentials):
     if not isinstance(rows, pd.DataFrame):
         st.info("点击“读取最新方果 SKU”查看当前价格和启用状态。")
         return
+    rows = _upgrade_cached_rows(rows)
+    st.session_state[STATE_ROWS] = rows
     _render_summary(rows)
     filtered = _render_filters(rows)
     _render_table(filtered)
     _render_download(filtered)
+    render_batch_price_editor(credentials, filtered, _save_refreshed_rows)
 
 
 def _render_summary(rows):
@@ -103,17 +112,26 @@ def _render_filters(rows):
     )
     if models:
         scoped = scoped[scoped["modelCode"].isin(models)]
+    technologies = st.multiselect(
+        "印花面 / 工艺",
+        ordered_values(scoped["technologyName"]),
+        key="fangguo_sku_catalog_technologies",
+    )
+    if technologies:
+        scoped = scoped[scoped["technologyName"].isin(technologies)]
     return scoped.reset_index(drop=True)
 
 
 def _render_table(rows):
-    st.markdown("#### SKU 当前价格")
+    st.markdown("#### 批量价格调整范围")
     st.caption(f"当前筛选显示 {len(rows):,} 个 SKU")
     display = rows.rename(columns={
         "skuId": "方果 SKU ID",
         "materialCode": "材质 / 商品",
         "colorCode": "颜色",
         "modelCode": "型号 / 尺码",
+        "technologyName": "印花面 / 工艺",
+        "itemCode": "方果商品编码",
         "currentSkuPrice": "当前价格",
         "skuActive": "状态",
         "skuUpdatedAt": "方果更新时间",
@@ -128,8 +146,12 @@ def _render_table(rows):
         color="颜色",
         size="型号 / 尺码",
     )
+    visible = [
+        "方果 SKU ID", "材质 / 商品", "颜色", "型号 / 尺码",
+        "印花面 / 工艺", "方果商品编码", "当前价格", "状态", "方果更新时间",
+    ]
     st.dataframe(
-        display,
+        display[visible],
         hide_index=True,
         width="stretch",
         height=min(800, 38 * (len(display) + 1) + 4),
@@ -143,9 +165,15 @@ def _render_download(rows):
     export = rows.rename(columns={
         "skuId": "方果SKU ID", "materialCode": "材质/商品",
         "colorCode": "颜色", "modelCode": "型号/尺码",
+        "technologyName": "印花面/工艺", "itemCode": "方果商品编码",
         "currentSkuPrice": "当前价格", "skuActive": "是否启用",
         "skuUpdatedAt": "方果更新时间毫秒",
     })
+    export = export[[
+        "方果SKU ID", "材质/商品", "颜色", "型号/尺码",
+        "印花面/工艺", "方果商品编码", "当前价格", "是否启用",
+        "方果更新时间毫秒",
+    ]]
     st.download_button(
         "下载当前筛选 CSV",
         export.to_csv(index=False).encode("utf-8-sig"),
@@ -153,3 +181,20 @@ def _render_download(rows):
         mime="text/csv",
         key="fangguo_sku_catalog_download",
     )
+
+
+def _save_refreshed_rows(rows):
+    st.session_state[STATE_ROWS] = rows
+    st.session_state[STATE_READ_AT] = datetime.now(NEW_YORK)
+
+
+def _upgrade_cached_rows(rows):
+    """Keep an older Streamlit session cache compatible with new SKU fields."""
+    result = rows.copy()
+    for field in ("technologyName", "itemCode"):
+        if field not in result:
+            result[field] = ""
+        result[field] = result[field].fillna("").astype(str)
+    if "sourcePayload" not in result:
+        result["sourcePayload"] = None
+    return result

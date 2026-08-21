@@ -14,6 +14,7 @@ from automation.api.fangguo.finance import (
     fetch_fangguo_finance_lines,
     fetch_fangguo_sku_prices,
     recalculate_fangguo_finance,
+    update_fangguo_sku_prices,
 )
 
 
@@ -22,6 +23,7 @@ __all__ = [
     "fetch_fangguo_finance_lines",
     "fetch_fangguo_sku_prices",
     "apply_current_sku_prices",
+    "update_fangguo_sku_prices",
     "build_price_rule_table",
     "build_customer_bill_summary",
     "build_customer_bill_table",
@@ -31,4 +33,12 @@ __all__ = [
     "login_fangguo",
     "login_fangguo_cached",
     "clear_fangguo_login_cache",
+    "CATALOG_VERSION",
+    "build_latest_catalog_changes",
+    "latest_apparel_target_price",
 ]
+from automation.api.fangguo.price_catalog import (
+    CATALOG_VERSION,
+    build_latest_catalog_changes,
+    latest_apparel_target_price,
+)
