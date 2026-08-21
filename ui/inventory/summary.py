@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import streamlit as st
 
 from db.inventory import (
@@ -23,7 +24,7 @@ from ui.inventory.history.workflows.page import (
     filter_inventory_history_data,
     load_inventory_history_data,
 )
-from ui.inventory.history.core.filters import movement_type_options
+from ui.inventory.history.core.filters import MOVEMENT_TYPE_ORDER
 from ui.inventory.i18n import get_language, render_language_selector, t
 from ui.inventory.category_routing import (
     apply_phone_case_display_scope,
@@ -40,7 +41,10 @@ from ui.inventory.operations.outbound_status import (
     render_uv_daily_consumption_alert,
 )
 from ui.inventory.operations.pages import render_daily_outbound_operation
-from ui.inventory.page_tabs import render_inventory_tabs
+from ui.inventory.page_tabs import (
+    inventory_tab_state_key,
+    render_inventory_tabs,
+)
 from ui.inventory.shared import (
     build_inventory_filter_title,
     filter_inventory_rows,
@@ -64,7 +68,8 @@ def render_inventory_summary(supabase):
         OUTBOUND_TEXT[get_language()]
     )
     try:
-        dimensions_df = load_inventory_dimensions(supabase)
+        with st.spinner("正在加载库存筛选条件…"):
+            dimensions_df = load_inventory_dimensions(supabase)
     except Exception as error:
         st.error(f"{t('库存数据加载失败')}: {error}")
         return
@@ -74,16 +79,29 @@ def render_inventory_summary(supabase):
     ) = render_inventory_dimension_filters(
         dimensions_df, key="inventory_global"
     )
-    try:
-        complete_history_data = load_inventory_history_data(
-            supabase, department, limit=10000
-        )
-    except Exception as error:
-        st.error(f"{t('库存数据加载失败')}: {error}")
-        return
+    active_tab = st.session_state.get(
+        inventory_tab_state_key(department, category), t("库存明细")
+    )
+    needs_history = active_tab in {t("库存流水"), t("批次修改与撤销")}
+    empty_history = (pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
+    complete_history_data = empty_history
+    if needs_history:
+        try:
+            with st.status("正在加载库存流水…", expanded=True) as status:
+                status.write("正在读取当前部门的完整批次与流水")
+                complete_history_data = load_inventory_history_data(
+                    supabase, department, limit=10000
+                )
+                status.update(
+                    label="库存流水已加载", state="complete",
+                    expanded=False,
+                )
+        except Exception as error:
+            st.error(f"{t('库存数据加载失败')}: {error}")
+            return
     movement_types, selected_date, _use_snapshot_date = (
         render_inventory_activity_filters(
-            movement_type_options(complete_history_data[2]),
+            MOVEMENT_TYPE_ORDER,
             key="inventory_global",
         )
     )
@@ -107,9 +125,10 @@ def render_inventory_summary(supabase):
     st.session_state["inventory_today"] = datetime.now(ZoneInfo("America/New_York")).date()
 
     try:
-        complete_category_raw_df = load_inventory_items(
-            supabase, department, category
-        )
+        with st.spinner("正在加载当前库存与成本…"):
+            complete_category_raw_df = load_inventory_items(
+                supabase, department, category
+            )
         complete_category_raw_df = apply_phone_case_display_scope(
             complete_category_raw_df, department, category
         )
@@ -188,12 +207,6 @@ def render_inventory_summary(supabase):
             include_cost=False,
             department=department,
         )
-        current_cost_df = (
-            build_inventory_table(
-                raw_df, category, include_cost=True, department=department
-            )
-            if can_view_cost else None
-        )
         # The as-of date describes the department ledger, not the current
         # display filters. Filtering a quiet SKU must not move the ledger back.
         latest_movement_date = load_latest_inventory_movement_date(
@@ -220,7 +233,7 @@ def render_inventory_summary(supabase):
         )
         render_inventory_tabs(
             supabase, department, category, inventory_df, raw_df,
-            current_cost_df, inventory_date, selected_date, current_date,
+            inventory_date, selected_date, current_date,
             visible_sizes, can_edit, can_view_cost, history_data,
             movement_types,
             filter_title,

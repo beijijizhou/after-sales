@@ -114,19 +114,14 @@ def render_inventory_dimension_filters(
         category_rows, department, category
     )
 
-    hide_uv_dimensions = department == "UV"
     brands = ordered_options(
         category_rows.get("brand", []), [], include_missing=False
     )
-    if hide_uv_dimensions:
-        _reset_invalid_multiselect(f"{key}_brands", [])
-        selected_brands = []
-    else:
-        _reset_invalid_multiselect(f"{key}_brands", brands)
-        selected_brands = brand_col.multiselect(
-            t("筛选品牌"), brands, key=f"{key}_brands",
-            placeholder=t("全部"),
-        )
+    _reset_invalid_multiselect(f"{key}_brands", brands)
+    selected_brands = brand_col.multiselect(
+        t("筛选品牌"), brands, key=f"{key}_brands",
+        placeholder=t("全部"),
+    )
 
     material_rows = category_rows
     if selected_brands:
@@ -152,15 +147,11 @@ def render_inventory_dimension_filters(
         PREFERRED_COLORS if department == "DTF" else [],
         include_missing=False,
     )
-    if hide_uv_dimensions:
-        _reset_invalid_multiselect(f"{key}_colors", [])
-        selected_colors = []
-    else:
-        _reset_invalid_multiselect(f"{key}_colors", colors)
-        selected_colors = color_col.multiselect(
-            t("筛选颜色"), colors, key=f"{key}_colors",
-            placeholder=t("全部"),
-        )
+    _reset_invalid_multiselect(f"{key}_colors", colors)
+    selected_colors = color_col.multiselect(
+        t("筛选颜色"), colors, key=f"{key}_colors",
+        placeholder=t("全部"),
+    )
 
     size_rows = color_rows
     if selected_colors:

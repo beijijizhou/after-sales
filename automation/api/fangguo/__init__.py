@@ -7,10 +7,12 @@ from automation.api.fangguo.client import fetch_fangguo_production_records
 from automation.api.fangguo.config import load_fangguo_credentials
 from automation.api.fangguo.parser import parse_fangguo_records
 from automation.api.fangguo.finance import (
+    apply_current_sku_prices,
     build_price_rule_table,
     build_customer_bill_summary,
     build_customer_bill_table,
     fetch_fangguo_finance_lines,
+    fetch_fangguo_sku_prices,
     recalculate_fangguo_finance,
 )
 
@@ -18,6 +20,8 @@ from automation.api.fangguo.finance import (
 __all__ = [
     "fetch_fangguo_production_records",
     "fetch_fangguo_finance_lines",
+    "fetch_fangguo_sku_prices",
+    "apply_current_sku_prices",
     "build_price_rule_table",
     "build_customer_bill_summary",
     "build_customer_bill_table",

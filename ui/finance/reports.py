@@ -26,10 +26,16 @@ def render_inventory_report(finance_df, recent_df, value_df, month, report_date)
     columns[2].metric("本月出库成本", f"${overview['outbound_amount']:,.2f}")
     missing = overview["missing_inbound_quantity"] + overview["missing_outbound_quantity"]
     if missing:
-        st.warning(f"所选月份有 {missing:,} 个库存单位缺少成本，请到“成本维护”填写。")
+        st.warning(
+            f"所选月份有 {missing:,} 个库存单位缺少成本，"
+            "请到“库存 → 库存成本”填写。"
+        )
     if inventory_value["missing_cost_quantity"]:
         st.warning(
             f"当前库存有 {inventory_value['missing_cost_quantity']:,} 个单位缺少成本。"
+        )
+        render_missing_cost_navigation(
+            value_df, key="finance_monthly_missing_cost"
         )
     daily = build_two_week_daily_amounts(recent_df, report_date)
     st.subheader("近14天每日进出库金额")
@@ -116,6 +122,79 @@ def render_inventory_filters(finance_df, *, key):
     if department:
         filtered = filtered[filtered["department"] == department]
     return filtered.reset_index(drop=True)
+
+
+def build_missing_cost_scope_summary(value_df):
+    data = pd.DataFrame(value_df).copy()
+    columns = ["部门", "品类", "缺成本库存"]
+    if data.empty or "missing_cost_quantity" not in data:
+        return pd.DataFrame(columns=columns)
+    data["missing_cost_quantity"] = pd.to_numeric(
+        data["missing_cost_quantity"], errors="coerce"
+    ).fillna(0)
+    data = data[data["missing_cost_quantity"] > 0]
+    if data.empty:
+        return pd.DataFrame(columns=columns)
+    for column in ["department", "category"]:
+        if column not in data:
+            data[column] = ""
+        data[column] = data[column].fillna("").astype(str)
+    return (
+        data.groupby(["department", "category"], as_index=False)
+        .agg(missing_cost_quantity=("missing_cost_quantity", "sum"))
+        .rename(columns={
+            "department": "部门", "category": "品类",
+            "missing_cost_quantity": "缺成本库存",
+        })[columns]
+        .sort_values("缺成本库存", ascending=False, kind="stable")
+        .reset_index(drop=True)
+    )
+
+
+def render_missing_cost_navigation(value_df, *, key):
+    summary = build_missing_cost_scope_summary(value_df)
+    if summary.empty:
+        return
+    st.markdown("#### 缺成本位置")
+    st.dataframe(
+        summary, hide_index=True, width="stretch",
+        column_config={
+            "缺成本库存": st.column_config.NumberColumn(format="%d"),
+        },
+    )
+    options = list(range(len(summary)))
+    labels = {
+        index: (
+            f"{row['部门']}｜{row['品类'] or '全部品类'}｜"
+            f"{int(row['缺成本库存']):,} 个单位"
+        )
+        for index, row in summary.iterrows()
+    }
+    selected = st.selectbox(
+        "选择需要处理的范围", options,
+        format_func=lambda value: labels[value], key=f"{key}_scope",
+    )
+    if not st.button(
+        "前往库存成本处理", type="primary", width="stretch",
+        key=f"{key}_open_inventory_cost",
+    ):
+        return
+    target = summary.iloc[int(selected)]
+    _open_inventory_cost_scope(target["部门"], target["品类"])
+
+
+def _open_inventory_cost_scope(department, category):
+    from ui.inventory.i18n import t
+    from ui.inventory.page_tabs import inventory_tab_state_key
+
+    department = str(department or "").strip()
+    category = str(category or "").strip()
+    st.session_state["inventory_global_department"] = department
+    st.session_state[f"inventory_global_{department}_category"] = category
+    st.session_state[inventory_tab_state_key(department, category)] = t(
+        "库存成本"
+    )
+    st.switch_page("pages/4_库存.py")
 
 
 def render_container_report(container_df, month):

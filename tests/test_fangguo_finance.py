@@ -8,10 +8,13 @@ from openpyxl import load_workbook
 from automation.api.fangguo.finance import (
     PAGE_SIZE,
     _finance_payload,
+    _sku_price_payload,
+    apply_current_sku_prices,
     build_price_rule_table,
     build_customer_bill_summary,
     build_customer_bill_table,
     normalize_fangguo_finance_lines,
+    normalize_fangguo_sku_prices,
     recalculate_fangguo_finance,
 )
 from automation.api.fangguo.auth import (
@@ -67,6 +70,82 @@ class FangguoFinanceTests(unittest.TestCase):
         result = build_price_rule_table(lines)
         self.assertEqual(len(result), 1)
         self.assertEqual(result.iloc[0]["currentUnitPrice"], "33.0000 / 38.0000")
+
+    def test_normalizes_active_fangguo_sku_prices(self):
+        result = normalize_fangguo_sku_prices([
+            {
+                "id": 1, "materialCode": "女收腰短袖",
+                "colorCode": "Pink", "modelCode": "S",
+                "price": 24, "status": True, "updateTime": 123,
+            },
+            {
+                "id": 2, "materialCode": "女收腰短袖",
+                "colorCode": "灰色", "modelCode": "M",
+                "price": 99, "status": False, "updateTime": 456,
+            },
+        ])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["currentSkuPrice"], 24)
+
+    def test_sku_catalog_can_include_inactive_rows_for_audit(self):
+        result = normalize_fangguo_sku_prices([
+            {
+                "id": 1, "materialCode": "男T", "colorCode": "黑",
+                "modelCode": "S", "price": 10, "status": True,
+            },
+            {
+                "id": 2, "materialCode": "男T", "colorCode": "黑",
+                "modelCode": "M", "price": 10, "status": False,
+            },
+        ], include_inactive=True)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(int(result["skuActive"].sum()), 1)
+
+    def test_current_sku_price_prefills_recalculation_price(self):
+        lines = pd.DataFrame([{
+            "materialCode": "女收腰短袖", "quantity": 1,
+            "caseAmount": 20,
+        }])
+        sku_prices = normalize_fangguo_sku_prices([
+            {
+                "id": 1, "materialCode": "女收腰短袖",
+                "colorCode": "Pink", "modelCode": "S",
+                "price": 24, "status": True,
+            },
+            {
+                "id": 2, "materialCode": "女收腰短袖",
+                "colorCode": "灰色", "modelCode": "M",
+                "price": 24, "status": True,
+            },
+        ])
+        rules = apply_current_sku_prices(
+            build_price_rule_table(lines), sku_prices
+        )
+        self.assertEqual(rules.iloc[0]["fangguoSkuPrice"], "24.0000")
+        self.assertEqual(rules.iloc[0]["newUnitPrice"], 24)
+
+    def test_conflicting_current_sku_prices_require_manual_review(self):
+        lines = pd.DataFrame([{
+            "materialCode": "女收腰短袖", "quantity": 1,
+            "caseAmount": 20,
+        }])
+        sku_prices = normalize_fangguo_sku_prices([
+            {
+                "id": 1, "materialCode": "女收腰短袖",
+                "colorCode": "Pink", "modelCode": "S",
+                "price": 24, "status": True,
+            },
+            {
+                "id": 2, "materialCode": "女收腰短袖",
+                "colorCode": "灰色", "modelCode": "M",
+                "price": 26, "status": True,
+            },
+        ])
+        rules = apply_current_sku_prices(
+            build_price_rule_table(lines), sku_prices
+        )
+        self.assertEqual(rules.iloc[0]["fangguoSkuPrice"], "24.0000 / 26.0000")
+        self.assertTrue(pd.isna(rules.iloc[0]["newUnitPrice"]))
 
     def test_recalculation_preserves_non_material_fees(self):
         lines = pd.DataFrame([{
@@ -252,6 +331,12 @@ class FangguoFinanceTests(unittest.TestCase):
         self.assertIn("ACTUAL_DEDUCTION", payload["feeTypeList"])
         self.assertIn("REFUND", payload["feeTypeList"])
 
+    def test_sku_price_payload_uses_configured_scope(self):
+        payload = _sku_price_payload(1, 2000, 36, [177714, 177715], [32494])
+        self.assertEqual(payload["materialIds"], [177714, 177715])
+        self.assertEqual(payload["colorIds"], [32494])
+        self.assertEqual(payload["sortField"], "updateTime")
+
     def test_blank_customer_group_queries_all_customers(self):
         self.assertEqual(_parse_group_ids(""), [])
         payload = _finance_payload(1, 500, 100, 200, [])
@@ -259,6 +344,12 @@ class FangguoFinanceTests(unittest.TestCase):
 
     def test_multiple_customer_groups_are_supported(self):
         self.assertEqual(_parse_group_ids("8564, 7721"), [8564, 7721])
+
+    def test_customer_groups_accept_streamlit_stringified_list(self):
+        self.assertEqual(_parse_group_ids("[8564, 7721]"), [8564, 7721])
+
+    def test_customer_groups_accept_toml_list(self):
+        self.assertEqual(_parse_group_ids([8564, "7721"]), [8564, 7721])
 
     def test_login_token_is_reused_during_cache_window(self):
         credentials = {

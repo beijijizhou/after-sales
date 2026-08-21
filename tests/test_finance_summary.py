@@ -16,7 +16,19 @@ from db.finance.repository import (
     _normalize_cost_rows,
     normalize_consumable_finance_rows,
 )
-from ui.finance.cost_editor import build_cost_batch_summary, find_cost_changes
+from ui.inventory.stock.batch_costs import (
+    build_cost_batch_summary,
+    build_missing_cost_batch_overview,
+    build_missing_cost_groups,
+    build_previous_brand_cost_preview,
+    build_reference_cost_preview,
+    find_cost_changes,
+    latest_material_cost_source,
+    match_previous_brand_costs,
+    resolve_pasted_cost_targets,
+    filter_cost_history_scope,
+)
+from db.inventory.core.costs import fill_missing_inventory_group_costs
 from ui.finance.cost_catalog import (
     build_sku_cost_history,
     build_sku_cost_overview,
@@ -24,6 +36,8 @@ from ui.finance.cost_catalog import (
 from ui.finance.inbound_batches import build_inbound_batch_summary
 from ui.finance.pending_costs import build_pending_cost_batch_summary
 from ui.finance.page import _build_two_week_daily_amounts
+from ui.finance.reports import build_missing_cost_scope_summary
+from ui.inventory.stock.cost_summary import build_sku_price_completion
 import ui.finance.page as finance_page
 from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
 
@@ -140,6 +154,33 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result["inventory_quantity"], 150)
         self.assertEqual(result["inventory_value"], 158)
         self.assertEqual(result["missing_cost_quantity"], 10)
+
+    def test_missing_cost_scope_summary_shows_where_to_fix(self):
+        rows = pd.DataFrame([
+            {
+                "department": "UV", "category": "铁板画",
+                "missing_cost_quantity": 70000,
+            },
+            {
+                "department": "UV", "category": "铁板画",
+                "missing_cost_quantity": 2000,
+            },
+            {
+                "department": "DTF", "category": "彩色短袖",
+                "missing_cost_quantity": 578,
+            },
+            {
+                "department": "DTF", "category": "黑白短袖",
+                "missing_cost_quantity": 0,
+            },
+        ])
+
+        result = build_missing_cost_scope_summary(rows)
+
+        self.assertEqual(result.iloc[0].to_dict(), {
+            "部门": "UV", "品类": "铁板画", "缺成本库存": 72000,
+        })
+        self.assertEqual(result.iloc[1]["缺成本库存"], 578)
 
     def test_department_summary_calculates_net_change(self):
         result = build_department_summary(self.finance)
@@ -389,6 +430,249 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["数量"], 4000)
         self.assertEqual(result.iloc[0]["缺成本SKU"], 2)
 
+    def test_reference_cost_fill_groups_only_missing_cost_batches(self):
+        rows = pd.DataFrame([
+            _dtf_cost_row(
+                "missing-l", "batch-a", "Haloo", "180g", "白", "L",
+                2000, None, "2026-08-10",
+            ),
+            _dtf_cost_row(
+                "missing-xl", "batch-a", "Haloo", "180g", "白", "XL",
+                1600, 0, "2026-08-10",
+            ),
+            _dtf_cost_row(
+                "priced-2xl", "batch-b", "Haloo", "180g", "白", "2XL",
+                1500, 1.67, "2026-08-09",
+            ),
+        ])
+
+        result = build_missing_cost_groups(rows)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["缺成本批次"], 1)
+        self.assertEqual(result.iloc[0]["缺成本记录"], 2)
+        self.assertEqual(result.iloc[0]["缺成本数量"], 3600)
+
+    def test_reference_cost_uses_latest_price_in_selected_business_scope(self):
+        rows = pd.DataFrame([
+            _dtf_cost_row(
+                "cvc-old", "batch-old", "Haloo", "CVC", "黑", "S",
+                1000, 0.88, "2026-08-05",
+            ),
+            _dtf_cost_row(
+                "cvc-current", "batch-current", "Haloo", "CVC", "黑", "M",
+                1000, 0.9182, "2026-08-06",
+            ),
+            {
+                **_dtf_cost_row(
+                    "uv-cvc", "uv-batch", "", "CVC", "白", "2030",
+                    1000, 9.99, "2026-08-07",
+                ),
+                "department": "UV", "category": "铁板画",
+            },
+        ])
+
+        source = latest_material_cost_source(
+            rows, "CVC", department="DTF", category="黑白短袖"
+        )
+
+        self.assertEqual(source["日期"], date(2026, 8, 6))
+        self.assertAlmostEqual(source["单位成本"], 0.9182)
+
+    def test_reference_cost_preview_is_wide_and_preserves_existing_cost(self):
+        rows = pd.DataFrame([
+            _dtf_cost_row(
+                "missing-s", "batch-a", "SK", "180g", "黑", "S",
+                1200, None, "2026-08-10",
+            ),
+            _dtf_cost_row(
+                "missing-3xl", "batch-a", "SK", "180g", "黑", "3XL",
+                500, 0, "2026-08-10",
+            ),
+            _dtf_cost_row(
+                "priced-xl", "batch-a", "SK", "180g", "黑", "XL",
+                700, 1.67, "2026-08-10",
+            ),
+        ])
+        key = build_missing_cost_groups(rows).iloc[0]["目标键"]
+
+        preview, lots = build_reference_cost_preview(rows, [key], 0.9182)
+
+        self.assertEqual(lots["record_id"].tolist(), ["missing-s", "missing-3xl"])
+        self.assertEqual(preview.iloc[0]["S"], 1200)
+        self.assertEqual(preview.iloc[0]["XL"], 0)
+        self.assertEqual(preview.iloc[0]["3XL"], 500)
+        self.assertEqual(preview.iloc[0]["总件数"], 1700)
+        self.assertAlmostEqual(preview.iloc[0]["补价金额"], 1560.94)
+
+    def test_reference_cost_targets_can_be_pasted_as_business_dimensions(self):
+        rows = pd.DataFrame([
+            _dtf_cost_row(
+                "haloo", "batch-a", "Haloo", "180g", "白", "S",
+                100, None, "2026-08-10",
+            ),
+            _dtf_cost_row(
+                "misc", "batch-b", "杂牌", "160g", "白", "M",
+                200, None, "2026-08-10",
+            ),
+        ])
+        groups = build_missing_cost_groups(rows)
+
+        selected, unmatched = resolve_pasted_cost_targets(
+            "Haloo 180g 白\n杂牌｜160g｜白\n不存在 160g 黑", groups
+        )
+
+        self.assertEqual(len(selected), 2)
+        self.assertEqual(unmatched, ["不存在 160g 黑"])
+
+    def test_inventory_cost_batch_scope_follows_department_and_category(self):
+        rows = pd.DataFrame([
+            _dtf_cost_row(
+                "dtf", "batch-a", "Haloo", "CVC", "黑", "S",
+                100, 0.9182, "2026-08-10",
+            ),
+            {
+                **_dtf_cost_row(
+                    "uv", "batch-b", "", "铁牌", "白", "2030",
+                    200, 0.2, "2026-08-10",
+                ),
+                "department": "UV", "category": "铁板画",
+            },
+        ])
+
+        scoped = filter_cost_history_scope(rows, "DTF", "黑白短袖")
+
+        self.assertEqual(scoped["record_id"].tolist(), ["dtf"])
+
+    def test_missing_cost_batch_overview_lists_skus_batch_first(self):
+        rows = pd.DataFrame([
+            {
+                **_dtf_cost_row(
+                    "missing-l", "batch-a", "", "木板", "白", "2030",
+                    5000, None, "2026-07-30",
+                ),
+                "department": "UV", "category": "木板画",
+                "business_batch_label": "木板临时入库",
+            },
+            {
+                **_dtf_cost_row(
+                    "missing-cup", "batch-b", "", "直杯", "", "600ML",
+                    5000, None, "2026-07-30",
+                ),
+                "department": "UV", "category": "保温杯",
+                "business_batch_label": "杯子临时入库",
+            },
+            {
+                **_dtf_cost_row(
+                    "priced", "batch-c", "", "铁牌", "白", "2030",
+                    1000, 0.211, "2026-08-20",
+                ),
+                "department": "UV", "category": "铁板画",
+            },
+        ])
+
+        result = build_missing_cost_batch_overview(rows)
+
+        self.assertEqual(result["批次"].tolist(), ["木板临时入库", "杯子临时入库"])
+        self.assertEqual(result.iloc[0]["缺成本 SKU"], "木板｜白｜2030")
+        self.assertEqual(result.iloc[0]["批次数量"], 5000)
+        self.assertNotIn("铁牌｜白｜2030", "；".join(result["缺成本 SKU"]))
+
+    def test_sku_price_completion_counts_active_skus_only(self):
+        rows = pd.DataFrame([
+            {"id": "priced", "quantity": 100, "unit_cost": 0.22},
+            {"id": "missing", "quantity": 50, "unit_cost": None},
+            {"id": "zero-stock", "quantity": 0, "unit_cost": None},
+        ])
+
+        result = build_sku_price_completion(rows)
+
+        self.assertEqual(result, {"total": 2, "priced": 1, "missing": 1})
+
+    def test_reference_cost_fill_also_updates_missing_current_inventory(self):
+        supabase = _FakeCostSupabase([
+            {"id": "missing", "quantity": 100, "unit_cost": 0},
+            {"id": "priced", "quantity": 200, "unit_cost": 1.67},
+            {"id": "empty", "quantity": 0, "unit_cost": 0},
+        ])
+        groups = pd.DataFrame([{
+            "department": "DTF", "category": "黑白短袖",
+            "brand": "Haloo", "material": "180g", "color": "白",
+        }])
+
+        updated = fill_missing_inventory_group_costs(
+            supabase, groups, 0.9182
+        )
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(supabase.updated_ids, ["missing"])
+        self.assertEqual(supabase.updated_value, 0.9182)
+
+    def test_colored_cost_uses_prior_same_brand_material_and_size(self):
+        rows = pd.DataFrame([
+            _colored_cost_row(
+                "haloo-old", "old", "Haloo", "蓝色", "S", 100, 1.6,
+                "2026-08-01",
+            ),
+            _colored_cost_row(
+                "temp-old", "old-temp", "临时进货", "绿色", "S", 100,
+                2.06, "2026-08-02",
+            ),
+            _colored_cost_row(
+                "haloo-missing", "new", "Haloo", "粉色", "S", 200,
+                None, "2026-08-10",
+            ),
+            _colored_cost_row(
+                "temp-missing", "new-temp", "临时进货", "紫色", "S", 300,
+                None, "2026-08-10",
+            ),
+        ])
+
+        result = match_previous_brand_costs(rows).set_index("record_id")
+
+        self.assertEqual(result.loc["haloo-missing", "reference_cost"], 1.6)
+        self.assertEqual(result.loc["temp-missing", "reference_cost"], 2.06)
+
+    def test_colored_cost_backfills_from_first_later_same_size_price(self):
+        rows = pd.DataFrame([
+            _colored_cost_row(
+                "prior-xl", "old", "Haloo", "蓝色", "XL", 100, 1.6,
+                "2026-08-01",
+            ),
+            _colored_cost_row(
+                "future-s", "future", "Haloo", "绿色", "S", 100, 1.8,
+                "2026-08-20",
+            ),
+            _colored_cost_row(
+                "missing-s", "new", "Haloo", "粉色", "S", 200, None,
+                "2026-08-10",
+            ),
+        ])
+
+        result = match_previous_brand_costs(rows)
+
+        self.assertEqual(result.iloc[0]["reference_cost"], 1.8)
+        self.assertEqual(result.iloc[0]["reference_mode"], "回溯参考")
+
+    def test_colored_previous_cost_preview_is_wide(self):
+        rows = pd.DataFrame([
+            _colored_cost_row(
+                "old-s", "old", "Haloo", "蓝色", "S", 100, 1.6,
+                "2026-08-01",
+            ),
+            _colored_cost_row(
+                "new-s", "new", "Haloo", "粉色", "S", 200, None,
+                "2026-08-10",
+            ),
+        ])
+
+        preview = build_previous_brand_cost_preview(
+            match_previous_brand_costs(rows)
+        )
+
+        self.assertEqual(preview.iloc[0]["S"], "200 × $1.6000")
+        self.assertEqual(preview.iloc[0]["总件数"], 200)
+
     def test_inventory_navigation_is_grouped(self):
         inventory_section = next(
             items for title, items in NAV_SECTIONS if title == "库存"
@@ -420,6 +704,86 @@ def _finance_inbound(record_id, batch_id, size, quantity, cost, recorded_at):
         "amount": quantity * cost, "source_type": "transfer",
         "missing_cost": False,
     }
+
+
+def _dtf_cost_row(
+    record_id, batch_id, brand, material, color, size,
+    quantity, cost, business_date,
+):
+    return {
+        "record_id": record_id, "batch_id": batch_id,
+        "business_batch_label": f"测试批次 {batch_id}",
+        "recorded_at": f"{business_date}T12:00:00Z",
+        "date": business_date, "direction": "入库",
+        "department": "DTF", "category": "黑白短袖",
+        "brand": brand, "material": material, "color": color,
+        "size": size, "quantity": quantity, "unit_cost": cost,
+        "amount": 0 if not cost else quantity * cost,
+        "source_type": "bulk", "missing_cost": not cost,
+    }
+
+
+def _colored_cost_row(
+    record_id, batch_id, brand, color, size, quantity, cost, business_date,
+):
+    return {
+        **_dtf_cost_row(
+            record_id, batch_id, brand, "180g", color, size,
+            quantity, cost, business_date,
+        ),
+        "category": "彩色短袖",
+    }
+
+
+class _FakeCostResponse:
+    def __init__(self, data):
+        self.data = data
+
+
+class _FakeCostQuery:
+    def __init__(self, owner, mode):
+        self.owner = owner
+        self.mode = mode
+        self.ids = []
+
+    def select(self, *_args):
+        return self
+
+    def eq(self, *_args):
+        return self
+
+    def gt(self, column, value):
+        if column == "quantity":
+            self.owner.rows = [
+                row for row in self.owner.rows
+                if float(row.get("quantity") or 0) > value
+            ]
+        return self
+
+    def update(self, values):
+        self.mode = "update"
+        self.owner.updated_value = values["unit_cost"]
+        return self
+
+    def in_(self, _column, ids):
+        self.ids = list(ids)
+        return self
+
+    def execute(self):
+        if self.mode == "update":
+            self.owner.updated_ids.extend(self.ids)
+            return _FakeCostResponse([{"id": value} for value in self.ids])
+        return _FakeCostResponse(list(self.owner.rows))
+
+
+class _FakeCostSupabase:
+    def __init__(self, rows):
+        self.rows = list(rows)
+        self.updated_ids = []
+        self.updated_value = None
+
+    def table(self, _name):
+        return _FakeCostQuery(self, "select")
 
 
 if __name__ == "__main__":

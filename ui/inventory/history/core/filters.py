@@ -68,20 +68,22 @@ def filter_batches_by_movement_type(batch_df, movement_types):
     ]
 
 
+MOVEMENT_TYPE_ORDER = [
+    "入库", "出库", "库存设置", "新增 SKU",
+    "已撤销入库", "已撤销出库", "撤销入库", "撤销出库",
+]
+
+
 def movement_type_options(batch_df):
     """Return the actual business movement types present in current data."""
     if batch_df.empty or "类型" not in batch_df:
         return []
-    preferred = [
-        "入库", "出库", "库存设置", "新增 SKU",
-        "已撤销入库", "已撤销出库", "撤销入库", "撤销出库",
-    ]
     present = {
         str(value).strip() for value in batch_df["类型"].dropna()
         if str(value).strip()
     }
-    return [value for value in preferred if value in present] + sorted(
-        present - set(preferred)
+    return [value for value in MOVEMENT_TYPE_ORDER if value in present] + sorted(
+        present - set(MOVEMENT_TYPE_ORDER)
     )
 
 

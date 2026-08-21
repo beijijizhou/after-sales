@@ -32,6 +32,10 @@ cached in server memory for 45 minutes by default; configure
 For a fixed reconciliation scope, also configure `finance_customer_ids` and
 `finance_customer_names`. The IDs preserve the provider identity while the
 names drive the exact order-line filter returned by the finance endpoint.
+Optional `finance_sku_material_ids` and `finance_sku_color_ids` lists limit the
+live factory-SKU price query. Leave both absent to read all active Fangguo SKU
+prices and match only the materials/models present in the selected finance
+orders.
 
 Never commit real values to GitHub. Streamlit Cloud injects these values only
 on the server. Browser users can run authorized operations but cannot read the

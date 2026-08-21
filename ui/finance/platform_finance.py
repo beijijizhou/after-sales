@@ -4,18 +4,22 @@ import pandas as pd
 import streamlit as st
 
 from automation.api.fangguo import (
+    apply_current_sku_prices,
     build_customer_bill_summary,
     build_customer_bill_table,
     build_price_rule_table,
     fetch_fangguo_finance_lines,
+    fetch_fangguo_sku_prices,
     load_fangguo_credentials,
     recalculate_fangguo_finance,
 )
 from ui.finance.bill_workbook import build_bill_workbook
+from ui.finance.fangguo_sku_catalog import render_fangguo_sku_catalog
 
 
 STATE_LINES = "finance_fangguo_lines"
 STATE_RULES = "finance_fangguo_price_rules"
+STATE_SKU_PRICES = "finance_fangguo_sku_prices"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -28,10 +32,17 @@ def _cached_fetch_fangguo(
 
 
 def render_platform_finance(report_date):
-    st.caption("从平台读取客户订单，按新的材料单价重算并导出核对；不会回写平台。")
-    fangguo_tab, = st.tabs(["方果"])
-    with fangguo_tab:
+    st.caption(
+        "订单可复用一小时缓存；方果当前 SKU 价格每次点击都会实时同步。"
+        "按同步价格重算并导出核对，不会回写平台。"
+    )
+    reconciliation_tab, sku_tab = st.tabs(["方果订单重算", "方果 SKU 当前价格"])
+    with reconciliation_tab:
         _render_fangguo(report_date)
+    with sku_tab:
+        credentials = _credentials_or_error()
+        if credentials is not None:
+            render_fangguo_sku_catalog(credentials)
 
 
 def _render_fangguo(report_date):
@@ -39,8 +50,6 @@ def _render_fangguo(report_date):
     if credentials is None:
         return
     defaults = credentials.get("finance_group_ids") or []
-    if isinstance(defaults, (str, int)):
-        defaults = [defaults]
     first, second = st.columns(2)
     with first:
         start_date = st.date_input(
@@ -52,7 +61,7 @@ def _render_fangguo(report_date):
             "计费结束日期", report_date,
             key="fangguo_finance_end",
         )
-    groups = [int(value) for value in defaults]
+    groups = _parse_group_ids(defaults)
     st.info("当前平台对账范围：隆丰、Haloo")
     query_signature = (
         "fixed-accounts-v2",
@@ -92,11 +101,27 @@ def _render_fangguo(report_date):
                     tuple(groups),
                     credentials,
                 )
+                sku_prices = fetch_fangguo_sku_prices(
+                    credentials,
+                    material_ids=_configured_ids(
+                        credentials, "finance_sku_material_ids"
+                    ),
+                    color_ids=_configured_ids(
+                        credentials, "finance_sku_color_ids"
+                    ),
+                    report_progress=status.info,
+                )
             st.session_state[STATE_LINES] = lines
+            st.session_state[STATE_SKU_PRICES] = sku_prices
             st.session_state["fangguo_finance_query_signature"] = query_signature
-            st.session_state[STATE_RULES] = build_price_rule_table(lines)
+            st.session_state[STATE_RULES] = apply_current_sku_prices(
+                build_price_rule_table(lines), sku_prices
+            )
             _clear_fangguo_calculation_state()
-            status.success(f"已读取 {len(lines):,} 行平台订单")
+            status.success(
+                f"已读取 {len(lines):,} 行平台订单；"
+                f"实时同步 {len(sku_prices):,} 行方果当前 SKU 价格"
+            )
         except Exception as error:
             st.error(f"方果平台财务读取失败：{error}")
 
@@ -145,6 +170,7 @@ def _render_account_filter(lines):
 def _clear_fangguo_result_state():
     st.session_state.pop(STATE_LINES, None)
     st.session_state.pop(STATE_RULES, None)
+    st.session_state.pop(STATE_SKU_PRICES, None)
     st.session_state.pop("fangguo_finance_query_signature", None)
     _clear_fangguo_calculation_state()
 
@@ -247,11 +273,16 @@ def _render_recalculation(lines):
         "你可以决定型号是否参与定价；颜色和商品规格不参与价格规则。留空维持原材料费。"
     )
     st.info(
-        "“方果历史单价”可能显示多个数值，例如 10.0000 / 200.0000，"
-        "表示方果原订单中曾按两种价格计费；这里只需要在“新材料单价”填写一个正确价格。"
+        "“订单历史单价”是订单发生时的材料费；“方果当前 SKU 价格”来自 SKU 管理页。"
+        "同一规则只有一个当前价格时会自动填入；出现多个价格时保留为空，需人工确认。"
     )
     source_rules = st.session_state.get(STATE_RULES)
-    source_rules = _normalize_price_rules(lines, source_rules, rule_fields)
+    source_rules = _normalize_price_rules(
+        lines,
+        source_rules,
+        rule_fields,
+        st.session_state.get(STATE_SKU_PRICES),
+    )
     active_keys = lines[rule_fields].fillna("").astype(str).drop_duplicates()
     visible_rules = active_keys.merge(
         source_rules, how="left",
@@ -262,12 +293,13 @@ def _render_recalculation(lines):
         hide_index=True,
         use_container_width=True,
         disabled=[
-            *rule_fields, "currentUnitPrice",
+            *rule_fields, "currentUnitPrice", "fangguoSkuPrice",
         ],
         column_config={
             "materialCode": "商品 / 材质",
             "modelCode": "型号",
-            "currentUnitPrice": "方果历史单价（可能含错价）",
+            "currentUnitPrice": "订单历史单价（可能含错价）",
+            "fangguoSkuPrice": "方果当前 SKU 价格",
             "newUnitPrice": st.column_config.NumberColumn(
                 "新材料单价", min_value=0.0, format="$%.4f"
             ),
@@ -393,8 +425,12 @@ def _credentials_or_error():
 
 
 def _parse_group_ids(value):
-    pieces = str(value).replace("，", ",").split(",")
-    groups = [piece.strip() for piece in pieces if piece.strip()]
+    if isinstance(value, (list, tuple, set)):
+        pieces = list(value)
+    else:
+        normalized = str(value).strip().removeprefix("[").removesuffix("]")
+        pieces = normalized.replace("，", ",").split(",")
+    groups = [str(piece).strip() for piece in pieces if str(piece).strip()]
     if not groups:
         return []
     if any(not piece.isdigit() for piece in groups):
@@ -410,8 +446,10 @@ def _merge_rule_edits(source, edits, rule_fields):
     return pd.concat([remaining, edits], ignore_index=True)
 
 
-def _normalize_price_rules(lines, saved_rules, rule_fields):
+def _normalize_price_rules(lines, saved_rules, rule_fields, sku_prices=None):
     fresh = build_price_rule_table(lines, rule_fields)
+    if isinstance(sku_prices, pd.DataFrame):
+        fresh = apply_current_sku_prices(fresh, sku_prices, rule_fields)
     if not isinstance(saved_rules, pd.DataFrame):
         return fresh
     if any(field not in saved_rules for field in rule_fields):
@@ -427,7 +465,15 @@ def _normalize_price_rules(lines, saved_rules, rule_fields):
     )
     return fresh.drop(columns="newUnitPrice").merge(
         saved, on=rule_fields, how="left", validate="one_to_one"
-    )[[*rule_fields, "currentUnitPrice", "newUnitPrice"]]
+    )[[
+        *rule_fields, "currentUnitPrice",
+        *(["fangguoSkuPrice"] if "fangguoSkuPrice" in fresh else []),
+        "newUnitPrice",
+    ]]
+
+
+def _configured_ids(credentials, key):
+    return _parse_group_ids(credentials.get(key) or [])
 
 
 def _limit_result_to_lines(result, lines):

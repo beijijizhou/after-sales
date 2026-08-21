@@ -77,13 +77,60 @@ def build_inventory_cost_table(inventory_df):
     )
 
 
+def build_sku_price_completion(raw_df):
+    """Summarize whether every active SKU has a non-zero reference price."""
+    data = pd.DataFrame(raw_df).copy()
+    if data.empty:
+        return {"total": 0, "priced": 0, "missing": 0}
+    data["quantity"] = pd.to_numeric(
+        data.get("quantity", 0), errors="coerce"
+    ).fillna(0)
+    data["unit_cost"] = pd.to_numeric(
+        data.get("unit_cost", 0), errors="coerce"
+    ).fillna(0)
+    data = data[data["quantity"] > 0].copy()
+    if data.empty:
+        return {"total": 0, "priced": 0, "missing": 0}
+    if "id" in data:
+        data = data.drop_duplicates("id")
+    else:
+        identity = [
+            column for column in [
+                "department", "category", "brand", "material", "color", "size"
+            ] if column in data
+        ]
+        if identity:
+            data = data.drop_duplicates(identity)
+    priced = int(data["unit_cost"].gt(0).sum())
+    total = len(data)
+    return {"total": total, "priced": priced, "missing": total - priced}
+
+
 def render_inventory_cost_summary(
     supabase, department, category, inventory_df, raw_inventory_df
 ):
-    st.subheader(t("当前库存成本"))
+    st.subheader("SKU 价格完成情况")
     saved_message = st.session_state.pop("inventory_cost_saved_message", None)
     if saved_message:
         st.success(saved_message)
+    completion = build_sku_price_completion(raw_inventory_df)
+    metrics = st.columns(3)
+    metrics[0].metric("有库存 SKU", f"{completion['total']:,}")
+    metrics[1].metric("已输入价格", f"{completion['priced']:,}")
+    metrics[2].metric("未输入价格", f"{completion['missing']:,}")
+    if completion["missing"]:
+        st.warning(
+            f"还有 {completion['missing']:,} 个有库存 SKU 未输入价格，"
+            "请先在下方补齐。"
+        )
+    elif completion["total"]:
+        st.success("当前范围内所有有库存 SKU 都已输入价格。")
+    st.caption(
+        "这里的“已输入”只表示 SKU 参考价不为空；价格来源是否准确、"
+        "是否覆盖现存入库批次，需要继续核对下方入库批次成本。"
+    )
+
+    st.markdown("#### SKU 价格与当前库存金额")
     cost_df = build_inventory_cost_table(inventory_df)
     if cost_df.empty:
         st.info(t("暂无库存成本数据"))

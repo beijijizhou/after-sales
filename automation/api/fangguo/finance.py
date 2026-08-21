@@ -11,9 +11,13 @@ API_URL = (
     "https://fangguo.com/fgapp/statistics/basic/factory/"
     "transaction-merge-line/v2/page"
 )
+SKU_PRICE_API_URL = (
+    "https://fangguo.com/fgapp/warehouse/factory/encode/sku/pageFactorySku"
+)
 NEW_YORK = ZoneInfo("America/New_York")
 PAGE_SIZE = 2_000
 MAX_PAGES = 500
+SKU_PAGE_SIZE = 2_000
 FEE_TYPES = [
     "ACTUAL_DEDUCTION", "REFUND", "RECHARGE", "PRE_TO_ACTUAL",
     "RETURN_TO_PRE",
@@ -65,6 +69,104 @@ def fetch_fangguo_finance_lines(
     normalized = normalize_fangguo_finance_lines(rows)
     report(f"方果平台财务读取完成：{len(normalized):,} 行")
     return normalized
+
+
+def fetch_fangguo_sku_prices(
+    credentials, material_ids=None, color_ids=None,
+    report_progress=None, page_size=SKU_PAGE_SIZE,
+    include_inactive=False,
+):
+    report = report_progress or (lambda _message: None)
+    client, token = _authenticated_client(credentials)
+    headers = _build_headers(credentials, token)
+    rows = []
+    total = 0
+    for page_no in range(1, MAX_PAGES + 1):
+        report(f"正在读取方果当前 SKU 价格第 {page_no} 页")
+        response = client.post(
+            SKU_PRICE_API_URL,
+            headers={
+                **headers,
+                "Referer": "https://fangguo.com/factory/means/skuManage",
+            },
+            json=_sku_price_payload(
+                page_no, page_size, total, material_ids, color_ids
+            ),
+            timeout=90,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("code") != 0:
+            raise ValueError(payload.get("msg") or "方果 SKU 价格接口返回未知错误")
+        data = payload.get("data") or {}
+        page_rows = data.get("list") or []
+        rows.extend(page_rows)
+        total = int(data.get("total") or len(rows))
+        if not page_rows or len(rows) >= total:
+            break
+    else:
+        raise ValueError("方果 SKU 价格超过安全分页上限")
+    result = normalize_fangguo_sku_prices(
+        rows, include_inactive=include_inactive
+    )
+    report(f"方果当前 SKU 价格读取完成：{len(result):,} 行")
+    return result
+
+
+def normalize_fangguo_sku_prices(rows, include_inactive=False):
+    columns = [
+        "skuId", "materialCode", "colorCode", "modelCode",
+        "currentSkuPrice", "skuActive", "skuUpdatedAt",
+    ]
+    records = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        records.append({
+            "skuId": row.get("id"),
+            "materialCode": row.get("materialCode") or row.get("materialName") or "",
+            "colorCode": row.get("colorCode") or row.get("colorName") or "",
+            "modelCode": row.get("modelCode") or row.get("modelName") or "",
+            "currentSkuPrice": row.get("price"),
+            "skuActive": bool(row.get("status")),
+            "skuUpdatedAt": row.get("updateTime"),
+        })
+    result = pd.DataFrame(records, columns=columns)
+    if result.empty:
+        return result
+    for field in ("materialCode", "colorCode", "modelCode"):
+        result[field] = result[field].fillna("").astype(str).str.strip()
+    result["currentSkuPrice"] = pd.to_numeric(
+        result["currentSkuPrice"], errors="coerce"
+    )
+    if not include_inactive:
+        result = result[result["skuActive"]]
+    return result.drop_duplicates(
+        subset=["materialCode", "colorCode", "modelCode"], keep="last"
+    ).reset_index(drop=True)
+
+
+def apply_current_sku_prices(price_rules, sku_prices, price_rule_fields=None):
+    rule_fields = list(price_rule_fields or PRICE_RULE_FIELDS)
+    result = price_rules.copy()
+    if "fangguoSkuPrice" not in result:
+        result["fangguoSkuPrice"] = ""
+    if result.empty or sku_prices.empty:
+        return result
+    current = sku_prices.copy()
+    for field in rule_fields:
+        if field not in current:
+            current[field] = ""
+        current[field] = current[field].fillna("").astype(str)
+    grouped = (
+        current.groupby(rule_fields, dropna=False)["currentSkuPrice"]
+        .agg(_numeric_prices)
+        .reset_index(name="_sku_prices")
+    )
+    result = result.merge(grouped, on=rule_fields, how="left", validate="one_to_one")
+    result["fangguoSkuPrice"] = result["_sku_prices"].apply(_price_display)
+    result["newUnitPrice"] = result["_sku_prices"].apply(_only_price)
+    return result.drop(columns="_sku_prices")
 
 
 def normalize_fangguo_finance_lines(rows):
@@ -249,9 +351,43 @@ def _finance_payload(page_no, page_size, start_ms, end_ms, group_ids):
     }
 
 
+def _sku_price_payload(
+    page_no, page_size, total, material_ids=None, color_ids=None,
+):
+    return {
+        "pageNo": page_no, "pageSize": page_size, "total": total,
+        "materialId": "", "materialIds": list(material_ids or []),
+        "colorIds": list(color_ids or []), "modelIds": [],
+        "model": "", "modelCode": "", "status": None,
+        "sortField": "updateTime", "sortDirection": False,
+        "customerId": None, "compactModel": "", "brandIds": [],
+        "itemCode": "", "autoSend": None, "haveHoleSitePic": None,
+        "applyRange": None, "shopIds": [], "inquiryModeByModel": 0,
+        "inquiryModeByItemCode": 0, "creator": None, "updater": None,
+        "outOfStockMode": None, "skuRemark": "", "skuRemark2": "",
+        "combinedFlag": None, "customShopCode": "", "customSkuId": "",
+        "shellSizeIds": [], "existLocationNo": None, "timeType": None,
+        "startTime": None, "endTime": None,
+    }
+
+
 def _price_list(values):
     prices = sorted({float(value) for value in values.dropna()})
     return " / ".join(f"{value:.4f}" for value in prices)
+
+
+def _numeric_prices(values):
+    return tuple(sorted({float(value) for value in values.dropna()}))
+
+
+def _price_display(prices):
+    if not isinstance(prices, tuple):
+        return ""
+    return " / ".join(f"{value:.4f}" for value in prices)
+
+
+def _only_price(prices):
+    return prices[0] if isinstance(prices, tuple) and len(prices) == 1 else pd.NA
 
 
 def _single_price(values):

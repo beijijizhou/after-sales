@@ -12,7 +12,6 @@ from db.finance import (
     load_pending_cost_batches,
 )
 from ui.finance.cost_catalog import render_sku_cost_catalog
-from ui.finance.cost_editor import render_inbound_cost_editor
 from ui.finance.inbound_batches import render_inbound_batch_browser
 from ui.finance.pending_costs import render_pending_cost_batches
 from ui.finance.platform_finance import render_platform_finance
@@ -26,6 +25,7 @@ from ui.finance.reports import (
     render_department_summary as _render_department_summary,
     render_inventory_filters as _render_inventory_filters,
     render_inventory_report as _render_inventory_report,
+    render_missing_cost_navigation as _render_missing_cost_navigation,
 )
 
 
@@ -41,7 +41,7 @@ def render_finance_page(supabase):
         "入库批次",
         "商品库存月报",
         "部门 / 品类",
-        "成本维护",
+        "成本台账",
         "流水明细",
         "货柜采购",
         "UV生产月汇总",
@@ -81,14 +81,13 @@ def render_finance_page(supabase):
                 supabase, start_date, end_date
             )
         _render_department_summary(finance_df)
-    elif section == "成本维护":
-        with st.spinner("正在读取成本维护数据..."):
+    elif section == "成本台账":
+        with st.spinner("正在读取成本台账..."):
             inbound_history_df = load_inbound_cost_history(supabase)
             inventory_value_df = load_inventory_value_snapshot(supabase)
             pending_cost_df = load_pending_cost_batches(supabase)
-        _render_cost_maintenance(
-            supabase, inbound_history_df, inventory_value_df,
-            pending_cost_df,
+        _render_cost_catalog(
+            inbound_history_df, inventory_value_df, pending_cost_df,
         )
     elif section == "流水明细":
         with st.spinner("正在读取财务流水..."):
@@ -157,21 +156,31 @@ def _render_inbound_batches(supabase, finance_df, pending_cost_df):
     render_inbound_batch_browser(batch_rows)
 
 
-def _render_cost_maintenance(
-    supabase, inbound_history_df, inventory_value_df, pending_cost_df,
+def _render_cost_catalog(
+    inbound_history_df, inventory_value_df, pending_cost_df,
 ):
     render_pending_cost_batches(pending_cost_df)
-    edit_rows = render_sku_cost_catalog(
+    visible_rows = render_sku_cost_catalog(
         inventory_value_df, inbound_history_df
     )
     missing_lots = int(
         pd.to_numeric(
-            edit_rows.get("unit_cost"), errors="coerce"
+            visible_rows.get("unit_cost"), errors="coerce"
         ).fillna(0).le(0).sum()
-    ) if not edit_rows.empty else 0
+    ) if not visible_rows.empty else 0
     if missing_lots:
         st.info(
-            f"当前筛选范围有 {missing_lots:,} 个批次缺少成本，已排在最前面。"
+            f"当前筛选范围有 {missing_lots:,} 个批次缺少成本。"
+            "请到“库存 → 库存成本”补充或修改。"
         )
-    st.subheader("按入库批次维护成本")
-    render_inbound_cost_editor(supabase, edit_rows)
+    missing_inventory = pd.to_numeric(
+        inventory_value_df.get(
+            "missing_cost_quantity",
+            pd.Series(0, index=inventory_value_df.index),
+        ),
+        errors="coerce",
+    ).fillna(0)
+    if not inventory_value_df.empty and missing_inventory.gt(0).any():
+        _render_missing_cost_navigation(
+            inventory_value_df, key="finance_catalog_missing_cost"
+        )
