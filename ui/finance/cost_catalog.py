@@ -63,6 +63,30 @@ def build_sku_cost_overview(value_df, history_df):
     return overview.reset_index(drop=True)
 
 
+def build_cost_scope_totals(rows):
+    """Summarize only the currently filtered SKU cost scope."""
+    data = pd.DataFrame(rows).copy()
+    if data.empty:
+        return {
+            "sku_count": 0, "inventory_quantity": 0,
+            "inventory_value": 0.0, "missing_sku_count": 0,
+            "missing_cost_quantity": 0,
+        }
+    for column in [
+        "inventory_quantity", "inventory_value", "missing_cost_quantity",
+    ]:
+        data[column] = pd.to_numeric(
+            data.get(column, 0), errors="coerce"
+        ).fillna(0)
+    return {
+        "sku_count": len(data),
+        "inventory_quantity": float(data["inventory_quantity"].sum()),
+        "inventory_value": float(data["inventory_value"].sum()),
+        "missing_sku_count": int(data["cost_status"].eq("缺成本").sum()),
+        "missing_cost_quantity": float(data["missing_cost_quantity"].sum()),
+    }
+
+
 def render_sku_cost_catalog(value_df, history_df):
     st.subheader("全部 SKU 成本台账")
     st.caption(
@@ -85,16 +109,23 @@ def render_sku_cost_catalog(value_df, history_df):
     elif status == "已填写":
         filtered = filtered[filtered["cost_status"] != "缺成本"]
     filtered = _sort_overview(filtered)
-    metrics = st.columns(3)
-    metrics[0].metric("当前 SKU", f"{len(filtered):,}")
+    totals = build_cost_scope_totals(filtered)
+    metrics = st.columns(5)
+    metrics[0].metric("当前范围 SKU", f"{totals['sku_count']:,}")
     metrics[1].metric(
-        "缺成本 SKU",
-        f"{int((filtered['cost_status'] == '缺成本').sum()):,}",
+        "当前库存单位", f"{totals['inventory_quantity']:,.0f}"
     )
     metrics[2].metric(
-        "缺成本库存",
-        f"{int(filtered['missing_cost_quantity'].sum()):,}",
+        "已计价库存总成本", f"${totals['inventory_value']:,.2f}"
     )
+    metrics[3].metric(
+        "缺成本 SKU", f"{totals['missing_sku_count']:,}"
+    )
+    metrics[4].metric(
+        "缺成本库存", f"{totals['missing_cost_quantity']:,.0f}"
+    )
+    if totals["missing_cost_quantity"]:
+        st.caption("当前库存总成本暂不包含缺成本库存。")
     display = _overview_display(filtered)
     st.dataframe(
         display, hide_index=True, width="stretch",

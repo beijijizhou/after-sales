@@ -30,6 +30,7 @@ from ui.inventory.stock.batch_costs import (
 )
 from db.inventory.core.costs import fill_missing_inventory_group_costs
 from ui.finance.cost_catalog import (
+    build_cost_scope_totals,
     build_sku_cost_history,
     build_sku_cost_overview,
 )
@@ -154,6 +155,28 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result["inventory_quantity"], 150)
         self.assertEqual(result["inventory_value"], 158)
         self.assertEqual(result["missing_cost_quantity"], 10)
+
+    def test_cost_scope_totals_use_only_filtered_rows(self):
+        rows = pd.DataFrame([
+            {
+                "inventory_quantity": 100, "inventory_value": 138,
+                "missing_cost_quantity": 0, "cost_status": "已填写",
+            },
+            {
+                "inventory_quantity": 50, "inventory_value": 20,
+                "missing_cost_quantity": 10, "cost_status": "缺成本",
+            },
+        ])
+
+        result = build_cost_scope_totals(rows.iloc[[1]])
+
+        self.assertEqual(result, {
+            "sku_count": 1,
+            "inventory_quantity": 50.0,
+            "inventory_value": 20.0,
+            "missing_sku_count": 1,
+            "missing_cost_quantity": 10.0,
+        })
 
     def test_missing_cost_scope_summary_shows_where_to_fix(self):
         rows = pd.DataFrame([
