@@ -177,8 +177,10 @@ def _render_preview(preview, title, action=None):
     if preview.empty:
         return
     comparison = build_stock_review_comparison(preview)
+    if "录入单位" not in comparison:
+        comparison["录入单位"] = "箱"
     extra_columns = [
-        column for column in ["单位成本"] if column in comparison
+        column for column in ["录入单位", "单位成本"] if column in comparison
     ]
     render_stock_change_review(
         comparison,
@@ -186,7 +188,7 @@ def _render_preview(preview, title, action=None):
         title=title,
         identity_columns=["耗材 SKU"],
         extra_columns=extra_columns,
-        unit="箱",
+        unit_column="录入单位",
     )
 
 

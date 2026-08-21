@@ -63,7 +63,35 @@ class StockReviewContractTests(unittest.TestCase):
 
         self.assertTrue(comparison.columns.is_unique)
         self.assertEqual(comparison.loc[0, "调整后库存"], 3)
+        self.assertNotIn("当前库存（箱）", comparison.columns)
+        self.assertNotIn("本次变动（箱）", comparison.columns)
+        self.assertNotIn("操作后库存（箱）", comparison.columns)
         self.assertIn("本次出库 (-)", display.columns)
+
+    def test_consumable_nonzero_daily_issue_preview_is_renderable(self):
+        comparison = build_stock_review_comparison(pd.DataFrame([{
+            "耗材 SKU": "膜｜DTF转印膜｜200米/卷｜奥德利｜卷",
+            "当前库存": 60,
+            "本次变动": -20,
+            "操作后库存": 40,
+            "录入单位": "箱",
+            "当前库存（箱）": 60,
+            "本次变动（箱）": -20,
+            "操作后库存（箱）": 40,
+            "换算数量": 20,
+            "换算单位": "卷",
+        }]))
+
+        display, operation = prepare_stock_change_display(
+            comparison, action="领用"
+        )
+
+        self.assertTrue(display.columns.is_unique)
+        self.assertEqual(operation, "本次出库 (-)")
+        self.assertEqual(display.loc[0, "当前库存"], 60)
+        self.assertEqual(display.loc[0, operation], -20)
+        self.assertEqual(display.loc[0, "调整后库存"], 40)
+        self.assertEqual(display.loc[0, "录入单位"], "箱")
 
     def test_shared_renderer_survives_duplicate_normalized_columns(self):
         comparison = pd.DataFrame(

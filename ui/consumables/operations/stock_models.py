@@ -48,10 +48,18 @@ def build_stock_review_comparison(preview):
     comparison = pd.DataFrame(preview).copy()
     if comparison.empty:
         return comparison
+    # Consumable entry previews intentionally carry both the user's entry
+    # unit and package-unit audit values.  Keep the audit fields in the source
+    # preview, but never pass two competing quantity triplets into the shared
+    # renderer: older/hot-reloaded deployments can otherwise normalize both
+    # triplets to identical column names and crash pandas numeric conversion.
+    box_audit_columns = [
+        "当前库存（箱）", "本次变动（箱）", "操作后库存（箱）",
+    ]
     if {
         "当前库存", "本次变动", "调整后库存",
     }.issubset(comparison.columns):
-        return comparison
+        return comparison.drop(columns=box_audit_columns, errors="ignore")
     if {
         "当前库存", "本次变动", "操作后库存",
     }.issubset(comparison.columns):
@@ -60,7 +68,9 @@ def build_stock_review_comparison(preview):
         # carry explicit box columns for audit detail.  Renaming those box
         # columns here would create duplicate ``当前库存``/``本次变动`` labels,
         # which pandas cannot normalize as a one-dimensional Series.
-        return comparison.rename(columns={"操作后库存": "调整后库存"})
+        return comparison.drop(
+            columns=box_audit_columns, errors="ignore"
+        ).rename(columns={"操作后库存": "调整后库存"})
     if "本次变动（箱）" in comparison:
         return comparison.rename(columns={
             "当前库存（箱）": "当前库存",
