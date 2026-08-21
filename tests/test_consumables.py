@@ -4,15 +4,44 @@ from datetime import date
 import pandas as pd
 
 from ui.consumables.operations.entry import _normalize_entry_rows
+from ui.consumables.operations.history import _batch_status_by_id
 from ui.consumables.completion import build_consumable_missing_dates
+from ui.consumables.costs import (
+    build_consumable_cost_sources,
+    build_consumable_cost_sync_targets,
+    build_consumable_cost_table,
+    find_consumable_cost_changes,
+)
 from ui.consumables.operations.stock_tables import _normalize_initialization
 from ui.consumables.stock import build_latest_costs, filter_items
-from ui.consumables.page import CONSUMABLE_TABS
+from ui.consumables.page import CONSUMABLE_SKU_TABS, CONSUMABLE_TABS
 from ui.consumables.sku import _copy_defaults
 from utils.auth.constants import ROLE_PERMISSIONS
 
 
 class ConsumableInventoryTests(unittest.TestCase):
+    def test_consumable_history_marks_original_batch_as_reversed(self):
+        batches = pd.DataFrame([
+            {
+                "id": "issue-1", "movement_type": "issue",
+                "reversal_of_batch_id": None,
+            },
+            {
+                "id": "reversal-1", "movement_type": "reversal",
+                "reversal_of_batch_id": "issue-1",
+            },
+            {
+                "id": "issue-2", "movement_type": "issue",
+                "reversal_of_batch_id": None,
+            },
+        ])
+
+        statuses = _batch_status_by_id(batches)
+
+        self.assertEqual(statuses["issue-1"], "已撤销")
+        self.assertEqual(statuses["issue-2"], "有效")
+        self.assertNotIn("reversal-1", statuses)
+
     def test_missing_dates_use_same_active_issue_batches_as_inventory(self):
         batches = pd.DataFrame([
             {
@@ -45,6 +74,111 @@ class ConsumableInventoryTests(unittest.TestCase):
             "当前库存", "点货预测", "消耗模型", "每日耗材出库",
             "耗材入库", "库存设置", "库存流水", "撤销", "SKU 管理",
         ])
+        self.assertEqual(
+            CONSUMABLE_SKU_TABS, ["SKU 资料", "SKU 价格与库存金额"]
+        )
+
+    def test_consumable_cost_table_shows_price_completion_and_value(self):
+        items = pd.DataFrame([{
+            "id": "film-300", "category": "膜", "name": "DTF转印膜",
+            "specification": "300米/卷", "brand": "心飞扬",
+            "current_quantity": 100, "base_unit": "卷",
+            "package_unit": "箱", "units_per_package": 1,
+        }])
+
+        result = build_consumable_cost_table(items, {"film-300": 80})
+
+        self.assertEqual(result.loc[0, "单位成本"], 80)
+        self.assertEqual(result.loc[0, "库存金额"], 8000)
+        self.assertEqual(result.loc[0, "成本状态"], "已填写")
+
+    def test_consumable_sku_cost_targets_latest_active_inbound(self):
+        batches = pd.DataFrame([
+            {"id": "old", "movement_type": "inbound", "reversal_of_batch_id": None},
+            {"id": "new", "movement_type": "inbound", "reversal_of_batch_id": None},
+        ])
+        movements = pd.DataFrame([
+            {
+                "id": "move-old", "batch_id": "old", "item_id": "film",
+                "quantity_change": 10, "unit_cost": 60,
+                "created_at": "2026-08-20T12:00:00Z",
+            },
+            {
+                "id": "move-new", "batch_id": "new", "item_id": "film",
+                "quantity_change": 10, "unit_cost": 80,
+                "created_at": "2026-08-21T12:00:00Z",
+            },
+        ])
+
+        costs, targets = build_consumable_cost_sources(batches, movements)
+
+        self.assertEqual(costs["film"], 80)
+        self.assertEqual(targets["film"], "move-new")
+
+    def test_consumable_cost_sync_targets_include_all_missing_inbounds(self):
+        batches = pd.DataFrame([
+            {"id": "old", "movement_type": "inbound", "reversal_of_batch_id": None},
+            {"id": "new", "movement_type": "inbound", "reversal_of_batch_id": None},
+        ])
+        movements = pd.DataFrame([
+            {
+                "id": "move-old", "batch_id": "old", "item_id": "film",
+                "quantity_change": 10, "unit_cost": None,
+                "created_at": "2026-08-20T12:00:00Z",
+            },
+            {
+                "id": "move-new", "batch_id": "new", "item_id": "film",
+                "quantity_change": 10, "unit_cost": 80,
+                "created_at": "2026-08-21T12:00:00Z",
+            },
+        ])
+
+        targets, counts = build_consumable_cost_sync_targets(
+            batches, movements
+        )
+
+        self.assertEqual(targets["move-new"], ["move-new", "move-old"])
+        self.assertEqual(counts["film"], 1)
+
+    def test_consumable_sku_cost_change_uses_hidden_cost_record(self):
+        original = pd.DataFrame([{
+            "成本记录ID": "move-new", "分类": "膜", "耗材名称": "DTF转印膜",
+            "规格/型号": "300米/卷", "品牌": "心飞扬", "单位成本": 80.0,
+            "待同步批次": 0,
+        }])
+        edited = original.copy()
+        edited.loc[0, "单位成本"] = 82.5
+
+        changes, unresolved = find_consumable_cost_changes(original, edited)
+
+        self.assertEqual(changes, [("move-new", 82.5)])
+        self.assertEqual(unresolved, [])
+
+    def test_unchanged_sku_price_can_fill_pending_inbound_batches(self):
+        original = pd.DataFrame([{
+            "成本记录ID": "move-new", "分类": "膜", "耗材名称": "DTF转印膜",
+            "规格/型号": "300米/卷", "品牌": "心飞扬", "单位成本": 80.0,
+            "待同步批次": 2,
+        }])
+
+        changes, unresolved = find_consumable_cost_changes(
+            original, original.copy()
+        )
+
+        self.assertEqual(changes, [("move-new", 80.0)])
+        self.assertEqual(unresolved, [])
+
+    def test_consumable_cost_completion_ignores_zero_inventory_skus(self):
+        items = pd.DataFrame([{
+            "id": "empty", "category": "粉", "name": "中粉",
+            "specification": "", "brand": "", "current_quantity": 0,
+            "base_unit": "箱", "package_unit": "箱",
+            "units_per_package": 1,
+        }])
+
+        result = build_consumable_cost_table(items, {})
+
+        self.assertTrue(result.empty)
 
     def test_package_entry_converts_to_base_quantity(self):
         edited = pd.DataFrame([{

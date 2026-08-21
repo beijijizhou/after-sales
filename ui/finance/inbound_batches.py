@@ -17,7 +17,7 @@ SOURCE_LABELS = {
 
 def build_inbound_batch_summary(finance_df):
     columns = [
-        "批次号", "批次名称", "记录时间", "入库日期", "来源", "部门",
+        "批次号", "批次名称", "首个 SKU", "记录时间", "入库日期", "来源", "部门",
         "品类", "SKU数", "数量", "生产库存数量", "耗材项数", "金额",
     ]
     if finance_df.empty:
@@ -30,6 +30,7 @@ def build_inbound_batch_summary(finance_df):
         return pd.DataFrame(columns=columns)
     inbound["batch_key"] = _batch_keys(inbound)
     inbound["batch_label"] = _batch_labels(inbound)
+    inbound["first_sku"] = inbound.apply(_sku_label, axis=1)
     missing_batch = inbound["batch_key"].str.strip() == ""
     inbound.loc[missing_batch, "batch_key"] = (
         "成本批次-" + inbound.loc[missing_batch, "record_id"].astype(str)
@@ -49,11 +50,19 @@ def build_inbound_batch_summary(finance_df):
         domains.ne("耗材库存"), 0
     )
     inbound["consumable_count"] = domains.eq("耗材库存").astype(int)
+    inbound = sort_sku_rows(
+        inbound,
+        material="material",
+        color="color",
+        size="size",
+        leading=["department", "category"],
+    )
     result = (
         inbound.groupby("batch_key", as_index=False, dropna=False)
         .agg(
             recorded_at=("recorded_at", "max"),
             batch_label=("batch_label", "first"),
+            first_sku=("first_sku", "first"),
             date=("date", "first"),
             source_type=("source_type", "first"),
             department=("department", _summarize_values),
@@ -65,6 +74,7 @@ def build_inbound_batch_summary(finance_df):
         )
         .rename(columns={
             "batch_key": "批次号", "batch_label": "批次名称",
+            "first_sku": "首个 SKU",
             "recorded_at": "记录时间",
             "date": "入库日期", "source_type": "来源",
             "department": "部门", "category": "品类",
@@ -90,7 +100,8 @@ def render_inbound_batch_browser(finance_df):
         return
     labels = {
         row["批次号"]: (
-            f"{_format_recorded_at(row['记录时间'])}｜{row['批次名称']}｜"
+            f"{_format_recorded_at(row['记录时间'])}｜{row['部门']}｜"
+            f"{row['首个 SKU']}｜"
             f"生产库存 {int(row['生产库存数量']):,} 件｜"
             f"耗材 {int(row['耗材项数'])} 项｜${row['金额']:,.2f}"
         )
@@ -118,7 +129,9 @@ def render_inbound_batch_browser(finance_df):
         f"{int(selected_summary['耗材项数'])} 项",
     )
     metric_cols[2].metric("批次金额", f"${selected_summary['金额']:,.2f}")
-    st.caption(f"批次号：{selected}")
+    st.caption(
+        f"{selected_summary['部门']}｜首个 SKU：{selected_summary['首个 SKU']}"
+    )
     detail = _batch_detail(finance_df, selected)
     st.dataframe(
         detail,
@@ -183,6 +196,18 @@ def _batch_labels(rows):
     ).fillna("").astype(str)
     keys = _batch_keys(rows)
     return labels.where(labels.str.strip() != "", keys)
+
+
+def _sku_label(row):
+    values = [
+        row.get("category"), row.get("brand"), row.get("material"),
+        row.get("color"), row.get("size"),
+    ]
+    visible = [
+        str(value).strip() for value in values
+        if pd.notna(value) and str(value).strip()
+    ]
+    return "｜".join(dict.fromkeys(visible)) or "未命名 SKU"
 
 
 def _format_recorded_at(value):

@@ -18,6 +18,7 @@ from ui.consumables.operations import (
     render_reversals,
 )
 from ui.consumables.completion import render_consumable_completion
+from ui.consumables.costs import render_consumable_cost_workspace
 from ui.consumables.planning import (
     render_consumable_consumption_model,
     render_consumable_reorder_forecast,
@@ -28,7 +29,7 @@ from ui.consumables.stock import (
     filter_items,
     render_stock,
 )
-from utils.auth import has_permission, is_admin
+from utils.auth import has_permission
 from utils.option_values import unique_values
 
 
@@ -36,6 +37,7 @@ CONSUMABLE_TABS = [
     "当前库存", "点货预测", "消耗模型", "每日耗材出库",
     "耗材入库", "库存设置", "库存流水", "撤销", "SKU 管理",
 ]
+CONSUMABLE_SKU_TABS = ["SKU 资料", "SKU 价格与库存金额"]
 
 
 def render_consumables_page(supabase):
@@ -99,7 +101,9 @@ def _render_department_workspace(
         st.info("请确认 sql/consumables 中的文件已经依次运行。")
         return
 
-    show_cost = is_admin()
+    can_view_cost = has_permission("can_view_cost")
+    show_cost = can_view_cost
+    can_manage_cost = has_permission("can_manage_cost")
     can_edit = has_permission("can_edit_consumables")
     can_report = can_edit or has_permission("can_report_consumables")
     can_manage_sku = has_permission("can_manage_consumable_sku")
@@ -127,10 +131,11 @@ def _render_department_workspace(
     )
     latest_costs = build_latest_costs(movements)
 
+    tab_objects = st.tabs(CONSUMABLE_TABS)
     (
         stock_tab, forecast_tab, model_tab, issue_tab, inbound_tab,
         setting_tab, ledger_tab, reversal_tab, sku_tab,
-    ) = st.tabs(CONSUMABLE_TABS)
+    ) = tab_objects[:9]
     with stock_tab:
         render_stock(filtered_items, latest_costs, show_cost)
     with forecast_tab:
@@ -167,9 +172,24 @@ def _render_department_workspace(
             can_edit, show_cost,
         )
     with sku_tab:
-        render_sku_management(
-            supabase, department_id, filtered_items, can_manage_sku
-        )
+        if can_view_cost:
+            sku_details_tab, sku_cost_tab = st.tabs(CONSUMABLE_SKU_TABS)
+            with sku_details_tab:
+                render_sku_management(
+                    supabase, department_id, filtered_items, can_manage_sku
+                )
+            with sku_cost_tab:
+                render_consumable_cost_workspace(
+                    supabase,
+                    filtered_items,
+                    filtered_batches,
+                    filtered_movements,
+                    can_manage_cost,
+                )
+        else:
+            render_sku_management(
+                supabase, department_id, filtered_items, can_manage_sku
+            )
 
 
 def _render_department_filter(departments):

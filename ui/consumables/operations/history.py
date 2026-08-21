@@ -5,6 +5,7 @@ from db.batches import (
     BatchKind,
     BatchReference,
     filter_active_batch_records,
+    reversed_record_ids,
 )
 from ui.batches import (
     render_batch_reversal_action,
@@ -27,8 +28,30 @@ def render_history(batches_df, movements_df, items_df, show_cost):
     if normal.empty:
         st.info("暂无耗材出入库记录。")
         return
-    selected_id = _render_batch_selector(normal, "consumable_history_batch")
+    statuses = _batch_status_by_id(batches_df)
+    selected_id = _render_batch_selector(
+        normal, "consumable_history_batch", statuses=statuses
+    )
     if selected_id:
+        if statuses.get(str(selected_id)) == "已撤销":
+            reversal = batches_df[
+                batches_df["reversal_of_batch_id"].astype(str)
+                == str(selected_id)
+            ]
+            restored_at = ""
+            if not reversal.empty:
+                created_at = pd.to_datetime(
+                    reversal.iloc[0].get("created_at"), errors="coerce", utc=True
+                )
+                if not pd.isna(created_at):
+                    restored_at = created_at.tz_convert(
+                        "America/New_York"
+                    ).strftime("%Y-%m-%d %H:%M")
+            suffix = f"（纽约时间 {restored_at}）" if restored_at else ""
+            st.success(
+                "这笔批次已经撤销，库存已恢复"
+                f"{suffix}；下方保留的是原始历史快照。"
+            )
         _render_batch_detail(selected_id, movements_df, items_df, show_cost)
 
 
@@ -73,7 +96,8 @@ def render_reversals(
         _render_batch_detail(selected, movements_df, items_df, show_cost)
 
 
-def _render_batch_selector(batch_df, key):
+def _render_batch_selector(batch_df, key, statuses=None):
+    statuses = statuses or {}
     labels = {}
     for row in batch_df.to_dict("records"):
         created_at = pd.to_datetime(row["created_at"], errors="coerce", utc=True)
@@ -86,8 +110,11 @@ def _render_batch_selector(batch_df, key):
             if row.get("source_file_name") == "completion_ack"
             else TYPE_LABELS.get(row["movement_type"], row["movement_type"])
         )
-        labels[str(row["id"])] = (
-            f"{entered}｜{type_label}"
+        batch_id = str(row["id"])
+        status = statuses.get(batch_id)
+        status_prefix = f"【{status}】" if status else ""
+        labels[batch_id] = (
+            f"{status_prefix}{entered}｜{type_label}"
             f"｜{row['movement_date']}｜{row['created_by']}"
         )
     options = list(labels)
@@ -99,6 +126,16 @@ def _render_batch_selector(batch_df, key):
     )
     st.caption("输入时间｜类型｜出入库日期｜操作人")
     return selected
+
+
+def _batch_status_by_id(batches_df):
+    reversed_ids = reversed_record_ids(batches_df)
+    return {
+        str(batch_id): "已撤销" if str(batch_id) in reversed_ids else "有效"
+        for batch_id in batches_df.loc[
+            batches_df["movement_type"] != "reversal", "id"
+        ]
+    }
 
 
 def _render_batch_detail(batch_id, movements_df, items_df, show_cost):

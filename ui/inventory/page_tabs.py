@@ -26,10 +26,7 @@ from ui.inventory.planning.consumption import (
 )
 from ui.inventory.stock.cost_summary import render_inventory_cost_summary
 from ui.inventory.stock.batch_costs import (
-    build_missing_cost_batch_overview,
-    filter_cost_history_scope,
-    render_inbound_cost_editor,
-    render_reference_cost_fill,
+    render_batch_cost_workspace,
 )
 from ui.inventory.stock.incoming import render_incoming_inventory_forecast
 from ui.inventory.stock.summary import (
@@ -42,7 +39,6 @@ from ui.inventory.stock.table import (
     render_sku_update_times,
     render_inventory_view_mode,
 )
-from ui.table_layout import fit_table_height
 
 
 def render_inventory_tabs(
@@ -196,7 +192,7 @@ def render_inventory_tabs(
             if not has_permission("can_manage_cost"):
                 st.info("当前账号可以查看成本，但不能修改入库批次成本。")
             else:
-                _render_batch_cost_workspace(
+                render_batch_cost_workspace(
                     supabase, department, category
                 )
 
@@ -223,85 +219,6 @@ def inventory_tab_keys(department, can_view_cost=False, category=""):
 def inventory_tab_state_key(department, category=""):
     scope = sha1(f"{department}|{category}".encode()).hexdigest()[:10]
     return f"inventory_workspace_{scope}"
-
-
-def _render_batch_cost_workspace(supabase, department, category):
-    """Keep the large inbound ledger off the normal inventory refresh path."""
-    scope = f"{department}|{category}"
-    signature = sha1(scope.encode()).hexdigest()[:12]
-    cache_key = f"inventory_cost_history_data_{signature}"
-    loaded = cache_key in st.session_state
-
-    if loaded:
-        if st.button(
-            "刷新入库批次成本", width="stretch",
-            key=f"refresh_inventory_cost_history_{signature}",
-        ):
-            st.session_state.pop(cache_key, None)
-            loaded = False
-    elif st.button(
-        "加载入库批次成本", width="stretch", type="primary",
-        key=f"load_inventory_cost_history_{signature}",
-    ):
-        loaded = True
-
-    if not loaded:
-        st.info(
-            "当前库存成本已经显示。只有需要补价或修改历史入库批次时，"
-            "才加载完整批次成本，避免每次刷新库存都等待。"
-        )
-        return
-
-    if cache_key not in st.session_state:
-        from db.finance import load_inbound_cost_history
-
-        with st.status("正在加载入库批次成本…", expanded=True) as status:
-            status.write("正在读取完整入库成本流水")
-            cost_history = filter_cost_history_scope(
-                load_inbound_cost_history(supabase), department, category
-            )
-            st.session_state[cache_key] = cost_history
-            status.update(
-                label=f"入库批次成本已加载，共 {len(cost_history):,} 条",
-                state="complete", expanded=False,
-            )
-    cost_history = st.session_state[cache_key]
-    missing_batches = build_missing_cost_batch_overview(cost_history)
-    st.subheader("缺成本批次概览")
-    if missing_batches.empty:
-        st.success("当前范围内所有入库批次都已填写成本。")
-    else:
-        metric_columns = st.columns(3)
-        metric_columns[0].metric("缺成本批次", f"{len(missing_batches):,}")
-        metric_columns[1].metric(
-            "缺成本 SKU",
-            f"{int(missing_batches['缺成本 SKU 数'].sum()):,}",
-        )
-        metric_columns[2].metric(
-            "批次原始数量",
-            f"{int(missing_batches['批次数量'].sum()):,}",
-        )
-        st.dataframe(
-            missing_batches,
-            hide_index=True,
-            width="stretch",
-            height=fit_table_height(missing_batches),
-            column_config={
-                "缺成本 SKU 数": st.column_config.NumberColumn(format="%d"),
-                "批次数量": st.column_config.NumberColumn(format="%d"),
-            },
-        )
-        st.caption(
-            "这里显示批次原始数量；财务汇总中的缺成本库存只统计当前尚余数量。"
-        )
-    st.divider()
-    render_reference_cost_fill(
-        supabase, cost_history, history_cache_key=cache_key
-    )
-    st.subheader("按入库批次维护成本")
-    render_inbound_cost_editor(
-        supabase, cost_history, history_cache_key=cache_key
-    )
 
 
 def _render_history(

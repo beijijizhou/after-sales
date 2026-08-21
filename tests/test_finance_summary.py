@@ -319,6 +319,9 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["SKU数"], 2)
         self.assertEqual(result.iloc[0]["数量"], 37200)
         self.assertAlmostEqual(result.iloc[0]["金额"], 22580.4)
+        self.assertEqual(
+            result.iloc[0]["首个 SKU"], "铁板画｜铝牌｜白｜1040"
+        )
 
     def test_container_business_batch_groups_inventory_and_consumables(self):
         inventory = _finance_inbound(
