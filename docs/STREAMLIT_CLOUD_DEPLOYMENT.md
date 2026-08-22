@@ -41,6 +41,12 @@ Never commit real values to GitHub. Streamlit Cloud injects these values only
 on the server. Browser users can run authorized operations but cannot read the
 secret values from the UI.
 
+The after-sales hotstamp-film audit also requires
+`AFTER_SALES_HOTSTAMP_FOLDER_ID`. Share that Drive folder as a viewer with the
+configured `google_sheets_service_account.client_email`; sharing it only with
+an employee Google account does not give the deployed service account access.
+Run `sql/after_sales/03_hotstamp_film_audit.sql` before the first import.
+
 ## Shared Humbird ERP authorization
 
 Haloo、莆田和隆丰优先使用蜂鸟官方开放平台。在 Streamlit Secrets 中按账号

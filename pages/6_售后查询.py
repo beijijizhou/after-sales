@@ -12,9 +12,11 @@ from after_sales_table import sales_table
 from db.after_sale import enrich_after_sales_status
 from db.barcode_operation_search import enrich_search_with_operation_history
 from ui.after_sales_ui import render_after_sales_section
+from ui.after_sales_hotstamp import render_hotstamp_film_audit
 from ui.barcode_operations_ui import render_barcode_operation_section
 from ui import search_ui
-from utils.auth import can_access_page, render_navigation
+from utils.auth import can_access_page, get_current_role, render_navigation
+from utils.auth.constants import ROLE_AFTER_SALES
 from utils import exact_match, fuzzy_match
 
 
@@ -29,6 +31,21 @@ url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 
 supabase = create_client(url, key)
+
+if get_current_role() == ROLE_AFTER_SALES:
+    after_sales_view = st.radio(
+        "售后子导航",
+        ["订单与条码查询", "人工登记分析"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="after_sales_sub_navigation",
+    )
+    if after_sales_view == "人工登记分析":
+        render_hotstamp_film_audit(
+            supabase,
+            str(st.secrets.get("AFTER_SALES_HOTSTAMP_FOLDER_ID", "")).strip(),
+        )
+        st.stop()
 
 st.title("批量生产订单/条码售后数据查询")
 

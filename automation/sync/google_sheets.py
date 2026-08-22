@@ -49,16 +49,24 @@ class GoogleSheetsClient:
         ]
 
     def list_spreadsheets_in_folder(self, folder_id):
+        return [
+            item for item in self.list_drive_items_in_folder(folder_id)
+            if item.get("mimeType", GOOGLE_SHEETS_MIME_TYPE)
+            == GOOGLE_SHEETS_MIME_TYPE
+        ]
+
+    def list_drive_items_in_folder(self, folder_id):
         files = []
         page_token = None
         while True:
             params = {
                 "q": (
                     f"'{folder_id}' in parents and "
-                    f"mimeType = '{GOOGLE_SHEETS_MIME_TYPE}' and trashed = false"
+                    "trashed = false"
                 ),
                 "fields": (
-                    "nextPageToken,files(id,name,modifiedTime,webViewLink)"
+                    "nextPageToken,files("
+                    "id,name,mimeType,createdTime,modifiedTime,webViewLink)"
                 ),
                 "orderBy": "modifiedTime desc,name",
                 "pageSize": 100,
@@ -72,6 +80,22 @@ class GoogleSheetsClient:
             page_token = payload.get("nextPageToken")
             if not page_token:
                 return files
+
+    def list_spreadsheets_in_tree(self, folder_id):
+        spreadsheets = []
+        pending = [folder_id]
+        visited = set()
+        while pending:
+            current = pending.pop(0)
+            if current in visited:
+                continue
+            visited.add(current)
+            for item in self.list_drive_items_in_folder(current):
+                if item.get("mimeType") == GOOGLE_SHEETS_MIME_TYPE:
+                    spreadsheets.append(item)
+                elif item.get("mimeType") == "application/vnd.google-apps.folder":
+                    pending.append(item["id"])
+        return spreadsheets
 
     def batch_get_values(
         self, spreadsheet_id, ranges, value_render_option="UNFORMATTED_VALUE"

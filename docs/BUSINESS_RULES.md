@@ -166,6 +166,18 @@
 
 ## Production And QA
 
+- The after-sales hotstamp-film audit is visible only to the exact
+  `after_sales` application role. It imports each weekly Google workbook as an
+  append-only source batch, preserves file, tab and row identity, and compares
+  the latest completed source version with New York-dated system hotstamp
+  scans. Platform aliases are shown as an explicit normalization rule and
+  employee names are never silently substituted.
+- Film balance is evaluated per business day against that day's average among
+  people with film registrations. The user-selected tolerance controls the
+  visible status; the source film quantity, system barcode count, and system
+  piece count derived from `multiple_count` remain separate so a discrepancy
+  can be reconstructed instead of hidden in one blended number.
+
 ## Platform Finance
 
 - Platform financial corrections use a read, reconcile, preview and export

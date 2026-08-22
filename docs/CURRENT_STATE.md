@@ -14,7 +14,9 @@ refactors, not after every small feature.
 - Production inventory: `pages/4_库存.py`
 - Inventory workbench: `pages/4_库存总结.py`
 - Containers: `pages/5_货柜安排.py`
-- After-sales search: `pages/6_售后查询.py`
+- After-sales search and after-sales-only hotstamp-film audit:
+  `pages/6_售后查询.py`, with film import and comparison UI under
+  `ui/after_sales_hotstamp/`.
 - Production data collection: `pages/7_生产数据.py`
 - Phone-case image processing: `pages/8_图片拉伸.py`
 - Consumables: `pages/9_耗材库存.py`
@@ -61,6 +63,10 @@ refactors, not after every small feature.
   legacy-token fallback, normalization, and persistence adapters remain under
   `automation/api/humbird/`.
 - Shared Google Sheets response normalization: `utils/google_sheets.py`
+- After-sales weekly hotstamp-film Google Sheets import:
+  `automation/sync/after_sales_hotstamp/`; append-only source batches and
+  system-scan comparison use `db/after_sales_hotstamp.py` and
+  `sql/after_sales/03_hotstamp_film_audit.sql`.
 - Shared S2B browser interactions: `automation/playwright/s2b/page_actions.py`
 - Inventory localization runtime and static catalog:
   `ui/inventory/i18n.py` and `ui/inventory/i18n_catalog.py`
