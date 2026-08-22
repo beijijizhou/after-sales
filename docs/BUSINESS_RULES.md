@@ -644,7 +644,9 @@ forecast as an estimate.
   login access stops immediately. An administrator cannot process their own
   departure. The permission belongs to the supervisor role rather than an
   individual employee name, so current and future team leaders inherit the same
-  controlled workflow.
+  controlled workflow. Departure and reactivation reasons use a common-reason
+  dropdown with a sensible default; free text is required only when the operator
+  chooses `其他原因`.
 - Supervisors and people administrators may change an employee's production
   departments and job title, including moves such as `DTF -> UV` and
   `质检 -> 烫印`. The UI must preview both old and new values, the database
@@ -653,8 +655,8 @@ forecast as an estimate.
   do not silently create, delete or change the employee's login role.
 - Personnel selection is dependent in the order `production department -> job
   title -> employee`, and stale child selections must clear when a parent filter
-  changes. A supervisor may view and manage only ordinary employees who overlap
-  the supervisor's assigned production departments. The supervisor's own row,
+  changes. A supervisor may view and manage only `质检` and `烫印` team members
+  who overlap the supervisor's assigned production departments. The supervisor's own row,
   other supervisors, producers/managers, after-sales, warehouse, finance, and
   admin personnel and their change histories must not be exposed. Admins retain
   the complete personnel scope.

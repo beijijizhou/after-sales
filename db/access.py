@@ -191,7 +191,9 @@ def load_employee_status_audit(supabase, limit=200):
         .select(EMPLOYEE_STATUS_AUDIT_COLUMNS)
         .order("changed_at", desc=True).limit(limit).execute().data
     )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(
+        rows or [], columns=EMPLOYEE_STATUS_AUDIT_COLUMNS.split(",")
+    )
 
 
 def update_employee_profile(
@@ -215,7 +217,9 @@ def load_employee_profile_audit(supabase, limit=200):
         .select(EMPLOYEE_PROFILE_AUDIT_COLUMNS)
         .order("changed_at", desc=True).limit(limit).execute().data
     )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(
+        rows or [], columns=EMPLOYEE_PROFILE_AUDIT_COLUMNS.split(",")
+    )
 
 
 def _load_user_departments(supabase, users):

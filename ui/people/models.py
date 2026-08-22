@@ -5,6 +5,7 @@ from utils.auth.constants import ROLE_ADMIN, ROLE_VISITOR
 
 ALL_DEPARTMENTS = "全部部门"
 ALL_JOB_TITLES = "全部岗位"
+SUPERVISOR_MEMBER_JOB_TITLES = {"质检", "烫印"}
 
 
 def employee_creation_error_message(error):
@@ -46,6 +47,11 @@ def manageable_employees(employees, current_user):
     username = str(user.get("username") or "").strip()
     result = employees.loc[
         employees["role"].fillna(ROLE_VISITOR).eq(ROLE_VISITOR)
+    ].copy()
+    result = result.loc[
+        result["job_title"].fillna("").astype(str).isin(
+            SUPERVISOR_MEMBER_JOB_TITLES
+        )
     ].copy()
     if username:
         result = result.loc[

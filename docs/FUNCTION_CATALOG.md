@@ -10,7 +10,7 @@ an activity log.
 | Entry page | Business capability | Primary UI owner | Existing composition points |
 | --- | --- | --- | --- |
 | `app.py` | Home and problem tracking | application entry and shared UI | authentication, page layout, Supabase client |
-| `pages/0_注册.py` | Employee roster, registration, departure/reactivation and status audit | `ui/people/` | shared authentication, employee access state and Supabase client |
+| `pages/0_注册.py` | Employee status, combined profile/lifecycle handling, registration and audit | `ui/people/` | shared authentication, scoped employee selector, employee access state and Supabase client |
 | `pages/1_质检.py` | QA scanning and production summary | `ui/production/summary.py` | shared production filters, time utilities, authentication |
 | `pages/2_烫印.py` | Hotstamp scanning and production summary | `ui/production/summary.py` | same production summary contract as QA with a different operation field |
 | `pages/3_平台.py` | Platform production detail | `ui/platform_summary.py` | production database summaries and shared time handling |
@@ -34,7 +34,7 @@ an activity log.
 | Capability | Canonical owner | Reuse rule |
 | --- | --- | --- |
 | Authentication, permissions and operator identity | `utils/auth/` | Pages consume permission identifiers; never recreate role mappings locally. |
-| Employee lifecycle management | `db/access.py`, `ui/people/` | Registration and the roster share employee identity and department assignments. `ui/people/selector.py` owns the dependent `department -> job title -> employee` picker. Supervisors see only ordinary employees in their assigned production departments; peer/higher roles and their audits are excluded, while admins retain the complete roster. Profile changes preview old/new values and use audited RPCs; departure requires a business date and reason and immediately blocks login without deleting history. |
+| Employee lifecycle management | `db/access.py`, `ui/people/` | Registration and the roster share employee identity and department assignments. `ui/people/selector.py` owns the dependent `department -> job title -> employee` picker. Supervisors see only `质检` and `烫印` members in their assigned production departments; peer/higher roles and their audits are excluded, while admins retain the complete roster. Profile changes preview old/new values and use audited RPCs; departure requires a business date and reason and immediately blocks login without deleting history. |
 | Personal daily-work records | `db/daily_work.py`, `ui/daily_work/` | Scope templates and dated records to the authenticated username; keep task setup configurable and history grouped by business date. |
 | Page width and common layout | `utils/page_layout.py` | Reuse before adding page-specific CSS/layout setup. |
 | Inventory apparel size order | `db/inventory/core/constants.py` | Import `SIZE_COLUMNS`; never define another `S` through `5XL` sequence. |

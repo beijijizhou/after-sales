@@ -14,10 +14,11 @@ from utils.auth import get_current_user
 JOB_TITLES = ("质检", "烫印")
 
 
-def render_employee_profile_editor(supabase, employees):
-    selected = render_employee_selector(employees, "people_profile")
+def render_employee_profile_editor(supabase, employees=None, selected=None):
     if selected is None:
-        return
+        selected = render_employee_selector(employees, "people_profile")
+        if selected is None:
+            return
     selected_id = str(selected["employee_id"])
     current_title = str(selected.get("job_title") or "员工")
     title_options = list(dict.fromkeys([*JOB_TITLES, current_title]))
@@ -60,7 +61,7 @@ def render_employee_profile_editor(supabase, employees):
     except Exception as error:
         if "update_employee_profile" in str(error):
             st.error(
-                "员工资料调整尚未初始化，请执行 "
+                "人员调岗功能尚未初始化，请执行 "
                 "sql/access/role_management/14_employee_profile_management.sql。"
             )
         else:
@@ -78,9 +79,12 @@ def render_employee_profile_history(supabase, employee_ids=None):
         rows = load_employee_profile_audit(supabase)
     except Exception as error:
         if "app_employee_profile_audit" in str(error):
-            st.info("执行员工资料调整数据库脚本后，这里会显示变更记录。")
+            st.info("执行人员调岗数据库脚本后，这里会显示变更记录。")
         else:
             st.error("员工资料变更记录暂时无法读取，请稍后重试。")
+        return
+    if rows.empty:
+        st.info("暂无岗位或生产部门变更记录。")
         return
     if employee_ids is not None:
         rows = rows.loc[
@@ -89,7 +93,7 @@ def render_employee_profile_history(supabase, employee_ids=None):
             })
         ].reset_index(drop=True)
     if rows.empty:
-        st.info("暂无岗位或生产部门变更记录。")
+        st.info("当前管理范围内暂无岗位或生产部门变更记录。")
         return
     display = rows.rename(columns={
         "employee_name": "员工", "old_job_title": "原岗位",

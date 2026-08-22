@@ -19,6 +19,7 @@ from ui.people.status import (
     render_employee_status_action,
     render_employee_status_history,
 )
+from ui.people.selector import render_employee_selector
 from utils.auth import get_current_user, has_permission
 
 
@@ -38,11 +39,13 @@ def render_people_management_page(supabase):
         except Exception:
             st.error("员工资料暂时无法读取，请稍后重试。")
             return
-        roster_tab, registration_tab, history_tab = st.tabs([
-            "员工名单", "新增员工", "人员变更记录",
+        status_tab, action_tab, registration_tab, history_tab = st.tabs([
+            "人员状态", "人员办理", "新增员工", "变更记录",
         ])
-        with roster_tab:
-            _render_roster(supabase, employees)
+        with status_tab:
+            _render_roster(employees)
+        with action_tab:
+            _render_people_action(supabase, employees)
         with registration_tab:
             _render_registration(supabase, can_register)
         with history_tab:
@@ -85,7 +88,7 @@ def _render_registration(supabase, can_register):
     st.rerun()
 
 
-def _render_roster(supabase, employees):
+def _render_roster(employees):
     user = get_current_user() or {}
     if user.get("role") != "admin":
         st.caption("仅显示你负责生产部门内、职级低于你的员工。")
@@ -103,18 +106,31 @@ def _render_roster(supabase, employees):
     st.dataframe(employee_table(filtered), hide_index=True, width="stretch")
     if filtered.empty:
         st.info("当前状态下没有员工。")
+
+
+def _render_people_action(supabase, employees):
+    st.subheader("选择员工并办理")
+    selected = render_employee_selector(employees, "people_action")
+    if selected is None:
         return
-    profile_tab, status_tab = st.tabs(["资料调整", "离职/复职"])
-    with profile_tab:
-        render_employee_profile_editor(supabase, filtered)
-    with status_tab:
-        render_employee_status_action(supabase, filtered)
+    action = st.segmented_control(
+        "办理事项", ["离职/复职", "人员调岗"], default="离职/复职",
+        key="people_action_type",
+    )
+    st.divider()
+    if action == "离职/复职":
+        render_employee_status_action(supabase, selected=selected)
+    else:
+        render_employee_profile_editor(supabase, selected=selected)
 
 
 def _render_people_history(supabase, employees):
     employee_ids = employees["employee_id"].astype(str).tolist()
-    profile_tab, status_tab = st.tabs(["资料调整", "离职/复职"])
-    with profile_tab:
-        render_employee_profile_history(supabase, employee_ids)
-    with status_tab:
+    history_type = st.segmented_control(
+        "记录类型", ["离职/复职", "人员调岗"], default="离职/复职",
+        key="people_history_type",
+    )
+    if history_type == "离职/复职":
         render_employee_status_history(supabase, employee_ids)
+    else:
+        render_employee_profile_history(supabase, employee_ids)

@@ -9,6 +9,8 @@ import pandas as pd
 from db.access import (
     create_employee,
     load_app_users,
+    load_employee_profile_audit,
+    load_employee_status_audit,
     load_employees,
     normalize_employee_departments,
     save_role_definition,
@@ -31,6 +33,11 @@ from ui.people.models import (
     reset_stale_employee_selection,
 )
 from ui.people.profile import employee_profile_preview
+from ui.people.status import (
+    DEPARTURE_REASONS,
+    REACTIVATION_REASONS,
+    resolve_employment_reason,
+)
 from ui.access.permissions import (
     permission_group_matrix,
     permission_matrix,
@@ -44,6 +51,29 @@ from utils.auth.ui import visible_navigation_sections
 
 
 class AccessManagementTests(unittest.TestCase):
+    def test_employment_reason_dropdown_has_defaults_and_custom_fallback(self):
+        self.assertEqual(DEPARTURE_REASONS[0], "员工主动离职")
+        self.assertEqual(REACTIVATION_REASONS[0], "重新入职")
+        self.assertEqual(
+            resolve_employment_reason("员工主动离职"), "员工主动离职"
+        )
+        self.assertEqual(
+            resolve_employment_reason("其他原因", " 搬离本地 "), "搬离本地"
+        )
+        self.assertEqual(resolve_employment_reason("其他原因", "  "), "")
+
+    def test_empty_employee_audits_keep_employee_id_column(self):
+        supabase = Mock()
+        supabase.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+
+        status = load_employee_status_audit(supabase)
+        profile = load_employee_profile_audit(supabase)
+
+        self.assertTrue(status.empty)
+        self.assertTrue(profile.empty)
+        self.assertIn("employee_id", status.columns)
+        self.assertIn("employee_id", profile.columns)
+
     def test_supervisor_only_sees_same_department_subordinates(self):
         employees = pd.DataFrame([
             {"name": "本人", "user_name": "linda", "employee_id": "L1",
@@ -63,6 +93,9 @@ class AccessManagementTests(unittest.TestCase):
              "departments": ["DTF"]},
             {"name": "Admin", "user_name": "admin", "employee_id": "X1",
              "job_title": "管理员", "role": "admin",
+             "departments": ["DTF"]},
+            {"name": "普通访客", "user_name": "guest", "employee_id": "G1",
+             "job_title": "员工", "role": "visitor",
              "departments": ["DTF"]},
         ])
 
@@ -490,6 +523,18 @@ class AccessManagementTests(unittest.TestCase):
         self.assertNotIn("with st.form", status_source)
         self.assertIn("st.button", profile_source)
         self.assertIn("st.button", status_source)
+
+    def test_people_page_uses_status_and_action_as_parallel_main_tabs(self):
+        page_source = (
+            Path(__file__).resolve().parents[1] / "ui" / "people" / "page.py"
+        ).read_text()
+
+        self.assertIn(
+            '"人员状态", "人员办理", "新增员工", "变更记录"',
+            page_source,
+        )
+        self.assertIn('"办理事项", ["离职/复职", "人员调岗"]', page_source)
+        self.assertNotIn('st.tabs(["离职/复职", "人员调岗"]', page_source)
 
     def test_employee_profile_update_uses_audited_rpc(self):
         supabase = Mock()

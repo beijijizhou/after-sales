@@ -11,12 +11,20 @@ from utils.auth import get_current_user
 
 
 NEW_YORK = ZoneInfo("America/New_York")
+DEPARTURE_REASONS = (
+    "员工主动离职",
+    "公司辞退",
+    "长期未到岗",
+    "其他原因",
+)
+REACTIVATION_REASONS = ("重新入职", "其他原因")
 
 
-def render_employee_status_action(supabase, employees):
-    selected = render_employee_selector(employees, "people_status")
+def render_employee_status_action(supabase, employees=None, selected=None):
     if selected is None:
-        return
+        selected = render_employee_selector(employees, "people_status")
+        if selected is None:
+            return
     selected_id = str(selected["employee_id"])
     new_active = not bool(selected["is_active"])
     action = "恢复在职" if new_active else "办理离职"
@@ -25,17 +33,24 @@ def render_employee_status_action(supabase, employees):
         "生效日期", value=today, max_value=today,
         key=f"people_status_date_{selected_id}",
     )
-    reason = st.text_area(
-        "变更原因" + ("（必填）" if not new_active else ""),
-        placeholder="例如：员工主动离职" if not new_active else "例如：重新入职",
-        key=f"people_status_reason_{selected_id}",
+    reason_options = REACTIVATION_REASONS if new_active else DEPARTURE_REASONS
+    selected_reason = st.selectbox(
+        "变更原因", reason_options,
+        key=f"people_status_reason_choice_{selected_id}",
     )
+    custom_reason = ""
+    if selected_reason == "其他原因":
+        custom_reason = st.text_area(
+            "请输入其他原因（必填）",
+            key=f"people_status_reason_other_{selected_id}",
+        )
+    reason = resolve_employment_reason(selected_reason, custom_reason)
     preview = pd.DataFrame([{
         "员工": employee_label(selected),
         "原状态": "在职" if selected["is_active"] else "已离职",
         "新状态": "在职" if new_active else "已离职",
         "生效日期": effective_date,
-        "原因": reason.strip() or "未填写",
+        "原因": reason or "待填写",
     }])
     st.caption("变更预览")
     st.dataframe(preview, hide_index=True, width="stretch")
@@ -44,7 +59,8 @@ def render_employee_status_action(supabase, employees):
         key=f"people_status_confirmed_{selected_id}",
     )
     submitted = st.button(
-        action, type="primary", disabled=not confirmed,
+        action, type="primary",
+        disabled=not confirmed or not reason,
         key=f"people_status_submit_{selected_id}",
     )
     if not submitted:
@@ -70,6 +86,12 @@ def render_employee_status_action(supabase, employees):
     st.rerun()
 
 
+def resolve_employment_reason(selected_reason, custom_reason=""):
+    if selected_reason != "其他原因":
+        return str(selected_reason or "").strip()
+    return str(custom_reason or "").strip()
+
+
 def render_employee_status_history(supabase, employee_ids=None):
     try:
         rows = load_employee_status_audit(supabase)
@@ -79,6 +101,9 @@ def render_employee_status_history(supabase, employee_ids=None):
         else:
             st.error("人员变更记录暂时无法读取，请稍后重试。")
         return
+    if rows.empty:
+        st.info("暂无人员状态变更记录。")
+        return
     if employee_ids is not None:
         rows = rows.loc[
             rows["employee_id"].astype(str).isin({
@@ -86,7 +111,7 @@ def render_employee_status_history(supabase, employee_ids=None):
             })
         ].reset_index(drop=True)
     if rows.empty:
-        st.info("暂无人员状态变更记录。")
+        st.info("当前管理范围内暂无人员状态变更记录。")
         return
     display = rows.rename(columns={
         "employee_name": "员工", "user_name": "账号",
