@@ -14,9 +14,10 @@ refactors, not after every small feature.
 - Production inventory: `pages/4_库存.py`
 - Inventory workbench: `pages/4_库存总结.py`
 - Containers: `pages/5_货柜安排.py`
-- After-sales search and after-sales-only hotstamp-film audit:
-  `pages/6_售后查询.py`, with film import and comparison UI under
-  `ui/after_sales_hotstamp/`.
+- The `售后查询` sidebar group contains order/barcode search in
+  `pages/6_售后查询.py` and manual-registration analysis for
+  after-sales/admin in `pages/6_人工登记分析.py`, with film import and
+  comparison UI under `ui/after_sales_hotstamp/`.
 - Production data collection: `pages/7_生产数据.py`
 - Phone-case image processing: `pages/8_图片拉伸.py`
 - Consumables: `pages/9_耗材库存.py`
@@ -31,7 +32,10 @@ refactors, not after every small feature.
 - User-role administration: `db/access.py` and `ui/access/`
 - Employee roster, registration, departure/reactivation and status audit:
   `db/access.py`, `ui/people/`, and
-  `sql/access/role_management/12_people_management.sql`
+  `sql/access/role_management/12_people_management.sql`; supervisor access is
+  granted by `13_supervisor_people_management.sql`, while audited job-title and
+  production-department changes are installed by
+  `14_employee_profile_management.sql`
 - Personal daily-work templates, dated records, and history:
   `db/daily_work.py` and `ui/daily_work/`
 - Inventory persistence and rules: `db/inventory/`

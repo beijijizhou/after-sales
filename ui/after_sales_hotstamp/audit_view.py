@@ -12,8 +12,9 @@ from db.after_sales_hotstamp import (
     load_hotstamp_film_comparison,
 )
 from ui.after_sales_hotstamp.models import (
-    build_daily_person_balance,
-    build_person_summary,
+    build_weekly_person_special_mix,
+    build_weekly_platform_allocation,
+    build_weekly_platform_summary,
     prepare_comparison,
 )
 
@@ -22,14 +23,15 @@ NY_TIMEZONE = ZoneInfo("America/New_York")
 
 
 def render_audit_view(supabase):
-    st.subheader("烫印膜均匀度与系统差异")
+    st.subheader("每周平台订单分配分析")
     today = datetime.now(NY_TIMEZONE).date()
+    current_week_start = today - timedelta(days=today.weekday())
     controls = st.columns([2, 1])
-    selected_range = controls[0].date_input(
-        "核对日期",
-        value=(today - timedelta(days=6), today),
+    selected_day = controls[0].date_input(
+        "选择所在周",
+        value=current_week_start,
         max_value=today,
-        key="hotstamp_film_date_range",
+        key="hotstamp_film_week",
     )
     tolerance = controls[1].slider(
         "均匀度允许偏差",
@@ -40,10 +42,9 @@ def render_audit_view(supabase):
         format="%d%%",
         key="hotstamp_film_tolerance",
     )
-    if not isinstance(selected_range, (tuple, list)) or len(selected_range) != 2:
-        st.info("请选择开始和结束日期。")
-        return
-    start_date, end_date = selected_range
+    start_date = selected_day - timedelta(days=selected_day.weekday())
+    end_date = start_date + timedelta(days=6)
+    st.caption(f"统计周期：{start_date} 至 {end_date}")
     try:
         raw = load_hotstamp_film_comparison(supabase, start_date, end_date)
     except Exception as exc:
@@ -58,17 +59,27 @@ def render_audit_view(supabase):
         st.info("所选日期没有表格登记或系统烫印数据。")
         return
 
-    daily = build_daily_person_balance(comparison, tolerance)
-    people = build_person_summary(daily, tolerance)
-    _render_conclusion_metrics(comparison, daily)
+    allocation = build_weekly_platform_allocation(comparison, tolerance)
+    summary = build_weekly_platform_summary(allocation, tolerance)
+    special_mix = build_weekly_person_special_mix(comparison)
+    _render_weekly_metrics(comparison, allocation)
     _render_rule_explanation(tolerance)
-    people_tab, daily_tab, gap_tab = st.tabs([
-        "人员均匀度", "每日均匀度", "系统差异明细",
+    platform_options = ["全部平台", *sorted(allocation["platform"].unique())]
+    selected_platform = st.selectbox(
+        "查看平台", platform_options, key="weekly_allocation_platform"
+    )
+    shown_allocation = allocation
+    if selected_platform != "全部平台":
+        shown_allocation = allocation[allocation["platform"] == selected_platform]
+    summary_tab, allocation_tab, mix_tab, gap_tab = st.tabs([
+        "平台周汇总", "人员分配占比", "特殊订单占比", "系统差异明细",
     ])
-    with people_tab:
-        _render_people(people)
-    with daily_tab:
-        _render_daily(daily)
+    with summary_tab:
+        _render_platform_summary(summary)
+    with allocation_tab:
+        _render_platform_allocation(shown_allocation)
+    with mix_tab:
+        _render_person_special_mix(special_mix)
     with gap_tab:
         _render_gaps(comparison)
 
@@ -116,24 +127,30 @@ def render_batch_history(supabase):
     st.dataframe(rows, hide_index=True, width="stretch")
 
 
-def _render_conclusion_metrics(comparison, daily):
-    film = int(comparison["film_quantity"].sum())
-    scans = int(comparison["system_scan_count"].sum())
-    pieces = int(comparison["system_piece_count"].sum())
-    unbalanced = int((daily["balance_status"] != "均匀").sum())
+def _render_weekly_metrics(comparison, allocation):
+    orders = int(comparison["source_entry_count"].sum())
+    people = allocation.loc[
+        allocation["active_worker"], "hotstamp_person"
+    ].nunique()
+    attention = int((allocation["allocation_status"] != "均匀").sum())
+    hansen_orders = int(comparison.loc[
+        comparison["platform"] == "汉森", "source_entry_count"
+    ].sum())
     columns = st.columns(4)
-    columns[0].metric("表格登记膜数", f"{film:,}")
-    columns[1].metric("系统扫码单数", f"{scans:,}", delta=f"差 {film - scans:+,}")
-    columns[2].metric("系统折算件数", f"{pieces:,}", delta=f"差 {film - pieces:+,}")
-    columns[3].metric("不均匀人次", f"{unbalanced:,}")
+    columns[0].metric("本周人工登记单", f"{orders:,}")
+    columns[1].metric("参与烫印人数", f"{people:,}")
+    columns[2].metric("分配需关注人次", f"{attention:,}")
+    columns[3].metric("汉森订单占比", f"{_percent(hansen_orders, orders):.1f}%")
 
 
 def _render_rule_explanation(tolerance):
     with st.expander("核对口径和平台规范化规则"):
         st.markdown(
-            f"- 均匀度：同一天每位有膜登记的烫印人员，与当天团队人均膜数比较；"
-            f"偏差在 ±{tolerance}% 内标记为“均匀”。\n"
-            "- 系统扫码单数：`barcode_scans` 的扫码记录数。\n"
+            f"- 均匀度：按自然周和平台汇总 Google Sheets 人工登记单，每人应占 "
+            f"`100% ÷ 该平台参与人数`；相对偏差在 ±{tolerance}% 内为“均匀”。\n"
+            "- 卫衣、多烫和汉森占比都仅使用人工登记行统计。\n"
+            "- 原表没有独立的“多件”字段，因此不推测、不统计多件占比。\n"
+            "- 系统扫码仅用于“系统差异明细”，不参与分配均匀度和特殊占比。\n"
             "- 系统折算件数：每条扫码按 `multiple_count` 至少 1 件折算。\n"
             "- 平台仅做公开规范化：haloo→Haloo、7创→七创、"
             "SDS-1/SDS1→SDS1、SDS-2/SDS2→SDS2、PT莆田→莆田。\n"
@@ -141,26 +158,54 @@ def _render_rule_explanation(tolerance):
         )
 
 
-def _render_people(people):
-    display = people.rename(columns={
-        "hotstamp_person": "烫印人员", "active_days": "参与天数",
-        "film_quantity": "登记膜数", "system_scan_count": "系统扫码单数",
-        "system_piece_count": "系统折算件数", "unbalanced_days": "不均匀天数",
-        "max_deviation_percent": "最大偏离", "scan_gap": "膜数-扫码单数",
-        "piece_gap": "膜数-折算件数", "balance_status": "均匀状态",
+def _render_platform_summary(summary):
+    display = summary.rename(columns={
+        "platform": "平台", "order_count": "本周登记单数",
+        "worker_count": "参与人数", "expected_share_percent": "每人应占%",
+        "highest_order_share": "最高人员占比%", "lowest_order_share": "最低人员占比%",
+        "order_share_spread": "最高最低差%", "attention_workers": "需关注人数",
+        "hoodie_ratio_percent": "卫衣登记占比%", "multi_press_ratio_percent": "多烫登记占比%",
     })
-    st.dataframe(display, hide_index=True, width="stretch")
+    columns = [
+        "平台", "本周登记单数", "参与人数", "每人应占%", "最高人员占比%",
+        "最低人员占比%", "最高最低差%", "需关注人数", "卫衣登记占比%",
+        "多烫登记占比%",
+    ]
+    st.dataframe(display[columns], hide_index=True, width="stretch")
 
 
-def _render_daily(daily):
-    display = daily.rename(columns={
-        "business_date": "日期", "hotstamp_person": "烫印人员",
-        "film_quantity": "登记膜数", "team_average": "团队人均膜数",
-        "balance_deviation_percent": "偏离比例", "balance_status": "均匀状态",
-        "system_scan_count": "系统扫码单数", "system_piece_count": "系统折算件数",
-        "scan_gap": "膜数-扫码单数", "piece_gap": "膜数-折算件数",
+def _render_platform_allocation(allocation):
+    display = allocation.rename(columns={
+        "platform": "平台", "hotstamp_person": "烫印人员",
+        "source_entry_count": "登记单数", "order_share_percent": "平台登记占比%",
+        "expected_share_percent": "应占%", "order_deviation_percent": "相对偏差%",
+        "allocation_status": "分配状态", "hoodie_entry_count": "卫衣登记单",
+        "hoodie_allocation_share_percent": "平台卫衣占比%",
+        "multi_press_entry_count": "多烫登记单", "multi_press_allocation_share_percent": "平台多烫占比%",
     })
-    st.dataframe(display, hide_index=True, width="stretch")
+    columns = [
+        "平台", "烫印人员", "登记单数", "平台登记占比%", "应占%", "相对偏差%",
+        "分配状态", "卫衣登记单", "平台卫衣占比%", "多烫登记单", "平台多烫占比%",
+    ]
+    st.dataframe(display[columns], hide_index=True, width="stretch")
+
+
+def _render_person_special_mix(mix):
+    display = mix.rename(columns={
+        "hotstamp_person": "烫印人员", "order_count": "全部登记单数",
+        "hoodie_entry_count": "卫衣登记单", "hoodie_ratio_percent": "卫衣登记占比%",
+        "multi_press_entry_count": "多烫登记单", "multi_press_ratio_percent": "多烫登记占比%",
+        "hansen_order_count": "汉森登记单", "hansen_ratio_percent": "汉森登记占比%",
+    })
+    columns = [
+        "烫印人员", "全部登记单数", "卫衣登记单", "卫衣登记占比%", "多烫登记单",
+        "多烫登记占比%", "汉森登记单", "汉森登记占比%",
+    ]
+    st.dataframe(display[columns], hide_index=True, width="stretch")
+
+
+def _percent(value, total):
+    return value / total * 100 if total else 0.0
 
 
 def _render_gaps(comparison):

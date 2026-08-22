@@ -7,13 +7,13 @@ from ui.after_sales_hotstamp.audit_view import (
     render_batch_history,
 )
 from ui.after_sales_hotstamp.sync_view import render_sync_view
-from utils.auth import get_current_role
+from utils.auth import has_role
 from utils.auth.constants import ROLE_AFTER_SALES
 
 
 def render_hotstamp_film_audit(supabase, folder_id):
-    if get_current_role() != ROLE_AFTER_SALES:
-        st.error("此功能仅对售后角色开放。")
+    if not has_role(ROLE_AFTER_SALES):
+        st.error("此功能仅对售后和管理员角色开放。")
         return
     st.title("人工登记分析")
     audit_tab, sync_tab, history_tab = st.tabs([

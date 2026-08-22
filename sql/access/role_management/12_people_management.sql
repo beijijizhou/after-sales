@@ -3,8 +3,8 @@ begin;
 insert into public.app_permissions (
     permission_key, permission_name, permission_group, description, sort_order
 ) values (
-    'can_manage_people', '办理员工离职与复职', '系统管理',
-    '查看完整员工名单并办理离职或恢复在职', 265
+    'can_manage_people', '管理员工资料及在离职', '系统管理',
+    '查看完整员工名单，调整岗位/生产部门并办理离职或恢复在职', 265
 )
 on conflict (permission_key) do update set
     permission_name = excluded.permission_name,

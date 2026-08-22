@@ -84,7 +84,7 @@ Adding secrets does
 not grant page access; each employee still needs an application account with
 one of those roles.
 
-Before using the admin-only permissions and people-management pages, run the twelve scripts in
+Before using the permissions and people-management pages, run the fourteen scripts in
 `sql/access/role_management/` in numeric order. Its `README.md` contains the
 installation and verification sequence. These migrations install the dynamic
 role and permission catalog, audited user-role updates, administrator-created

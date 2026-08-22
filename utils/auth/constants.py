@@ -93,7 +93,7 @@ ROLE_PERMISSIONS = {
     ROLE_VISITOR: PUBLIC_ACCESS,
     ROLE_SUPERVISOR: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW | CONSUMABLE_VIEW
-        | {"can_mark_barcode_operations"}
+        | PEOPLE_MANAGE | {"can_mark_barcode_operations"}
     ),
     ROLE_PRODUCER: (
         PUBLIC_ACCESS | PRODUCTION_ACCESS | INVENTORY_VIEW
@@ -119,6 +119,7 @@ ROLE_PERMISSIONS = {
 
 PAGE_ACCESS = {
     "app": "can_view_app",
+    "after_sales_manual_analysis": "can_input_after_sales",
     "register": ("can_register", "can_manage_people"),
     "qa": "can_view_qa",
     "hotstamp": "can_view_hotstamp",
@@ -149,12 +150,18 @@ NAV_SECTIONS = [
     ]),
     (None, [
         ("operation_tracking", "问题件追踪", "app.py"),
-        ("app", "售后查询", "pages/6_售后查询.py"),
         ("register", "人员管理", "pages/0_注册.py"),
         ("qa", "质检", "pages/1_质检.py"),
         ("hotstamp", "烫印", "pages/2_烫印.py"),
         ("platform", "平台", "pages/3_平台.py"),
         ("production_data", "生产数据", "pages/7_生产数据.py"),
+    ]),
+    ("售后查询", [
+        ("app", "订单与条码查询", "pages/6_售后查询.py"),
+        (
+            "after_sales_manual_analysis", "人工登记分析",
+            "pages/6_人工登记分析.py",
+        ),
     ]),
     ("物流单号追踪", [
         (

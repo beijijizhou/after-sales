@@ -192,8 +192,8 @@ begin
     get diagnostics v_saved_rows = row_count;
     select coalesce(sum(film_quantity), 0)
     into v_saved_quantity
-    from public.after_sales_hotstamp_film_entries
-    where batch_id = v_batch_id;
+    from public.after_sales_hotstamp_film_entries saved_entry
+    where saved_entry.batch_id = v_batch_id;
 
     update public.after_sales_hotstamp_film_sync_batches
     set row_count = v_saved_rows,
@@ -206,7 +206,11 @@ begin
 end;
 $$;
 
-create or replace function public.get_after_sales_hotstamp_film_comparison(
+drop function if exists public.get_after_sales_hotstamp_film_comparison(
+    date, date
+);
+
+create function public.get_after_sales_hotstamp_film_comparison(
     p_start_date date,
     p_end_date date
 )
@@ -215,6 +219,11 @@ returns table (
     hotstamp_person text,
     platform text,
     film_quantity bigint,
+    source_entry_count bigint,
+    hoodie_film_quantity bigint,
+    hoodie_entry_count bigint,
+    multi_press_quantity bigint,
+    multi_press_entry_count bigint,
     system_scan_count bigint,
     system_piece_count bigint
 )
@@ -226,7 +235,18 @@ as $$
             coalesce(nullif(trim(entry.hotstamp_person), ''),
                 '未填写烫印人员') as hotstamp_person,
             public.normalize_hotstamp_audit_platform(entry.platform) as platform,
-            sum(entry.film_quantity)::bigint as film_quantity
+            sum(entry.film_quantity)::bigint as film_quantity,
+            count(*)::bigint as source_entry_count,
+            sum(
+                case when entry.is_hoodie then entry.film_quantity else 0 end
+            )::bigint as hoodie_film_quantity,
+            count(*) filter (where entry.is_hoodie)::bigint
+                as hoodie_entry_count,
+            sum(greatest(coalesce(entry.multi_press_count, 0), 0))::bigint
+                as multi_press_quantity,
+            count(*) filter (
+                where greatest(coalesce(entry.multi_press_count, 0), 0) > 0
+            )::bigint as multi_press_entry_count
         from public.after_sales_hotstamp_film_active_entries entry
         where entry.business_date between p_start_date and p_end_date
         group by 1, 2, 3
@@ -256,6 +276,11 @@ as $$
         coalesce(source.hotstamp_person, system.hotstamp_person),
         coalesce(source.platform, system.platform),
         coalesce(source.film_quantity, 0),
+        coalesce(source.source_entry_count, 0),
+        coalesce(source.hoodie_film_quantity, 0),
+        coalesce(source.hoodie_entry_count, 0),
+        coalesce(source.multi_press_quantity, 0),
+        coalesce(source.multi_press_entry_count, 0),
         coalesce(system.system_scan_count, 0),
         coalesce(system.system_piece_count, 0)
     from source_rows source

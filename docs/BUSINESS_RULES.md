@@ -166,17 +166,21 @@
 
 ## Production And QA
 
-- The after-sales hotstamp-film audit is visible only to the exact
-  `after_sales` application role. It imports each weekly Google workbook as an
+- The after-sales manual-registration analysis is visible to the `after_sales`
+  role and to `admin`, because administrators inherit all application access.
+  It imports each weekly Google workbook as an
   append-only source batch, preserves file, tab and row identity, and compares
   the latest completed source version with New York-dated system hotstamp
   scans. Platform aliases are shown as an explicit normalization rule and
   employee names are never silently substituted.
-- Film balance is evaluated per business day against that day's average among
-  people with film registrations. The user-selected tolerance controls the
-  visible status; the source film quantity, system barcode count, and system
-  piece count derived from `multiple_count` remain separate so a discrepancy
-  can be reconstructed instead of hidden in one blended number.
+- Allocation balance is evaluated by natural week and platform. Each worker's
+  Google Sheets manual-registration share is compared with
+  `100% / active workers on that platform`; the selected tolerance controls
+  the visible status. Hoodie, multi-press and Hansen percentages also come only
+  from manual registrations. The source has no explicit multi-piece field, so
+  the application must not infer one from quantity. Barcode scan and piece counts are
+  kept separate and may appear only in reconciliation, never in allocation
+  balance or special-work percentages.
 
 ## Platform Finance
 
@@ -633,12 +637,20 @@ forecast as an estimate.
 ## Access
 
 - Personnel management separates employee registration from employment-status
-  administration. Authorized people administrators can view employees without
+  administration. Supervisors and people administrators can view employees without
   login accounts, record departure or reactivation with an effective date,
   reason, operator and append-only audit, and must never delete the employee's
   historical work. Departure sets the shared employee account inactive so any
   login access stops immediately. An administrator cannot process their own
-  departure.
+  departure. The permission belongs to the supervisor role rather than an
+  individual employee name, so current and future team leaders inherit the same
+  controlled workflow.
+- Supervisors and people administrators may change an employee's production
+  departments and job title, including moves such as `DTF -> UV` and
+  `质检 -> 烫印`. The UI must preview both old and new values, the database
+  must validate departments against the active department catalog, and every
+  change must preserve an append-only employee profile audit. Job-title changes
+  do not silently create, delete or change the employee's login role.
 - The logistics tracking page is visible to supervisor, after-sales, and admin
   roles. Supervisors may query existing/database-cached and live USPS Tracking
   data, but only after-sales and admins may synchronize ERP data, run label

@@ -12,6 +12,7 @@ from db.access import (
     load_employees,
     normalize_employee_departments,
     save_role_definition,
+    update_employee_profile,
     update_user_access,
     update_employee_status,
     validate_access_change,
@@ -19,7 +20,13 @@ from db.access import (
     validate_role_definition,
 )
 from ui.access.page import access_change_preview, filter_access_users
-from ui.people.models import employee_table, filter_employees
+from ui.people.models import (
+    employee_creation_error_message,
+    employee_table,
+    filter_employees,
+    reset_stale_employee_selection,
+)
+from ui.people.profile import employee_profile_preview
 from ui.access.permissions import (
     permission_group_matrix,
     permission_matrix,
@@ -28,10 +35,34 @@ from ui.access.permissions import (
 )
 from ui.access.role_editor import role_permission_preview
 import utils.auth.session as auth_session
-from utils.auth.constants import NAV_SECTIONS
+from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS, ROLE_SUPERVISOR
 
 
 class AccessManagementTests(unittest.TestCase):
+    def test_employee_filter_clears_only_stale_selected_employee(self):
+        state = {"employee": "E1"}
+        reset_stale_employee_selection(state, "employee", ["E2"])
+        self.assertNotIn("employee", state)
+
+        state = {"employee": "E2"}
+        reset_stale_employee_selection(state, "employee", ["E2"])
+        self.assertEqual(state["employee"], "E2")
+
+    def test_duplicate_employee_name_directs_user_to_existing_roster(self):
+        message = employee_creation_error_message(
+            'duplicate key value violates unique constraint "users_name_key"; '
+            'Key (name)=(吴雪珍) already exists'
+        )
+
+        self.assertIn("员工姓名已存在", message)
+        self.assertIn("员工名单", message)
+        self.assertNotIn("duplicate key", message)
+
+    def test_supervisor_role_can_manage_employee_lifecycle(self):
+        self.assertIn(
+            "can_manage_people", ROLE_PERMISSIONS[ROLE_SUPERVISOR]
+        )
+
     def test_role_and_status_filters_group_users_in_selected_role_order(self):
         users = pd.DataFrame([
             {
@@ -348,15 +379,42 @@ class AccessManagementTests(unittest.TestCase):
             },
         )
 
-    def test_employee_departments_require_supported_value(self):
+    def test_employee_departments_are_normalized_before_database_validation(self):
         self.assertEqual(
             normalize_employee_departments(["dtf", "UV", "DTF"]),
             ["DTF", "UV"],
         )
         with self.assertRaisesRegex(ValueError, "至少需要选择"):
             normalize_employee_departments([])
-        with self.assertRaisesRegex(ValueError, "不支持"):
-            normalize_employee_departments(["LASER"])
+        self.assertEqual(normalize_employee_departments(["laser"]), ["LASER"])
+
+    def test_employee_profile_preview_shows_job_and_department_move(self):
+        preview = employee_profile_preview({
+            "name": "员工一", "employee_id": "E1", "user_name": "worker",
+            "job_title": "质检", "departments": ["DTF"],
+        }, "烫印", ["UV"])
+
+        self.assertEqual(preview["原岗位"], "质检")
+        self.assertEqual(preview["新岗位"], "烫印")
+        self.assertEqual(preview["原生产部门"], "DTF")
+        self.assertEqual(preview["新生产部门"], "UV")
+        self.assertTrue(preview["是否变化"])
+
+    def test_employee_profile_update_uses_audited_rpc(self):
+        supabase = Mock()
+        supabase.rpc.return_value.execute.return_value.data = [{
+            "employee_id": "E1", "job_title": "烫印",
+            "departments": ["UV"],
+        }]
+
+        update_employee_profile(
+            supabase, "E1", "烫印", ["uv"], "linda"
+        )
+
+        supabase.rpc.assert_called_once_with("update_employee_profile", {
+            "p_employee_id": "E1", "p_job_title": "烫印",
+            "p_departments": ["UV"], "p_changed_by": "linda",
+        })
 
     def test_employee_registration_uses_atomic_database_rpc(self):
         supabase = Mock()
@@ -411,7 +469,7 @@ class AccessManagementTests(unittest.TestCase):
             / "sql" / "access" / "role_management"
         )
         scripts = sorted(sql_directory.glob("[0-9][0-9]_*.sql"))
-        self.assertEqual(len(scripts), 12)
+        self.assertEqual(len(scripts), 14)
         self.assertTrue(all(
             len(script.read_text().splitlines()) < 200 for script in scripts
         ))
@@ -424,6 +482,14 @@ class AccessManagementTests(unittest.TestCase):
         self.assertIn("can_manage_people", sql)
         self.assertIn("update_employee_employment_status", sql)
         self.assertIn("cannot change own employment status", sql)
+        self.assertIn("values ('supervisor', 'can_manage_people')", sql)
+        supervisor_migration = (
+            sql_directory / "13_supervisor_people_management.sql"
+        ).read_text()
+        self.assertIn("previous_role", supervisor_migration)
+        self.assertNotIn("current_role text", supervisor_migration)
+        self.assertIn("update_employee_profile", sql)
+        self.assertIn("app_employee_profile_audit", sql)
 
     def test_role_schema_archives_legacy_wide_permission_table(self):
         schema = (

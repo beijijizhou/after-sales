@@ -1,4 +1,5 @@
 import unittest
+from contextlib import nullcontext
 from datetime import date
 from unittest.mock import Mock, patch
 
@@ -16,9 +17,13 @@ from automation.sync.google_sheets import GoogleSheetsClient
 from ui.after_sales_hotstamp.models import (
     build_daily_person_balance,
     build_person_summary,
+    build_weekly_person_special_mix,
+    build_weekly_platform_allocation,
+    build_weekly_platform_summary,
     prepare_comparison,
 )
 from ui.after_sales_hotstamp.page import render_hotstamp_film_audit
+from utils.auth.constants import NAV_SECTIONS, PAGE_ACCESS
 
 
 class AfterSalesHotstampParserTests(unittest.TestCase):
@@ -85,6 +90,47 @@ class AfterSalesHotstampParserTests(unittest.TestCase):
 
 
 class AfterSalesHotstampModelTests(unittest.TestCase):
+    def test_weekly_platform_allocation_and_special_mix_percentages(self):
+        source = pd.DataFrame([
+            _comparison(
+                "2026-08-17", "甲", "Haloo", 60, 60, 70,
+                entries=60, hoodie=30, multi_press=12,
+            ),
+            _comparison(
+                "2026-08-18", "乙", "Haloo", 40, 40, 45,
+                entries=40, hoodie=10, multi_press=8,
+            ),
+            _comparison(
+                "2026-08-19", "甲", "汉森", 20, 20, 20,
+                entries=20, hoodie=0, multi_press=0,
+            ),
+            _comparison(
+                "2026-08-20", "乙", "汉森", 20, 20, 24,
+                entries=20, hoodie=20, multi_press=5,
+            ),
+        ])
+        comparison = prepare_comparison(source)
+        allocation = build_weekly_platform_allocation(comparison, 10)
+        haloo = allocation[allocation["platform"] == "Haloo"].set_index(
+            "hotstamp_person"
+        )
+
+        self.assertEqual(haloo.loc["甲", "order_share_percent"], 60.0)
+        self.assertEqual(haloo.loc["甲", "expected_share_percent"], 50.0)
+        self.assertEqual(haloo.loc["甲", "allocation_status"], "需关注")
+        self.assertEqual(
+            haloo.loc["甲", "hoodie_allocation_share_percent"], 75.0
+        )
+
+        summary = build_weekly_platform_summary(allocation, 10).set_index(
+            "platform"
+        )
+        self.assertEqual(summary.loc["Haloo", "order_share_spread"], 20.0)
+        mix = build_weekly_person_special_mix(comparison).set_index(
+            "hotstamp_person"
+        )
+        self.assertEqual(mix.loc["甲", "hansen_ratio_percent"], 25.0)
+
     def test_surfaces_balance_and_system_differences(self):
         source = pd.DataFrame([
             _comparison("2026-08-17", "甲", "Haloo", 100, 95, 100),
@@ -133,15 +179,46 @@ class GoogleDriveTreeTests(unittest.TestCase):
 
 
 class AfterSalesHotstampAccessTests(unittest.TestCase):
+    def test_sidebar_uses_real_after_sales_child_navigation(self):
+        section = next(
+            items for title, items in NAV_SECTIONS if title == "售后查询"
+        )
+
+        self.assertEqual(
+            [item[1] for item in section],
+            ["订单与条码查询", "人工登记分析"],
+        )
+        self.assertEqual(
+            PAGE_ACCESS["after_sales_manual_analysis"],
+            "can_input_after_sales",
+        )
+
     @patch("ui.after_sales_hotstamp.page.st.error")
-    @patch("ui.after_sales_hotstamp.page.get_current_role", return_value="admin")
-    def test_exact_after_sales_role_is_required(self, _role, error):
+    @patch("ui.after_sales_hotstamp.page.has_role", return_value=False)
+    def test_other_roles_are_rejected(self, _has_role, error):
         render_hotstamp_film_audit(Mock(), "folder")
 
-        error.assert_called_once_with("此功能仅对售后角色开放。")
+        error.assert_called_once_with("此功能仅对售后和管理员角色开放。")
+
+    @patch("ui.after_sales_hotstamp.page.render_batch_history")
+    @patch("ui.after_sales_hotstamp.page.render_sync_view")
+    @patch("ui.after_sales_hotstamp.page.render_audit_view")
+    @patch("ui.after_sales_hotstamp.page.st.tabs")
+    @patch("ui.after_sales_hotstamp.page.has_role", return_value=True)
+    def test_after_sales_or_admin_can_open_page(
+        self, _has_role, tabs, _audit, _sync, _history
+    ):
+        tabs.return_value = [nullcontext(), nullcontext(), nullcontext()]
+
+        render_hotstamp_film_audit(Mock(), "folder")
+
+        tabs.assert_called_once()
 
 
-def _comparison(day, person, platform, film, scans, pieces):
+def _comparison(
+    day, person, platform, film, scans, pieces,
+    entries=None, hoodie=0, multi_press=0,
+):
     return {
         "business_date": day,
         "hotstamp_person": person,
@@ -149,6 +226,11 @@ def _comparison(day, person, platform, film, scans, pieces):
         "film_quantity": film,
         "system_scan_count": scans,
         "system_piece_count": pieces,
+        "hoodie_film_quantity": hoodie,
+        "hoodie_entry_count": hoodie,
+        "multi_press_quantity": multi_press,
+        "multi_press_entry_count": multi_press,
+        "source_entry_count": entries if entries is not None else (1 if film else 0),
     }
 
 

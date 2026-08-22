@@ -25,6 +25,10 @@ EMPLOYEE_STATUS_AUDIT_COLUMNS = (
     "id,employee_id,employee_name,user_name,old_is_active,new_is_active,"
     "effective_date,reason,changed_by,changed_at"
 )
+EMPLOYEE_PROFILE_AUDIT_COLUMNS = (
+    "id,employee_id,employee_name,old_job_title,new_job_title,"
+    "old_departments,new_departments,changed_by,changed_at"
+)
 
 
 def load_app_users(supabase):
@@ -128,16 +132,12 @@ def load_production_departments(supabase):
 
 
 def normalize_employee_departments(departments):
-    allowed = {"DTF", "UV", "3D"}
     result = list(dict.fromkeys(
         str(value or "").strip().upper() for value in departments
         if str(value or "").strip()
     ))
     if not result:
         raise ValueError("员工至少需要选择一个生产部门")
-    unsupported = set(result) - allowed
-    if unsupported:
-        raise ValueError(f"不支持的生产部门：{', '.join(sorted(unsupported))}")
     return result
 
 
@@ -189,6 +189,30 @@ def load_employee_status_audit(supabase, limit=200):
     rows = (
         supabase.table("app_employee_status_audit")
         .select(EMPLOYEE_STATUS_AUDIT_COLUMNS)
+        .order("changed_at", desc=True).limit(limit).execute().data
+    )
+    return pd.DataFrame(rows)
+
+
+def update_employee_profile(
+    supabase, employee_id, job_title, departments, changed_by,
+):
+    validate_employee_profile_change(
+        employee_id, job_title, departments, changed_by
+    )
+    response = supabase.rpc("update_employee_profile", {
+        "p_employee_id": str(employee_id).strip(),
+        "p_job_title": str(job_title).strip(),
+        "p_departments": normalize_employee_departments(departments),
+        "p_changed_by": str(changed_by).strip(),
+    }).execute()
+    return response.data or []
+
+
+def load_employee_profile_audit(supabase, limit=200):
+    rows = (
+        supabase.table("app_employee_profile_audit")
+        .select(EMPLOYEE_PROFILE_AUDIT_COLUMNS)
         .order("changed_at", desc=True).limit(limit).execute().data
     )
     return pd.DataFrame(rows)
@@ -298,6 +322,18 @@ def validate_employee_status_change(
         raise ValueError("请先登录人员管理员账号")
     if not is_active and not str(reason or "").strip():
         raise ValueError("办理离职时必须填写原因")
+
+
+def validate_employee_profile_change(
+    employee_id, job_title, departments, changed_by,
+):
+    if not str(employee_id or "").strip():
+        raise ValueError("请选择员工")
+    if not str(job_title or "").strip():
+        raise ValueError("请选择岗位")
+    normalize_employee_departments(departments)
+    if not str(changed_by or "").strip():
+        raise ValueError("请先登录人员管理员账号")
 
 
 def validate_role_definition(role_key, role_name, permissions):

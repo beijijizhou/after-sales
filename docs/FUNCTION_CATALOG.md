@@ -18,7 +18,7 @@ an activity log.
 | `pages/4_SKU管理.py` | Production SKU administration | `ui/inventory/sku/` | shared master data, SKU sorting, active-state rules, linked SKU options |
 | `pages/4_库存总结.py` | Daily inventory completion workbench | `ui/inventory/dashboard.py` | daily-consumption registry, automatic preview/apply contract, batch status |
 | `pages/5_货柜安排.py` | Container planning, arrival, posting, reversal | `ui/inventory/container/` | linked SKU options, inventory change comparison, batch history, forecasts |
-| `pages/6_售后查询.py` | After-sales and barcode-operation search; after-sales-only hotstamp-film audit | `ui/after_sales_ui.py`, `ui/barcode_operations_ui.py`, `ui/after_sales_hotstamp/` | shared authentication, Google Sheets source batches, production scan comparison |
+| `pages/6_售后查询.py`, `pages/6_人工登记分析.py` | Order/barcode search and after-sales/admin manual-registration analysis in one sidebar group | `ui/after_sales_ui.py`, `ui/barcode_operations_ui.py`, `ui/after_sales_hotstamp/` | shared authentication, Google Sheets source batches, production scan comparison |
 | `pages/7_生产数据.py` | Production synchronization and review | `ui/production_data/` | platform catalog, ERP normalization, synchronized cache |
 | `pages/8_图片拉伸.py` | Phone-case image and dieline processing | `ui/image_tools/` | shared phone-case catalog and image utilities |
 | `pages/9_耗材库存.py` | Consumable stock, issue, inbound, ledger, SKU and planning | `ui/consumables/` | batch review concepts; separate consumable persistence and unit conversion |
@@ -34,7 +34,7 @@ an activity log.
 | Capability | Canonical owner | Reuse rule |
 | --- | --- | --- |
 | Authentication, permissions and operator identity | `utils/auth/` | Pages consume permission identifiers; never recreate role mappings locally. |
-| Employee lifecycle management | `db/access.py`, `ui/people/` | Registration and the complete roster share employee identity and department assignments. Departure/reactivation changes `is_active` through the audited database RPC, requires a business date and departure reason, and immediately blocks login without deleting history. |
+| Employee lifecycle management | `db/access.py`, `ui/people/` | Registration and the complete roster share employee identity and department assignments. Supervisors and people administrators use audited RPCs for job-title/department changes and departure/reactivation. Profile changes preview old/new values and validate active departments; departure requires a business date and reason and immediately blocks login without deleting history. |
 | Personal daily-work records | `db/daily_work.py`, `ui/daily_work/` | Scope templates and dated records to the authenticated username; keep task setup configurable and history grouped by business date. |
 | Page width and common layout | `utils/page_layout.py` | Reuse before adding page-specific CSS/layout setup. |
 | Inventory apparel size order | `db/inventory/core/constants.py` | Import `SIZE_COLUMNS`; never define another `S` through `5XL` sequence. |
