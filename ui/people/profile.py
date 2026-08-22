@@ -31,27 +31,32 @@ def render_employee_profile_editor(supabase, employees):
     department_options = load_production_departments(supabase)
     current_departments = list(selected.get("departments") or ["DTF"])
 
-    with st.form(f"employee_profile_form_{selected_id}"):
-        new_title = st.selectbox(
-            "岗位", title_options, index=title_options.index(current_title),
-        )
-        new_departments = st.multiselect(
-            "生产部门（可多选）", department_options,
-            default=[
-                value for value in current_departments
-                if value in department_options
-            ],
-        )
-        preview = employee_profile_preview(
-            selected, new_title, new_departments
-        )
-        st.caption("资料变更预览")
-        st.dataframe(pd.DataFrame([preview]), hide_index=True, width="stretch")
-        confirmed = st.checkbox("我已核对岗位和生产部门变化")
-        submitted = st.form_submit_button(
-            "保存员工资料", type="primary",
-            disabled=not confirmed or not preview["是否变化"],
-        )
+    new_title = st.selectbox(
+        "岗位", title_options, index=title_options.index(current_title),
+        key=f"people_profile_job_title_{selected_id}",
+    )
+    new_departments = st.multiselect(
+        "生产部门（可多选）", department_options,
+        default=[
+            value for value in current_departments
+            if value in department_options
+        ],
+        key=f"people_profile_departments_{selected_id}",
+    )
+    preview = employee_profile_preview(
+        selected, new_title, new_departments
+    )
+    st.caption("资料变更预览")
+    st.dataframe(pd.DataFrame([preview]), hide_index=True, width="stretch")
+    confirmed = st.checkbox(
+        "我已核对岗位和生产部门变化",
+        key=f"people_profile_confirmed_{selected_id}",
+    )
+    submitted = st.button(
+        "保存员工资料", type="primary",
+        disabled=not confirmed or not preview["是否变化"],
+        key=f"people_profile_submit_{selected_id}",
+    )
     if not submitted:
         return
     actor = str((get_current_user() or {}).get("username") or "").strip()

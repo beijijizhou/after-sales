@@ -29,25 +29,32 @@ def render_employee_status_action(supabase, employees):
     new_active = not bool(selected["is_active"])
     action = "恢复在职" if new_active else "办理离职"
     today = datetime.now(NEW_YORK).date()
-    with st.form(f"employee_status_form_{selected_id}"):
-        effective_date = st.date_input("生效日期", value=today, max_value=today)
-        reason = st.text_area(
-            "变更原因" + ("（必填）" if not new_active else ""),
-            placeholder="例如：员工主动离职" if not new_active else "例如：重新入职",
-        )
-        preview = pd.DataFrame([{
-            "员工": employee_label(selected),
-            "原状态": "在职" if selected["is_active"] else "已离职",
-            "新状态": "在职" if new_active else "已离职",
-            "生效日期": effective_date,
-            "原因": reason.strip() or "未填写",
-        }])
-        st.caption("变更预览")
-        st.dataframe(preview, hide_index=True, width="stretch")
-        confirmed = st.checkbox(f"我已核对并确认{action}")
-        submitted = st.form_submit_button(
-            action, type="primary", disabled=not confirmed,
-        )
+    effective_date = st.date_input(
+        "生效日期", value=today, max_value=today,
+        key=f"people_status_date_{selected_id}",
+    )
+    reason = st.text_area(
+        "变更原因" + ("（必填）" if not new_active else ""),
+        placeholder="例如：员工主动离职" if not new_active else "例如：重新入职",
+        key=f"people_status_reason_{selected_id}",
+    )
+    preview = pd.DataFrame([{
+        "员工": employee_label(selected),
+        "原状态": "在职" if selected["is_active"] else "已离职",
+        "新状态": "在职" if new_active else "已离职",
+        "生效日期": effective_date,
+        "原因": reason.strip() or "未填写",
+    }])
+    st.caption("变更预览")
+    st.dataframe(preview, hide_index=True, width="stretch")
+    confirmed = st.checkbox(
+        f"我已核对并确认{action}",
+        key=f"people_status_confirmed_{selected_id}",
+    )
+    submitted = st.button(
+        action, type="primary", disabled=not confirmed,
+        key=f"people_status_submit_{selected_id}",
+    )
     if not submitted:
         return
     actor = str((get_current_user() or {}).get("username") or "").strip()

@@ -400,6 +400,16 @@ class AccessManagementTests(unittest.TestCase):
         self.assertEqual(preview["新生产部门"], "UV")
         self.assertTrue(preview["是否变化"])
 
+    def test_people_change_controls_are_reactive_outside_streamlit_forms(self):
+        people_ui = Path(__file__).resolve().parents[1] / "ui" / "people"
+        profile_source = (people_ui / "profile.py").read_text()
+        status_source = (people_ui / "status.py").read_text()
+
+        self.assertNotIn("with st.form", profile_source)
+        self.assertNotIn("with st.form", status_source)
+        self.assertIn("st.button", profile_source)
+        self.assertIn("st.button", status_source)
+
     def test_employee_profile_update_uses_audited_rpc(self):
         supabase = Mock()
         supabase.rpc.return_value.execute.return_value.data = [{
