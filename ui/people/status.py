@@ -5,7 +5,8 @@ import pandas as pd
 import streamlit as st
 
 from db.access import load_employee_status_audit, update_employee_status
-from ui.people.models import employee_label, reset_stale_employee_selection
+from ui.people.models import employee_label
+from ui.people.selector import render_employee_selector
 from utils.auth import get_current_user
 
 
@@ -13,19 +14,10 @@ NEW_YORK = ZoneInfo("America/New_York")
 
 
 def render_employee_status_action(supabase, employees):
-    options = employees["employee_id"].astype(str).tolist()
-    records = {
-        str(row["employee_id"]): row for row in employees.to_dict("records")
-    }
-    reset_stale_employee_selection(
-        st.session_state, "people_selected_employee", records
-    )
-    selected_id = st.selectbox(
-        "选择员工", options,
-        format_func=lambda value: employee_label(records[str(value)]),
-        key="people_selected_employee",
-    )
-    selected = records[selected_id]
+    selected = render_employee_selector(employees, "people_status")
+    if selected is None:
+        return
+    selected_id = str(selected["employee_id"])
     new_active = not bool(selected["is_active"])
     action = "恢复在职" if new_active else "办理离职"
     today = datetime.now(NEW_YORK).date()
@@ -78,7 +70,7 @@ def render_employee_status_action(supabase, employees):
     st.rerun()
 
 
-def render_employee_status_history(supabase):
+def render_employee_status_history(supabase, employee_ids=None):
     try:
         rows = load_employee_status_audit(supabase)
     except Exception as error:
@@ -87,6 +79,12 @@ def render_employee_status_history(supabase):
         else:
             st.error("人员变更记录暂时无法读取，请稍后重试。")
         return
+    if employee_ids is not None:
+        rows = rows.loc[
+            rows["employee_id"].astype(str).isin({
+                str(value) for value in employee_ids
+            })
+        ].reset_index(drop=True)
     if rows.empty:
         st.info("暂无人员状态变更记录。")
         return

@@ -651,6 +651,13 @@ forecast as an estimate.
   must validate departments against the active department catalog, and every
   change must preserve an append-only employee profile audit. Job-title changes
   do not silently create, delete or change the employee's login role.
+- Personnel selection is dependent in the order `production department -> job
+  title -> employee`, and stale child selections must clear when a parent filter
+  changes. A supervisor may view and manage only ordinary employees who overlap
+  the supervisor's assigned production departments. The supervisor's own row,
+  other supervisors, producers/managers, after-sales, warehouse, finance, and
+  admin personnel and their change histories must not be exposed. Admins retain
+  the complete personnel scope.
 - The logistics tracking page is visible to supervisor, after-sales, and admin
   roles. Supervisors may query existing/database-cached and live USPS Tracking
   data, but only after-sales and admins may synchronize ERP data, run label

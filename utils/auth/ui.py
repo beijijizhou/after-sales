@@ -25,14 +25,18 @@ def render_sidebar_login():
     if get_current_user():
         return
 
-    with st.sidebar.expander("员工登录", expanded=False):
-        with st.form("sidebar_login_form", clear_on_submit=False):
-            username, password, remember = render_login_fields("sidebar")
-            submitted = st.form_submit_button(
-                "登录", width="stretch"
-            )
-        if submitted:
-            handle_login(username, password, remember, show_setup_hint=False)
+    with st.sidebar:
+        st.caption("当前身份：游客")
+        with st.expander("员工登录", expanded=False):
+            with st.form("sidebar_login_form", clear_on_submit=False):
+                username, password, remember = render_login_fields("sidebar")
+                submitted = st.form_submit_button(
+                    "登录", width="stretch"
+                )
+            if submitted:
+                handle_login(
+                    username, password, remember, show_setup_hint=False
+                )
 
 
 def render_login_fields(prefix):
@@ -93,19 +97,16 @@ def render_navigation():
         unsafe_allow_html=True,
     )
 
+    render_user_badge()
+    render_sidebar_login()
+
+    visible_sections = visible_navigation_sections(
+        constants.NAV_SECTIONS, constants.PAGE_ACCESS, can_access_page
+    )
     with st.sidebar:
-        for section_title, section_items in constants.NAV_SECTIONS:
-            visible_items = [
-                (page_key, label, path)
-                for page_key, label, path in section_items
-                if (
-                    constants.PAGE_ACCESS.get(page_key)
-                    and can_access_page(page_key)
-                )
-            ]
-            if not visible_items:
-                continue
-            if section_title:
+        st.divider()
+        for section_title, visible_items in visible_sections:
+            if section_title and len(visible_items) > 1:
                 with st.expander(section_title, expanded=True):
                     for _, label, path in visible_items:
                         st.page_link(path, label=label)
@@ -113,8 +114,18 @@ def render_navigation():
             for _, label, path in visible_items:
                 st.page_link(path, label=label)
 
-    render_user_badge()
-    render_sidebar_login()
+
+def visible_navigation_sections(sections, page_access, access_check):
+    result = []
+    for section_title, section_items in sections:
+        visible_items = [
+            (page_key, label, path)
+            for page_key, label, path in section_items
+            if page_access.get(page_key) and access_check(page_key)
+        ]
+        if visible_items:
+            result.append((section_title, visible_items))
+    return result
 
 
 def require_login():

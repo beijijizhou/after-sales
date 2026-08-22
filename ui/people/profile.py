@@ -6,7 +6,8 @@ from db.access import (
     load_production_departments,
     update_employee_profile,
 )
-from ui.people.models import employee_label, reset_stale_employee_selection
+from ui.people.models import employee_label
+from ui.people.selector import render_employee_selector
 from utils.auth import get_current_user
 
 
@@ -14,18 +15,10 @@ JOB_TITLES = ("质检", "烫印")
 
 
 def render_employee_profile_editor(supabase, employees):
-    records = {
-        str(row["employee_id"]): row for row in employees.to_dict("records")
-    }
-    reset_stale_employee_selection(
-        st.session_state, "people_profile_employee", records
-    )
-    selected_id = st.selectbox(
-        "选择员工", list(records),
-        format_func=lambda value: employee_label(records[value]),
-        key="people_profile_employee",
-    )
-    selected = records[selected_id]
+    selected = render_employee_selector(employees, "people_profile")
+    if selected is None:
+        return
+    selected_id = str(selected["employee_id"])
     current_title = str(selected.get("job_title") or "员工")
     title_options = list(dict.fromkeys([*JOB_TITLES, current_title]))
     department_options = load_production_departments(supabase)
@@ -80,7 +73,7 @@ def render_employee_profile_editor(supabase, employees):
     st.rerun()
 
 
-def render_employee_profile_history(supabase):
+def render_employee_profile_history(supabase, employee_ids=None):
     try:
         rows = load_employee_profile_audit(supabase)
     except Exception as error:
@@ -89,6 +82,12 @@ def render_employee_profile_history(supabase):
         else:
             st.error("员工资料变更记录暂时无法读取，请稍后重试。")
         return
+    if employee_ids is not None:
+        rows = rows.loc[
+            rows["employee_id"].astype(str).isin({
+                str(value) for value in employee_ids
+            })
+        ].reset_index(drop=True)
     if rows.empty:
         st.info("暂无岗位或生产部门变更记录。")
         return

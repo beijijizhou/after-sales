@@ -9,6 +9,7 @@ from ui.people.models import (
     employee_creation_error_message,
     employee_table,
     filter_employees,
+    manageable_employees,
 )
 from ui.people.profile import (
     render_employee_profile_editor,
@@ -18,7 +19,7 @@ from ui.people.status import (
     render_employee_status_action,
     render_employee_status_history,
 )
-from utils.auth import has_permission
+from utils.auth import get_current_user, has_permission
 
 
 def render_people_management_page(supabase):
@@ -30,15 +31,22 @@ def render_people_management_page(supabase):
     can_register = has_permission("can_register")
     can_manage = has_permission("can_manage_people")
     if can_manage:
+        try:
+            employees = manageable_employees(
+                load_employees(supabase), get_current_user()
+            )
+        except Exception:
+            st.error("员工资料暂时无法读取，请稍后重试。")
+            return
         roster_tab, registration_tab, history_tab = st.tabs([
             "员工名单", "新增员工", "人员变更记录",
         ])
         with roster_tab:
-            _render_roster(supabase)
+            _render_roster(supabase, employees)
         with registration_tab:
             _render_registration(supabase, can_register)
         with history_tab:
-            _render_people_history(supabase)
+            _render_people_history(supabase, employees)
         return
 
     st.caption("在这里登记新员工。离职与恢复在职由组长或人员管理员办理。")
@@ -77,12 +85,10 @@ def _render_registration(supabase, can_register):
     st.rerun()
 
 
-def _render_roster(supabase):
-    try:
-        employees = load_employees(supabase)
-    except Exception:
-        st.error("员工资料暂时无法读取，请稍后重试。")
-        return
+def _render_roster(supabase, employees):
+    user = get_current_user() or {}
+    if user.get("role") != "admin":
+        st.caption("仅显示你负责生产部门内、职级低于你的员工。")
     active_count = int(employees["is_active"].sum()) if not employees.empty else 0
     metrics = st.columns(3)
     metrics[0].metric("员工总数", len(employees))
@@ -105,9 +111,10 @@ def _render_roster(supabase):
         render_employee_status_action(supabase, filtered)
 
 
-def _render_people_history(supabase):
+def _render_people_history(supabase, employees):
+    employee_ids = employees["employee_id"].astype(str).tolist()
     profile_tab, status_tab = st.tabs(["资料调整", "离职/复职"])
     with profile_tab:
-        render_employee_profile_history(supabase)
+        render_employee_profile_history(supabase, employee_ids)
     with status_tab:
-        render_employee_status_history(supabase)
+        render_employee_status_history(supabase, employee_ids)

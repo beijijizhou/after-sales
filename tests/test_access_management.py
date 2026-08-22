@@ -21,9 +21,13 @@ from db.access import (
 )
 from ui.access.page import access_change_preview, filter_access_users
 from ui.people.models import (
+    ALL_DEPARTMENTS,
+    ALL_JOB_TITLES,
     employee_creation_error_message,
     employee_table,
+    filter_employees_by_organization,
     filter_employees,
+    manageable_employees,
     reset_stale_employee_selection,
 )
 from ui.people.profile import employee_profile_preview
@@ -36,9 +40,86 @@ from ui.access.permissions import (
 from ui.access.role_editor import role_permission_preview
 import utils.auth.session as auth_session
 from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS, ROLE_SUPERVISOR
+from utils.auth.ui import visible_navigation_sections
 
 
 class AccessManagementTests(unittest.TestCase):
+    def test_supervisor_only_sees_same_department_subordinates(self):
+        employees = pd.DataFrame([
+            {"name": "本人", "user_name": "linda", "employee_id": "L1",
+             "job_title": "质检", "role": "supervisor",
+             "departments": ["DTF"]},
+            {"name": "质检员工", "user_name": "qa", "employee_id": "E1",
+             "job_title": "质检", "role": "visitor",
+             "departments": ["DTF"]},
+            {"name": "UV员工", "user_name": "uv", "employee_id": "E2",
+             "job_title": "烫印", "role": "visitor",
+             "departments": ["UV"]},
+            {"name": "Damo", "user_name": "damo", "employee_id": "P1",
+             "job_title": "主管", "role": "producer",
+             "departments": ["DTF"]},
+            {"name": "售后", "user_name": "after", "employee_id": "A1",
+             "job_title": "售后", "role": "after_sales",
+             "departments": ["DTF"]},
+            {"name": "Admin", "user_name": "admin", "employee_id": "X1",
+             "job_title": "管理员", "role": "admin",
+             "departments": ["DTF"]},
+        ])
+
+        visible = manageable_employees(employees, {
+            "username": "linda", "role": "supervisor",
+            "departments": ["DTF"],
+        })
+
+        self.assertEqual(visible["employee_id"].tolist(), ["E1"])
+
+    def test_admin_can_see_all_employee_levels(self):
+        employees = pd.DataFrame([
+            {"employee_id": "E1", "role": "visitor"},
+            {"employee_id": "A1", "role": "after_sales"},
+            {"employee_id": "X1", "role": "admin"},
+        ])
+        visible = manageable_employees(employees, {"role": "admin"})
+        self.assertEqual(visible["employee_id"].tolist(), ["E1", "A1", "X1"])
+
+    def test_employee_picker_filters_department_before_job_title(self):
+        employees = pd.DataFrame([
+            {"employee_id": "E1", "job_title": "质检", "departments": ["DTF"]},
+            {"employee_id": "E2", "job_title": "烫印", "departments": ["DTF"]},
+            {"employee_id": "E3", "job_title": "烫印", "departments": ["UV"]},
+        ])
+
+        filtered = filter_employees_by_organization(employees, "DTF", "烫印")
+
+        self.assertEqual(filtered["employee_id"].tolist(), ["E2"])
+        self.assertEqual(
+            filter_employees_by_organization(
+                employees, ALL_DEPARTMENTS, ALL_JOB_TITLES
+            )["employee_id"].tolist(),
+            ["E1", "E2", "E3"],
+        )
+
+    def test_visitor_navigation_removes_empty_groups_and_flattens_single_child(self):
+        allowed = {"app", "qa"}
+        sections = visible_navigation_sections(
+            [
+                ("售后查询", [
+                    ("app", "订单与条码查询", "search.py"),
+                    ("analysis", "人工登记分析", "analysis.py"),
+                ]),
+                ("库存", [("inventory", "库存", "inventory.py")]),
+                (None, [("qa", "质检", "qa.py")]),
+            ],
+            {"app": "view", "analysis": "manage", "inventory": "stock", "qa": "qa"},
+            allowed.__contains__,
+        )
+
+        self.assertEqual(sections, [
+            ("售后查询", [("app", "订单与条码查询", "search.py")]),
+            (None, [("qa", "质检", "qa.py")]),
+        ])
+        self.assertEqual(len(sections[0][1]), 1)
+
     def test_employee_filter_clears_only_stale_selected_employee(self):
         state = {"employee": "E1"}
         reset_stale_employee_selection(state, "employee", ["E2"])

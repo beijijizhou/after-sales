@@ -34,7 +34,7 @@ an activity log.
 | Capability | Canonical owner | Reuse rule |
 | --- | --- | --- |
 | Authentication, permissions and operator identity | `utils/auth/` | Pages consume permission identifiers; never recreate role mappings locally. |
-| Employee lifecycle management | `db/access.py`, `ui/people/` | Registration and the complete roster share employee identity and department assignments. Supervisors and people administrators use audited RPCs for job-title/department changes and departure/reactivation. Profile changes preview old/new values and validate active departments; departure requires a business date and reason and immediately blocks login without deleting history. |
+| Employee lifecycle management | `db/access.py`, `ui/people/` | Registration and the roster share employee identity and department assignments. `ui/people/selector.py` owns the dependent `department -> job title -> employee` picker. Supervisors see only ordinary employees in their assigned production departments; peer/higher roles and their audits are excluded, while admins retain the complete roster. Profile changes preview old/new values and use audited RPCs; departure requires a business date and reason and immediately blocks login without deleting history. |
 | Personal daily-work records | `db/daily_work.py`, `ui/daily_work/` | Scope templates and dated records to the authenticated username; keep task setup configurable and history grouped by business date. |
 | Page width and common layout | `utils/page_layout.py` | Reuse before adding page-specific CSS/layout setup. |
 | Inventory apparel size order | `db/inventory/core/constants.py` | Import `SIZE_COLUMNS`; never define another `S` through `5XL` sequence. |
