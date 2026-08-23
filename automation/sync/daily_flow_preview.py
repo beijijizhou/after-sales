@@ -32,7 +32,9 @@ def load_flow_preview(
 def _colored_preview(flow, supabase, movement_date, preview_type):
     deducted = load_colored_day_deducted_total(supabase, movement_date)
     rows = build_colored_daily_preview(supabase, movement_date)
-    source_rows, metadata = build_colored_platform_audit(movement_date)
+    source_rows, metadata = build_colored_platform_audit(
+        movement_date, supabase=supabase
+    )
     source_quantity = int(pd.to_numeric(
         source_rows.get("原始生产件数", pd.Series(dtype="float64")),
         errors="coerce",

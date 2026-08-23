@@ -23,13 +23,15 @@ from utils.auth.session import get_current_operator_name, has_permission
 from utils.sku_sorting import sort_sku_rows
 
 
-def render_colored_mapping_review(current_date):
+def render_colored_mapping_review(current_date, supabase=None):
     st.subheader("彩色短袖映射关系")
     st.caption(
         f"当前规则版本：{COLORED_MAPPING_RULE_VERSION}。这里只复查生产原始字段"
         "如何转换成统一口径，不读取库存数量。"
     )
-    dates = list_colored_cached_dates(current_date, 14)
+    dates = list_colored_cached_dates(
+        current_date, 14, supabase=supabase
+    )
     if not dates:
         st.info("最近 14 天没有可复查的彩色短袖生产缓存。")
         return
@@ -39,7 +41,9 @@ def render_colored_mapping_review(current_date):
         key="colored_mapping_audit_date",
     )
     try:
-        source_map, metadata = build_colored_mapping_audit(selected_date)
+        source_map, metadata = build_colored_mapping_audit(
+            selected_date, supabase=supabase
+        )
     except Exception as error:
         st.error(f"彩色短袖映射关系加载失败：{error}")
         return

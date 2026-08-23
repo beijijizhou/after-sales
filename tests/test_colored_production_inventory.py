@@ -197,7 +197,7 @@ class ColoredProductionInventoryTests(unittest.TestCase):
             patch(
                 "automation.sync.colored_models."
                 "load_daily_colored_production_source",
-                side_effect=lambda day: (
+                side_effect=lambda day, **_kwargs: (
                     (source, {"missing_platforms": ["Haloo"]})
                     if day == target else (pd.DataFrame(), {})
                 ),
@@ -229,7 +229,7 @@ class ColoredProductionInventoryTests(unittest.TestCase):
         with patch(
             "automation.sync.colored_models."
             "load_daily_colored_production",
-            side_effect=lambda day, require_complete=False: (
+            side_effect=lambda day, require_complete=False, **_kwargs: (
                 fast_daily if day == target else pd.DataFrame()
             ),
         ) as load_daily:

@@ -6,6 +6,11 @@ import pandas as pd
 
 from automation.production import PLATFORMS_BY_DEPARTMENT
 from automation.production_cache import CACHE_DIR
+from automation.sync.daily import COLORED_PRIMARY_PLATFORMS
+from db.production_consumption import (
+    load_daily_platform_consumption,
+    load_platform_sync_coverage,
+)
 from utils.erp.catalog import normalize_color
 from utils.erp.inventory_mapping import normalize_size
 
@@ -14,7 +19,16 @@ CATEGORY = "彩色短袖"
 AGGREGATE_PLATFORM = "全部衣服平台"
 
 
-def load_daily_colored_production_source(current_date, require_complete=False):
+def load_daily_colored_production_source(
+    current_date, require_complete=False, supabase=None,
+):
+    if supabase is not None:
+        persisted = _load_persisted_daily_source(supabase, current_date)
+        if persisted is not None:
+            detail, metadata = persisted
+            if require_complete and not metadata.get("is_complete"):
+                return pd.DataFrame(), metadata
+            return detail, metadata
     candidates = []
     for path in CACHE_DIR.glob("*.json"):
         try:
@@ -56,9 +70,19 @@ def load_daily_colored_production_source(current_date, require_complete=False):
     return detail, metadata
 
 
-def list_colored_cached_dates(current_date, days=14):
+def list_colored_cached_dates(current_date, days=14, supabase=None):
     start_date = current_date.fromordinal(current_date.toordinal() - int(days) + 1)
     available = set()
+    if supabase is not None:
+        persisted = load_daily_platform_consumption(
+            supabase, "DTF", CATEGORY, start_date, current_date
+        )
+        if not persisted.empty:
+            available.update(
+                pd.to_datetime(
+                    persisted["business_date"], errors="coerce"
+                ).dropna().dt.date
+            )
     for path in CACHE_DIR.glob("*.json"):
         try:
             metadata = json.loads(path.read_text(encoding="utf-8"))
@@ -75,15 +99,21 @@ def list_colored_cached_dates(current_date, days=14):
     return sorted(available, reverse=True)
 
 
-def load_daily_colored_production(current_date, require_complete=False):
-    detail, _ = load_daily_colored_production_source(current_date, require_complete)
+def load_daily_colored_production(
+    current_date, require_complete=False, supabase=None,
+):
+    detail, _ = load_daily_colored_production_source(
+        current_date, require_complete, supabase=supabase
+    )
     if detail.empty:
         return pd.DataFrame()
     return detail.groupby(["颜色", "尺码"], as_index=False)["生产数量"].sum()
 
 
-def build_colored_platform_audit(current_date):
-    detail, metadata = load_daily_colored_production_source(current_date)
+def build_colored_platform_audit(current_date, supabase=None):
+    detail, metadata = load_daily_colored_production_source(
+        current_date, supabase=supabase
+    )
     quantities = detail.groupby("运营商")["生产数量"].sum().to_dict() if not detail.empty else {}
     counts = detail.groupby("运营商")["生产记录数"].sum().to_dict() if not detail.empty else {}
     included = {str(value).strip() for value in metadata.get("included_platforms") or []}
@@ -103,3 +133,50 @@ def build_colored_platform_audit(current_date):
             "生产记录数": int(counts.get(platform, 0)),
         })
     return pd.DataFrame(rows), metadata
+
+
+def _load_persisted_daily_source(supabase, current_date):
+    rows = load_daily_platform_consumption(
+        supabase, "DTF", CATEGORY, current_date, current_date
+    )
+    coverage = load_platform_sync_coverage(
+        supabase, "DTF", CATEGORY, current_date, current_date
+    )
+    included = {
+        platform for platform, dates in coverage.items()
+        if current_date in dates
+    }
+    if rows.empty and not included:
+        return None
+    configured = set(PLATFORMS_BY_DEPARTMENT.get("DTF", ()))
+    missing = configured - included
+    metadata = {
+        "source": "数据库生产日表",
+        "included_platforms": sorted(included),
+        "missing_platforms": sorted(missing),
+        "is_complete": configured.issubset(included),
+        "colored_primary_complete": set(
+            COLORED_PRIMARY_PLATFORMS
+        ).issubset(included),
+    }
+    if rows.empty:
+        return pd.DataFrame(), metadata
+    detail = rows.rename(columns={
+        "platform": "运营商",
+        "color": "原始颜色",
+        "size": "原始尺码",
+        "quantity": "生产数量",
+        "record_count": "生产记录数",
+    }).copy()
+    detail["颜色"] = detail["原始颜色"].map(normalize_color)
+    detail["尺码"] = detail["原始尺码"].map(normalize_size)
+    detail["生产数量"] = pd.to_numeric(
+        detail["生产数量"], errors="coerce"
+    ).fillna(0)
+    detail["生产记录数"] = pd.to_numeric(
+        detail["生产记录数"], errors="coerce"
+    ).fillna(0).astype(int)
+    return detail[[
+        "运营商", "原始颜色", "原始尺码", "颜色", "尺码",
+        "生产数量", "生产记录数",
+    ]], metadata

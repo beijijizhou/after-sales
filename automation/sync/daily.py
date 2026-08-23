@@ -25,6 +25,7 @@ from automation.sync.state import (
     lookback_dates,
     single_instance,
 )
+from db.production_consumption import replace_daily_platform_consumption
 
 
 COLORED_PRIMARY_PLATFORMS = (
@@ -54,13 +55,19 @@ def sync_missing_days(
 
 
 def sync_production_day(
-    target_date, force=False, secrets=None, required_platforms=None
+    target_date, force=False, secrets=None, required_platforms=None,
+    supabase=None, operator="system",
 ):
     required = tuple(required_platforms or DTF_PRODUCTION_PLATFORMS)
     aggregate = load_production_cache(
         ALL_CLOTHING_PLATFORMS, target_date, target_date
     )
     if not force and _cache_covers(aggregate, required):
+        _persist_daily_aggregate(
+            supabase, target_date, aggregate.data, aggregate.source,
+            aggregate.metadata.get("included_platforms") or required,
+            operator,
+        )
         print(
             f"  已有需要的平台缓存，跳过（获取于 {aggregate.saved_at}）",
             flush=True,
@@ -69,6 +76,15 @@ def sync_production_day(
     if not force:
         seeded_rows = seed_daily_cache_from_period(target_date)
         if seeded_rows is not None:
+            seeded = load_production_cache(
+                ALL_CLOTHING_PLATFORMS, target_date, target_date
+            )
+            if seeded is not None:
+                _persist_daily_aggregate(
+                    supabase, target_date, seeded.data, seeded.source,
+                    seeded.metadata.get("included_platforms") or required,
+                    operator,
+                )
             print(
                 f"  已从完整区间缓存拆分，无需联网（{seeded_rows:,} 条）",
                 flush=True,
@@ -141,6 +157,10 @@ def sync_production_day(
             ),
         },
     )
+    _persist_daily_aggregate(
+        supabase, target_date, batch.data, source,
+        batch.platform_results, operator,
+    )
     if batch.errors:
         print(
             "  未完成：" + "；".join(
@@ -152,6 +172,35 @@ def sync_production_day(
         return "partial"
     print(f"  完成：{len(batch.data):,} 个衣服生产项", flush=True)
     return "completed"
+
+
+def _persist_daily_aggregate(
+    supabase, target_date, rows, source, platforms, operator,
+):
+    if supabase is None:
+        return
+    data = pd.DataFrame(rows).copy()
+    errors = []
+    for platform in tuple(platforms):
+        if "运营商" in data:
+            platform_rows = data[
+                data["运营商"].fillna("").astype(str).eq(str(platform))
+            ].copy()
+        else:
+            platform_rows = data.copy()
+            if not platform_rows.empty:
+                platform_rows["运营商"] = str(platform)
+        for category in ("黑白短袖", "彩色短袖"):
+            try:
+                replace_daily_platform_consumption(
+                    supabase, "DTF", category, str(platform),
+                    target_date, target_date, platform_rows,
+                    f"每日生产同步｜{source}", operator,
+                )
+            except Exception as error:
+                errors.append(f"{platform}/{category}: {error}")
+    if errors:
+        raise RuntimeError("生产数据已读取但保存数据库失败：" + "；".join(errors))
 
 
 def _cache_covers(cached, required_platforms):

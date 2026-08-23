@@ -24,7 +24,9 @@ def load_colored_consumption_history(supabase, current_date, days=14):
     cache_dates, missing_cache_dates = [], []
     for offset in range(int(days)):
         target_date = current_date.fromordinal(current_date.toordinal() - offset)
-        daily = load_daily_colored_production(target_date, require_complete=False)
+        daily = load_daily_colored_production(
+            target_date, require_complete=False, supabase=supabase
+        )
         if daily.empty:
             missing_cache_dates.append(target_date)
             continue
@@ -134,7 +136,9 @@ def build_colored_reconciliation_backlog(
     rows = []
     for offset in range(int(days)):
         movement_date = current_date.fromordinal(current_date.toordinal() - offset)
-        source, metadata = load_daily_colored_production_source(movement_date)
+        source, metadata = load_daily_colored_production_source(
+            movement_date, supabase=supabase
+        )
         if source.empty:
             continue
         deducted = load_deducted_total(supabase, movement_date)

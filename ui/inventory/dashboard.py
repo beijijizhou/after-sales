@@ -30,6 +30,7 @@ from ui.inventory.planning.uv_source import (
     google_sheets_client,
     render_uv_spreadsheet_selector,
 )
+from utils.auth import get_current_operator_name
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -216,6 +217,8 @@ def _render_automatic_daily_operation(
                         movement_date,
                         secrets=secrets,
                         required_platforms=COLORED_PRIMARY_PLATFORMS,
+                        supabase=supabase,
+                        operator=get_current_operator_name(),
                     )
                 ),
                 max_day_workers=2,

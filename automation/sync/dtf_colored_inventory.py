@@ -85,7 +85,9 @@ def load_colored_day_deducted_by_sku(supabase, movement_date):
 
 
 def build_colored_daily_preview(supabase, current_date):
-    daily = load_daily_colored_production(current_date)
+    daily = load_daily_colored_production(
+        current_date, supabase=supabase
+    )
     if daily.empty:
         return pd.DataFrame()
     deducted = load_colored_day_deducted_by_sku(supabase, current_date)
@@ -114,8 +116,10 @@ def build_colored_daily_preview(supabase, current_date):
     return _cap_allocation_at_zero(source, allocation)
 
 
-def build_colored_mapping_audit(current_date):
-    detail, metadata = load_daily_colored_production_source(current_date)
+def build_colored_mapping_audit(current_date, supabase=None):
+    detail, metadata = load_daily_colored_production_source(
+        current_date, supabase=supabase
+    )
     if detail.empty:
         return pd.DataFrame(), metadata
     production = detail.rename(columns={"生产数量": "数量"}).copy()
@@ -184,7 +188,9 @@ def apply_colored_daily_deduction(
         colored_partial_reason(movement_date)
         if unresolved else colored_daily_reason(movement_date)
     )
-    _source, metadata = load_daily_colored_production_source(movement_date)
+    _source, metadata = load_daily_colored_production_source(
+        movement_date, supabase=supabase
+    )
     included = "、".join(metadata.get("included_platforms") or ()) or "未知"
     reason = (
         f"{base_reason}｜来源 {included}｜映射规则 "

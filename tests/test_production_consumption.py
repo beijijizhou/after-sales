@@ -1,6 +1,6 @@
 import unittest
 from datetime import date
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pandas as pd
 
@@ -10,9 +10,43 @@ from db.production_consumption import (
     record_platform_sync_failure,
     replace_daily_platform_consumption,
 )
+from automation.sync.colored_source import (
+    load_daily_colored_production_source,
+)
+from automation.sync.daily import COLORED_PRIMARY_PLATFORMS
 
 
 class ProductionConsumptionTests(unittest.TestCase):
+    def test_daily_colored_source_prefers_persisted_database_fact(self):
+        target = date(2026, 8, 20)
+        rows = pd.DataFrame([{
+            "business_date": target, "platform": "S2B",
+            "color": "Golden", "size": "l", "quantity": 42,
+            "record_count": 3,
+        }])
+        coverage = {
+            platform: {target} for platform in COLORED_PRIMARY_PLATFORMS
+        }
+        with (
+            patch(
+                "automation.sync.colored_source."
+                "load_daily_platform_consumption", return_value=rows,
+            ),
+            patch(
+                "automation.sync.colored_source."
+                "load_platform_sync_coverage", return_value=coverage,
+            ),
+        ):
+            detail, metadata = load_daily_colored_production_source(
+                target, supabase=object()
+            )
+
+        self.assertEqual(detail.iloc[0]["运营商"], "S2B")
+        self.assertEqual(detail.iloc[0]["颜色"], "黄色")
+        self.assertEqual(detail.iloc[0]["尺码"], "L")
+        self.assertEqual(detail.iloc[0]["生产数量"], 42)
+        self.assertTrue(metadata["colored_primary_complete"])
+
     def test_daily_rows_merge_transfer_brands_by_date_color_and_size(self):
         rows = pd.DataFrame([
             _row("品牌A", "2026-08-15 10:00", 40),

@@ -78,8 +78,14 @@ class ProductionSyncModelTests(unittest.TestCase):
                     "automation.sync.daily._load_credentials",
                     return_value=({}, {}),
                 ),
+                patch(
+                    "automation.sync.daily."
+                    "replace_daily_platform_consumption",
+                ) as persist,
             ):
-                result = sync_production_day(target)
+                result = sync_production_day(
+                    target, supabase=object(), operator="Andy"
+                )
                 colored_model = load_period_production_model(
                     target, 1, "彩色短袖"
                 )
@@ -89,6 +95,13 @@ class ProductionSyncModelTests(unittest.TestCase):
 
         self.assertEqual(result, "completed")
         fetch.assert_called_once()
+        self.assertEqual(
+            persist.call_count, len(DTF_PRODUCTION_PLATFORMS) * 2
+        )
+        self.assertTrue(all(
+            call.args[2] in {"黑白短袖", "彩色短袖"}
+            for call in persist.call_args_list
+        ))
         self.assertEqual(colored_model.effective_days, 1)
         self.assertEqual(
             colored_model.data.iloc[0]["平台生产日均"], 10

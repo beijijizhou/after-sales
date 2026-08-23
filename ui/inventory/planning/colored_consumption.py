@@ -210,6 +210,6 @@ def render_colored_daily_deduction(supabase, current_date):
         key="colored_daily_deduction_view",
     ) or "每日扣减"
     if view == "生产字段映射":
-        _render_colored_mapping_review(current_date)
+        _render_colored_mapping_review(current_date, supabase=supabase)
         return
     render_colored_daily_deduction_form(supabase, current_date)
