@@ -9,9 +9,9 @@ an activity log.
 
 | Entry page | Business capability | Primary UI owner | Existing composition points |
 | --- | --- | --- | --- |
-| `app.py` | Home and problem tracking | application entry and shared UI | authentication, page layout, Supabase client |
+| `app.py` | Problem tracking under the `生产管理` navigation group | application entry and shared UI | authentication, page layout, Supabase client |
 | `pages/0_注册.py` | Employee status, combined profile/lifecycle handling, registration and audit | `ui/people/` | shared authentication, scoped employee selector, employee access state and Supabase client |
-| `pages/1_质检.py` | QA scanning and production summary | `ui/production/summary.py` | shared production filters, time utilities, authentication |
+| `pages/1_质检.py` | First workflow in the grouped `生产管理` navigation: QA scanning and production summary | `ui/production/summary.py` | shared production filters, time utilities, authentication |
 | `pages/2_烫印.py` | Hotstamp scanning and production summary | `ui/production/summary.py` | same production summary contract as QA with a different operation field |
 | `pages/3_平台.py` | Platform production detail | `ui/platform_summary.py` | production database summaries and shared time handling |
 | `pages/4_库存.py` | Production inventory operations | `ui/inventory/summary.py` | shared inventory filters, SKU order, stock review, batch history, forecasting |
@@ -36,7 +36,7 @@ an activity log.
 | Authentication, permissions and operator identity | `utils/auth/` | Pages consume permission identifiers; never recreate role mappings locally. |
 | Employee lifecycle management | `db/access.py`, `ui/people/` | Registration and the roster share employee identity and department assignments. `ui/people/selector.py` owns the dependent `department -> job title -> employee` picker. Supervisors see only `质检` and `烫印` members in their assigned production departments; peer/higher roles and their audits are excluded, while admins retain the complete roster. Profile changes preview old/new values and use audited RPCs; departure requires a business date and reason and immediately blocks login without deleting history. |
 | Personal daily-work records | `db/daily_work.py`, `ui/daily_work/` | Scope templates and dated records to the authenticated username; keep task setup configurable and history grouped by business date. |
-| Page width and common layout | `utils/page_layout.py` | Reuse before adding page-specific CSS/layout setup. |
+| Page width, brand theme and common layout | `utils/page_layout.py`, `assets/brand/production-logo.jpg` | Reuse the shared orange/teal/yellow design tokens, responsive spacing, controls and branded sidebar before adding page-specific CSS/layout setup. |
 | Inventory apparel size order | `db/inventory/core/constants.py` | Import `SIZE_COLUMNS`; never define another `S` through `5XL` sequence. |
 | Human SKU sorting | `utils/sku_sorting.py` | Use for entry, preview, history, costing and detail tables. |
 | Inventory scope filters and stale-state reset | `ui/inventory/shared/filters.py` | Extend this filter contract instead of building independent department/category/SKU filters. |

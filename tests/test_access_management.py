@@ -153,6 +153,14 @@ class AccessManagementTests(unittest.TestCase):
         ])
         self.assertEqual(len(sections[0][1]), 1)
 
+    def test_navigation_groups_are_collapsed_by_default(self):
+        navigation_source = (
+            Path(__file__).resolve().parents[1] / "utils" / "auth" / "ui.py"
+        ).read_text()
+        self.assertIn(
+            "st.expander(section_title, expanded=False)", navigation_source
+        )
+
     def test_employee_filter_clears_only_stale_selected_employee(self):
         state = {"employee": "E1"}
         reset_stale_employee_selection(state, "employee", ["E2"])
@@ -274,6 +282,16 @@ class AccessManagementTests(unittest.TestCase):
         self.assertIn(
             ("register", "人员管理", "pages/0_注册.py"),
             next(items for title, items in NAV_SECTIONS if title is None),
+        )
+
+    def test_production_navigation_groups_pages_in_workflow_order(self):
+        production_items = next(
+            items for title, items in NAV_SECTIONS if title == "生产管理"
+        )
+
+        self.assertEqual(
+            [label for _, label, _ in production_items],
+            ["质检", "烫印", "平台", "生产数据", "问题件追踪"],
         )
 
     def test_supervisor_matrix_has_logistics_query_not_management(self):

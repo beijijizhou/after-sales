@@ -6,6 +6,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 import utils.auth
+from utils.page_layout import BRAND_ORANGE, BRAND_TEAL, BRAND_YELLOW
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,24 @@ PAGE_FILES = [PROJECT_ROOT / "app.py", *sorted(
 
 
 class PageSmokeTests(unittest.TestCase):
+    def test_global_brand_theme_uses_logo_palette(self):
+        layout_source = (
+            PROJECT_ROOT / "utils" / "page_layout.py"
+        ).read_text(encoding="utf-8")
+        auth_source = (
+            PROJECT_ROOT / "utils" / "auth" / "ui.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertTrue(
+            (PROJECT_ROOT / "assets" / "brand" / "production-logo.jpg").exists()
+        )
+        self.assertIn(BRAND_ORANGE, layout_source)
+        self.assertIn(BRAND_TEAL, layout_source)
+        self.assertIn(BRAND_YELLOW, layout_source)
+        self.assertIn('[data-testid="stAppViewContainer"]', layout_source)
+        self.assertIn("background-size: 28px 28px", layout_source)
+        self.assertIn("render_brand_header()", auth_source)
+
     def test_every_streamlit_page_loads_without_import_error(self):
         def stop_before_business_queries(_page_key=None):
             st.stop()

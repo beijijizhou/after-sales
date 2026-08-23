@@ -1,3 +1,6 @@
+import base64
+from pathlib import Path
+
 import streamlit as st
 
 import utils.auth.constants as auth_constants
@@ -8,6 +11,37 @@ from utils.auth.session import (
     has_permission,
     login_user,
 )
+
+
+BRAND_LOGO = (
+    Path(__file__).resolve().parents[2]
+    / "assets" / "brand" / "production-logo.jpg"
+)
+
+
+@st.cache_data(show_spinner=False)
+def _brand_logo_data_url():
+    encoded = base64.b64encode(BRAND_LOGO.read_bytes()).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"
+
+
+def render_brand_header():
+    logo_url = _brand_logo_data_url()
+    with st.sidebar:
+        st.markdown(
+            f"""
+            <div class="app-brand">
+                <div class="app-brand__mark">
+                    <img src="{logo_url}" alt="生产管理系统 Logo">
+                </div>
+                <div>
+                    <div class="app-brand__name">生产管理系统</div>
+                    <div class="app-brand__sub">Production OS</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def render_login():
@@ -97,6 +131,7 @@ def render_navigation():
         unsafe_allow_html=True,
     )
 
+    render_brand_header()
     render_user_badge()
     render_sidebar_login()
 
@@ -107,7 +142,7 @@ def render_navigation():
         st.divider()
         for section_title, visible_items in visible_sections:
             if section_title and len(visible_items) > 1:
-                with st.expander(section_title, expanded=True):
+                with st.expander(section_title, expanded=False):
                     for _, label, path in visible_items:
                         st.page_link(path, label=label)
                 continue

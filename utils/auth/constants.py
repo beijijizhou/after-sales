@@ -149,12 +149,14 @@ NAV_SECTIONS = [
         ("daily_work", "每日工作", "pages/17_每日工作.py"),
     ]),
     (None, [
-        ("operation_tracking", "问题件追踪", "app.py"),
         ("register", "人员管理", "pages/0_注册.py"),
+    ]),
+    ("生产管理", [
         ("qa", "质检", "pages/1_质检.py"),
         ("hotstamp", "烫印", "pages/2_烫印.py"),
         ("platform", "平台", "pages/3_平台.py"),
         ("production_data", "生产数据", "pages/7_生产数据.py"),
+        ("operation_tracking", "问题件追踪", "app.py"),
     ]),
     ("售后查询", [
         ("app", "订单与条码查询", "pages/6_售后查询.py"),
