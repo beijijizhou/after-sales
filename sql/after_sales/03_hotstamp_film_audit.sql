@@ -306,6 +306,67 @@ grant execute on function public.get_after_sales_hotstamp_film_comparison(
     date, date
 ) to anon, authenticated, service_role;
 
+drop function if exists public.get_after_sales_hotstamp_manual_analysis(
+    date, date
+);
+
+create function public.get_after_sales_hotstamp_manual_analysis(
+    p_start_date date,
+    p_end_date date
+)
+returns table (
+    business_date date,
+    hotstamp_person text,
+    platform text,
+    registration_count bigint,
+    film_quantity bigint,
+    hoodie_registration_count bigint,
+    hoodie_film_quantity bigint,
+    multi_press_registration_count bigint,
+    multi_press_quantity bigint,
+    white_board_registration_count bigint,
+    white_board_film_quantity bigint
+)
+language sql stable security definer set search_path = public
+as $$
+    select
+        entry.business_date,
+        coalesce(
+            nullif(trim(entry.hotstamp_person), ''),
+            '未填写烫印人员'
+        ) as hotstamp_person,
+        public.normalize_hotstamp_audit_platform(entry.platform) as platform,
+        count(*)::bigint as registration_count,
+        sum(entry.film_quantity)::bigint as film_quantity,
+        count(*) filter (where entry.is_hoodie)::bigint
+            as hoodie_registration_count,
+        sum(
+            case when entry.is_hoodie then entry.film_quantity else 0 end
+        )::bigint as hoodie_film_quantity,
+        count(*) filter (
+            where greatest(coalesce(entry.multi_press_count, 0), 0) > 0
+        )::bigint as multi_press_registration_count,
+        sum(greatest(coalesce(entry.multi_press_count, 0), 0))::bigint
+            as multi_press_quantity,
+        count(*) filter (where entry.is_white_board)::bigint
+            as white_board_registration_count,
+        sum(
+            case when entry.is_white_board then entry.film_quantity else 0 end
+        )::bigint as white_board_film_quantity
+    from public.after_sales_hotstamp_film_active_entries entry
+    where p_start_date is not null
+      and p_end_date is not null
+      and p_end_date >= p_start_date
+      and p_end_date - p_start_date <= 366
+      and entry.business_date between p_start_date and p_end_date
+    group by 1, 2, 3
+    order by 1 desc, 3, 2;
+$$;
+
+grant execute on function public.get_after_sales_hotstamp_manual_analysis(
+    date, date
+) to anon, authenticated, service_role;
+
 commit;
 
 notify pgrst, 'reload schema';

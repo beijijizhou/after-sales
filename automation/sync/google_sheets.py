@@ -130,11 +130,18 @@ class GoogleSheetsClient:
     def _request(self, method, url, **kwargs):
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {self._token()}"
-        response = self.session.request(
-            method, url, headers=headers, timeout=self.timeout, **kwargs
-        )
-        response.raise_for_status()
-        return response.json()
+        for attempt in range(5):
+            response = self.session.request(
+                method, url, headers=headers, timeout=self.timeout, **kwargs
+            )
+            if response.status_code not in {429, 500, 502, 503, 504}:
+                response.raise_for_status()
+                return response.json()
+            if attempt == 4:
+                response.raise_for_status()
+            retry_after = response.headers.get("Retry-After")
+            delay = float(retry_after) if retry_after else min(2 ** attempt, 16)
+            time.sleep(delay)
 
     def _token(self):
         now = int(time.time())

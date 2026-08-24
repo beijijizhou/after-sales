@@ -16,8 +16,9 @@ refactors, not after every small feature.
 - Containers: `pages/5_货柜安排.py`
 - The `售后查询` sidebar group contains order/barcode search in
   `pages/6_售后查询.py` and manual-registration analysis for
-  after-sales/admin in `pages/6_人工登记分析.py`, with film import and
-  comparison UI under `ui/after_sales_hotstamp/`.
+  after-sales/admin in `pages/6_人工登记分析.py`, with Google Sheets
+  import, database-backed analysis and batch history under
+  `ui/after_sales_hotstamp/`.
 - Production data collection: `pages/7_生产数据.py`
 - Phone-case image processing: `pages/8_图片拉伸.py`
 - Consumables: `pages/9_耗材库存.py`

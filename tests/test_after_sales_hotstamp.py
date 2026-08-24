@@ -14,13 +14,13 @@ from automation.sync.after_sales_hotstamp.service import (
     load_hotstamp_film_previews,
 )
 from automation.sync.google_sheets import GoogleSheetsClient
+from db.after_sales_hotstamp import load_hotstamp_manual_analysis
 from ui.after_sales_hotstamp.models import (
-    build_daily_person_balance,
-    build_person_summary,
-    build_weekly_person_special_mix,
-    build_weekly_platform_allocation,
-    build_weekly_platform_summary,
-    prepare_comparison,
+    build_daily_manual_summary,
+    build_person_manual_summary,
+    build_platform_person_summary,
+    build_weekly_manual_summary,
+    prepare_manual_analysis,
 )
 from ui.after_sales_hotstamp.page import render_hotstamp_film_audit
 from utils.auth.constants import NAV_SECTIONS, PAGE_ACCESS
@@ -90,74 +90,67 @@ class AfterSalesHotstampParserTests(unittest.TestCase):
 
 
 class AfterSalesHotstampModelTests(unittest.TestCase):
-    def test_weekly_platform_allocation_and_special_mix_percentages(self):
+    def test_summarizes_only_manual_registration_data(self):
         source = pd.DataFrame([
-            _comparison(
-                "2026-08-17", "甲", "Haloo", 60, 60, 70,
-                entries=60, hoodie=30, multi_press=12,
-            ),
-            _comparison(
-                "2026-08-18", "乙", "Haloo", 40, 40, 45,
-                entries=40, hoodie=10, multi_press=8,
-            ),
-            _comparison(
-                "2026-08-19", "甲", "汉森", 20, 20, 20,
-                entries=20, hoodie=0, multi_press=0,
-            ),
-            _comparison(
-                "2026-08-20", "乙", "汉森", 20, 20, 24,
-                entries=20, hoodie=20, multi_press=5,
-            ),
+            _manual("2026-08-17", "甲", "Haloo", 60, 600, 30, 12),
+            _manual("2026-08-18", "乙", "Haloo", 40, 400, 10, 8),
+            _manual("2026-08-19", "甲", "汉森", 20, 200, 0, 0),
+            _manual("2026-08-20", "乙", "汉森", 20, 200, 20, 5),
         ])
-        comparison = prepare_comparison(source)
-        allocation = build_weekly_platform_allocation(comparison, 10)
-        haloo = allocation[allocation["platform"] == "Haloo"].set_index(
-            "hotstamp_person"
+        rows = prepare_manual_analysis(source)
+        weekly = build_weekly_manual_summary(rows).set_index("platform")
+        self.assertEqual(weekly.loc["Haloo", "registration_share_percent"], 71.4)
+        self.assertEqual(weekly.loc["Haloo", "hoodie_ratio_percent"], 40.0)
+
+        platform_people = build_platform_person_summary(rows)
+        haloo = platform_people[
+            platform_people["platform"] == "Haloo"
+        ].set_index("hotstamp_person")
+        self.assertEqual(haloo.loc["甲", "registration_share_percent"], 60.0)
+
+        people = build_person_manual_summary(rows).set_index("hotstamp_person")
+        self.assertEqual(people.loc["甲", "hansen_ratio_percent"], 25.0)
+        daily = build_daily_manual_summary(rows)
+        self.assertEqual(int(daily["registration_count"].sum()), 140)
+
+    def test_manual_analysis_pages_through_every_rpc_row(self):
+        supabase = Mock()
+        builder = Mock()
+        supabase.rpc.return_value = builder
+        builder.range.return_value = builder
+        builder.execute.side_effect = [
+            Mock(data=[{"business_date": "2026-08-01"}] * 1000),
+            Mock(data=[{"business_date": "2026-08-02"}] * 3),
+        ]
+
+        result = load_hotstamp_manual_analysis(
+            supabase, date(2026, 8, 1), date(2026, 8, 2)
         )
 
-        self.assertEqual(haloo.loc["甲", "order_share_percent"], 60.0)
-        self.assertEqual(haloo.loc["甲", "expected_share_percent"], 50.0)
-        self.assertEqual(haloo.loc["甲", "allocation_status"], "需关注")
+        self.assertEqual(len(result), 1003)
         self.assertEqual(
-            haloo.loc["甲", "hoodie_allocation_share_percent"], 75.0
+            [call.args for call in builder.range.call_args_list],
+            [(0, 999), (1000, 1999)],
         )
-
-        summary = build_weekly_platform_summary(allocation, 10).set_index(
-            "platform"
-        )
-        self.assertEqual(summary.loc["Haloo", "order_share_spread"], 20.0)
-        mix = build_weekly_person_special_mix(comparison).set_index(
-            "hotstamp_person"
-        )
-        self.assertEqual(mix.loc["甲", "hansen_ratio_percent"], 25.0)
-
-    def test_surfaces_balance_and_system_differences(self):
-        source = pd.DataFrame([
-            _comparison("2026-08-17", "甲", "Haloo", 100, 95, 100),
-            _comparison("2026-08-17", "乙", "Haloo", 50, 60, 60),
-            _comparison("2026-08-18", "甲", "Haloo", 80, 80, 80),
-            _comparison("2026-08-18", "乙", "Haloo", 80, 0, 0),
-            _comparison("2026-08-18", "未填写烫印人员", "S2B", 20, 0, 0),
-            _comparison("2026-08-18", "丙", "S2B", 0, 20, 20),
-        ])
-        comparison = prepare_comparison(source)
-        daily = build_daily_person_balance(comparison, tolerance_percent=10)
-        people = build_person_summary(daily, tolerance_percent=10)
-
-        first_day = daily[daily["business_date"] == date(2026, 8, 17)]
-        self.assertEqual(set(first_day["balance_status"]), {"偏差明显"})
-        self.assertEqual(
-            comparison.iloc[3]["match_status"], "系统无记录"
-        )
-        person = people.set_index("hotstamp_person").loc["乙"]
-        self.assertEqual(person["scan_gap"], 70)
-        self.assertEqual(person["unbalanced_days"], 1)
-        statuses = daily.set_index("hotstamp_person")["balance_status"]
-        self.assertEqual(statuses.loc["未填写烫印人员"], "人员缺失")
-        self.assertEqual(statuses.loc["丙"], "表格无登记")
 
 
 class GoogleDriveTreeTests(unittest.TestCase):
+    @patch("automation.sync.google_sheets.time.sleep")
+    def test_retries_google_rate_limits(self, sleep):
+        client = GoogleSheetsClient({
+            "client_email": "test@example.com", "private_key": "unused"
+        })
+        client._token = lambda: "token"
+        limited = Mock(status_code=429, headers={})
+        success = Mock(status_code=200)
+        success.json.return_value = {"files": []}
+        client.session.request = Mock(side_effect=[limited, success])
+
+        result = client._request("GET", "https://example.test")
+
+        self.assertEqual(result, {"files": []})
+        sleep.assert_called_once_with(1)
+
     def test_lists_spreadsheets_recursively(self):
         client = GoogleSheetsClient({
             "client_email": "test@example.com", "private_key": "unused"
@@ -215,22 +208,19 @@ class AfterSalesHotstampAccessTests(unittest.TestCase):
         tabs.assert_called_once()
 
 
-def _comparison(
-    day, person, platform, film, scans, pieces,
-    entries=None, hoodie=0, multi_press=0,
-):
+def _manual(day, person, platform, registrations, film, hoodie, multi_press):
     return {
         "business_date": day,
         "hotstamp_person": person,
         "platform": platform,
+        "registration_count": registrations,
         "film_quantity": film,
-        "system_scan_count": scans,
-        "system_piece_count": pieces,
-        "hoodie_film_quantity": hoodie,
-        "hoodie_entry_count": hoodie,
+        "hoodie_registration_count": hoodie,
+        "hoodie_film_quantity": hoodie * 10,
+        "multi_press_registration_count": multi_press,
         "multi_press_quantity": multi_press,
-        "multi_press_entry_count": multi_press,
-        "source_entry_count": entries if entries is not None else (1 if film else 0),
+        "white_board_registration_count": 0,
+        "white_board_film_quantity": 0,
     }
 
 

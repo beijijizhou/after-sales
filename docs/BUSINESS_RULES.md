@@ -168,19 +168,16 @@
 
 - The after-sales manual-registration analysis is visible to the `after_sales`
   role and to `admin`, because administrators inherit all application access.
-  It imports each weekly Google workbook as an
-  append-only source batch, preserves file, tab and row identity, and compares
-  the latest completed source version with New York-dated system hotstamp
-  scans. Platform aliases are shown as an explicit normalization rule and
-  employee names are never silently substituted.
-- Allocation balance is evaluated by natural week and platform. Each worker's
-  Google Sheets manual-registration share is compared with
-  `100% / active workers on that platform`; the selected tolerance controls
-  the visible status. Hoodie, multi-press and Hansen percentages also come only
-  from manual registrations. The source has no explicit multi-piece field, so
-  the application must not infer one from quantity. Barcode scan and piece counts are
-  kept separate and may appear only in reconciliation, never in allocation
-  balance or special-work percentages.
+  It imports every weekly Google workbook as an append-only source batch and
+  preserves file, tab, row and business-date identity. Analysis uses only the
+  latest completed Google source version and never mixes in barcode scans.
+  Platform aliases are shown explicitly and employee names are never silently
+  substituted.
+- Manual-registration analysis summarizes weekly and daily registrations,
+  film quantity, platform/person shares, hoodies, multi-press and white-board
+  flags. It does not calculate allocation uniformity. The source has no
+  explicit multi-piece field, so the application must not infer one from
+  quantity.
 
 ## Platform Finance
 

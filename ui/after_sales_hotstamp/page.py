@@ -17,7 +17,7 @@ def render_hotstamp_film_audit(supabase, folder_id):
         return
     st.title("人工登记分析")
     audit_tab, sync_tab, history_tab = st.tabs([
-        "核对看板", "同步 Google 表格", "同步批次",
+        "分析看板", "同步 Google 表格", "同步批次",
     ])
     with audit_tab:
         render_audit_view(supabase)

@@ -33,6 +33,27 @@ def load_hotstamp_film_comparison(supabase, start_date, end_date):
     return pd.DataFrame(response.data)
 
 
+def load_hotstamp_manual_analysis(supabase, start_date, end_date):
+    payload = {
+        "p_start_date": start_date.isoformat(),
+        "p_end_date": end_date.isoformat(),
+    }
+    rows = []
+    offset = 0
+    while True:
+        page = (
+            supabase.rpc("get_after_sales_hotstamp_manual_analysis", payload)
+            .range(offset, offset + 999)
+            .execute()
+            .data
+        )
+        rows.extend(page)
+        if len(page) < 1000:
+            break
+        offset += 1000
+    return pd.DataFrame(rows)
+
+
 def load_hotstamp_film_batches(supabase, limit=100):
     response = (
         supabase.table("after_sales_hotstamp_film_sync_batches")
