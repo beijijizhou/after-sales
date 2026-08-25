@@ -1,11 +1,15 @@
 drop function if exists public.get_period_qa_person_platform_summary(
+    date, date, timestamptz, text
+);
+drop function if exists public.get_period_qa_person_platform_summary(
     date, date, timestamptz
 );
 
 create or replace function public.get_period_qa_person_platform_summary(
     start_date date,
     end_date date,
-    snapshot_at timestamptz default null
+    snapshot_at timestamptz default null,
+    p_department text default null
 )
 returns table (
     work_date date,
@@ -36,6 +40,8 @@ as $$
     from public.barcode_scans
     where scanned_by is not null
       and trim(scanned_by) <> ''
+      and coalesce(production_department, 'DTF') =
+          coalesce(nullif(upper(trim(p_department)), ''), 'DTF')
       and scanned_at >= (
           start_date::timestamp at time zone 'America/New_York'
       )
@@ -53,7 +59,7 @@ as $$
 $$;
 
 grant execute on function public.get_period_qa_person_platform_summary(
-    date, date, timestamptz
+    date, date, timestamptz, text
 ) to anon, authenticated, service_role;
 
 notify pgrst, 'reload schema';

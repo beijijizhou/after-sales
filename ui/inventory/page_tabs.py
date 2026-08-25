@@ -182,7 +182,7 @@ def render_inventory_tabs(
                 supabase, department, category, current_cost_df, raw_df
             )
             st.divider()
-            st.subheader("入库批次成本（第二步）")
+            st.subheader("入库批次成本完整性")
             st.caption(
                 "先确认上方每个 SKU 是否已输入价格，再核对价格是否覆盖"
                 "到具体入库批次。成本修改统一在库存处理；财务页面只展示结果。"

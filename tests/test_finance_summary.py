@@ -37,7 +37,11 @@ from ui.finance.cost_catalog import (
 from ui.finance.inbound_batches import build_inbound_batch_summary
 from ui.finance.pending_costs import build_pending_cost_batch_summary
 from ui.finance.page import _build_two_week_daily_amounts
-from ui.finance.reports import build_missing_cost_scope_summary
+from ui.finance.reports import (
+    build_finance_scope_dimensions,
+    build_missing_cost_scope_summary,
+    filter_finance_scope,
+)
 from ui.inventory.stock.cost_summary import build_sku_price_completion
 import ui.finance.page as finance_page
 from utils.auth.constants import NAV_SECTIONS, ROLE_PERMISSIONS
@@ -69,6 +73,31 @@ class FinanceSummaryTests(unittest.TestCase):
         self.assertEqual(result["outbound_quantity"], 45)
         self.assertEqual(result["outbound_amount"], 52)
         self.assertEqual(result["missing_outbound_quantity"], 5)
+
+    def test_monthly_finance_scope_filters_value_and_movements_together(self):
+        values = pd.DataFrame([
+            {
+                "department": "DTF", "category": "黑白短袖",
+                "brand": "Haloo", "material": "CVC", "color": "黑",
+                "size": "L", "inventory_value": 100,
+            },
+            {
+                "department": "UV", "category": "铁板画",
+                "brand": "", "material": "铁牌", "color": "白",
+                "size": "2030", "inventory_value": 200,
+            },
+        ])
+        dimensions = build_finance_scope_dimensions(self.finance, values)
+        scope = ("DTF", "黑白短袖", [], [], [], [])
+
+        movement_scope = filter_finance_scope(self.finance, scope)
+        value_scope = filter_finance_scope(values, scope)
+
+        self.assertEqual(
+            set(dimensions["department"]), {"DTF", "UV"}
+        )
+        self.assertEqual(movement_scope["department"].unique().tolist(), ["DTF"])
+        self.assertEqual(value_scope["inventory_value"].tolist(), [100])
 
     def test_finance_page_defaults_to_lazy_inbound_batch_loading(self):
         empty = pd.DataFrame()
@@ -201,9 +230,32 @@ class FinanceSummaryTests(unittest.TestCase):
         result = build_missing_cost_scope_summary(rows)
 
         self.assertEqual(result.iloc[0].to_dict(), {
-            "部门": "UV", "品类": "铁板画", "缺成本库存": 72000,
+            "部门": "UV", "品类": "铁板画", "单位": "件", "缺成本数量": 72000,
         })
-        self.assertEqual(result.iloc[1]["缺成本库存"], 578)
+        self.assertEqual(result.iloc[1]["缺成本数量"], 578)
+
+    def test_missing_cost_summary_does_not_add_different_units(self):
+        rows = pd.DataFrame([
+            {
+                "department": "DTF", "category": "DTF耗材",
+                "quantity_unit": "箱", "missing_cost_quantity": 27,
+            },
+            {
+                "department": "DTF", "category": "DTF耗材",
+                "quantity_unit": "瓶", "missing_cost_quantity": 80,
+            },
+            {
+                "department": "DTF", "category": "DTF耗材",
+                "quantity_unit": "卷", "missing_cost_quantity": 109,
+            },
+        ])
+
+        result = build_missing_cost_scope_summary(rows)
+
+        self.assertEqual(
+            set(zip(result["单位"], result["缺成本数量"])),
+            {("箱", 27), ("瓶", 80), ("卷", 109)},
+        )
 
     def test_department_summary_calculates_net_change(self):
         result = build_department_summary(self.finance)
@@ -428,6 +480,10 @@ class FinanceSummaryTests(unittest.TestCase):
         detail = build_sku_cost_history(history, overview.iloc[0]["sku_key"])
 
         self.assertEqual(overview.iloc[0]["cost_status"], "缺成本")
+        self.assertEqual(
+            overview.iloc[0]["cost_issue"],
+            "当前库存缺参考价；入库批次缺成本 1 个",
+        )
         self.assertEqual(overview.iloc[0]["missing_batches"], 1)
         self.assertEqual(overview.iloc[0]["latest_cost"], 0.2)
         self.assertEqual(detail.iloc[0]["批次"], "第十一柜｜柜号 HAMU4767628")

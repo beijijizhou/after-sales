@@ -111,6 +111,7 @@ def load_inventory_value_snapshot(supabase):
             result["regular_inventory_value"]
             + result["transfer_inventory_value"]
         )
+        result["quantity_unit"] = "件"
     consumables = load_consumable_value_snapshot(supabase)
     return pd.concat([result, consumables], ignore_index=True)
 

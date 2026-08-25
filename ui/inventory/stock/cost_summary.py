@@ -109,7 +109,7 @@ def build_sku_price_completion(raw_df):
 def render_inventory_cost_summary(
     supabase, department, category, inventory_df, raw_inventory_df
 ):
-    st.subheader("SKU 价格完成情况")
+    st.subheader("SKU 参考价完成情况")
     saved_message = st.session_state.pop("inventory_cost_saved_message", None)
     if saved_message:
         st.success(saved_message)
@@ -124,7 +124,11 @@ def render_inventory_cost_summary(
             "请先在下方补齐。"
         )
     elif completion["total"]:
-        st.success("当前范围内所有有库存 SKU 都已输入价格。")
+        st.success("当前范围内所有有库存 SKU 都已输入参考价。")
+        st.info(
+            "SKU 参考价已完成不等于全部成本已完成；"
+            "财务还会核对现存入库批次是否都有成本。"
+        )
     st.caption(
         "这里的“已输入”只表示 SKU 参考价不为空；价格来源是否准确、"
         "是否覆盖现存入库批次，需要继续核对下方入库批次成本。"

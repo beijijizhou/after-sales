@@ -18,6 +18,14 @@ from utils.sku_sorting import sort_sku_rows
 
 def render_inventory_report(finance_df, recent_df, value_df, month, report_date):
     st.caption(f"{month.year}年{month.month}月 · 金额为库存成本，不是销售额")
+    st.markdown("#### SKU 筛选")
+    dimensions = build_finance_scope_dimensions(finance_df, value_df)
+    scope = render_inventory_dimension_filters(
+        dimensions, key="finance_monthly_scope", allow_all_departments=True
+    )
+    finance_df = filter_finance_scope(finance_df, scope)
+    recent_df = filter_finance_scope(recent_df, scope)
+    value_df = filter_finance_scope(value_df, scope)
     overview = build_finance_overview(finance_df)
     inventory_value = build_inventory_value_overview(value_df)
     columns = st.columns(3)
@@ -116,17 +124,48 @@ def render_inventory_filters(finance_df, *, key):
             dimensions, key=key, allow_all_departments=True
         )
     )
-    filtered = filter_inventory_rows(
-        finance_df, category, brands, materials, colors, sizes
+    return filter_finance_scope(
+        finance_df,
+        (department, category, brands, materials, colors, sizes),
     )
-    if department:
+
+
+def build_finance_scope_dimensions(*frames):
+    """Build one selector scope shared by stock value and monthly movements."""
+    columns = ["department", "category", "brand", "material", "color", "size"]
+    parts = []
+    for frame in frames:
+        data = pd.DataFrame(frame).copy()
+        if data.empty:
+            continue
+        for column in columns:
+            if column not in data:
+                data[column] = ""
+        parts.append(data[columns])
+    if not parts:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(parts, ignore_index=True).drop_duplicates().reset_index(
+        drop=True
+    )
+
+
+def filter_finance_scope(rows, scope):
+    """Apply one inventory dimension selection to any finance data frame."""
+    data = pd.DataFrame(rows).copy()
+    if data.empty:
+        return data
+    department, category, brands, materials, colors, sizes = scope
+    filtered = filter_inventory_rows(
+        data, category, brands, materials, colors, sizes
+    )
+    if department and "department" in filtered:
         filtered = filtered[filtered["department"] == department]
     return filtered.reset_index(drop=True)
 
 
 def build_missing_cost_scope_summary(value_df):
     data = pd.DataFrame(value_df).copy()
-    columns = ["部门", "品类", "缺成本库存"]
+    columns = ["部门", "品类", "单位", "缺成本数量"]
     if data.empty or "missing_cost_quantity" not in data:
         return pd.DataFrame(columns=columns)
     data["missing_cost_quantity"] = pd.to_numeric(
@@ -139,14 +178,21 @@ def build_missing_cost_scope_summary(value_df):
         if column not in data:
             data[column] = ""
         data[column] = data[column].fillna("").astype(str)
+    if "quantity_unit" not in data:
+        data["quantity_unit"] = "件"
+    data["quantity_unit"] = data["quantity_unit"].fillna("").astype(str)
+    data.loc[data["quantity_unit"].str.strip() == "", "quantity_unit"] = "件"
     return (
-        data.groupby(["department", "category"], as_index=False)
+        data.groupby(
+            ["department", "category", "quantity_unit"], as_index=False
+        )
         .agg(missing_cost_quantity=("missing_cost_quantity", "sum"))
         .rename(columns={
             "department": "部门", "category": "品类",
-            "missing_cost_quantity": "缺成本库存",
+            "quantity_unit": "单位",
+            "missing_cost_quantity": "缺成本数量",
         })[columns]
-        .sort_values("缺成本库存", ascending=False, kind="stable")
+        .sort_values("缺成本数量", ascending=False, kind="stable")
         .reset_index(drop=True)
     )
 
@@ -159,14 +205,14 @@ def render_missing_cost_navigation(value_df, *, key):
     st.dataframe(
         summary, hide_index=True, width="stretch",
         column_config={
-            "缺成本库存": st.column_config.NumberColumn(format="%d"),
+            "缺成本数量": st.column_config.NumberColumn(format="%d"),
         },
     )
     options = list(range(len(summary)))
     labels = {
         index: (
             f"{row['部门']}｜{row['品类'] or '全部品类'}｜"
-            f"{int(row['缺成本库存']):,} 个单位"
+            f"{int(row['缺成本数量']):,} {row['单位']}"
         )
         for index, row in summary.iterrows()
     }

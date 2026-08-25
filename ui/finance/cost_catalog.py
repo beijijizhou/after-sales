@@ -46,12 +46,25 @@ def build_sku_cost_overview(value_df, history_df):
         / overview["tracked_quantity"].replace(0, pd.NA)
     )
     overview["cost_status"] = "已填写"
-    missing = (
-        overview["missing_cost_quantity"].gt(0)
-        | overview["missing_batches"].gt(0)
-        | overview["priced_batches"].eq(0)
-    )
+    missing_reference = overview["missing_cost_quantity"].gt(0)
+    missing_batches = overview["missing_batches"].gt(0)
+    no_priced_batch = overview["priced_batches"].eq(0)
+    missing = missing_reference | missing_batches | no_priced_batch
     overview.loc[missing, "cost_status"] = "缺成本"
+    overview["cost_issue"] = [
+        "；".join([
+            *(["当前库存缺参考价"] if reference else []),
+            *([
+                f"入库批次缺成本 {int(batch_count)} 个"
+            ] if batch_count else []),
+            *(["没有已计价入库批次"] if no_batch else []),
+        ]) or "—"
+        for reference, batch_count, no_batch in zip(
+            missing_reference,
+            overview["missing_batches"],
+            no_priced_batch & ~missing_batches,
+        )
+    ]
     varied = (
         ~missing
         & overview["min_cost"].notna()
@@ -271,11 +284,12 @@ def _overview_display(rows):
         "missing_batches": "缺成本批次",
         "missing_cost_quantity": "缺成本库存",
         "cost_status": "状态",
+        "cost_issue": "核对原因",
     })
     return display[[
         "部门", "品类", "品牌", "材质", "颜色", "尺码/型号",
         "当前库存", "已计价库存均价", "最近入库价",
-        "历史最低价", "历史最高价", "缺成本批次", "缺成本库存", "状态",
+        "历史最低价", "历史最高价", "缺成本批次", "缺成本库存", "状态", "核对原因",
     ]]
 
 

@@ -1,4 +1,7 @@
 drop function if exists public.get_daily_qa_person_platform_summary(
+    date, timestamptz, text
+);
+drop function if exists public.get_daily_qa_person_platform_summary(
     date, timestamptz
 );
 drop function if exists public.get_daily_qa_person_platform_summary(date);
@@ -9,11 +12,13 @@ drop function if exists public.get_daily_hotstamp_person_platform_summary(date);
 
 create or replace function public.get_daily_qa_person_platform_summary(
     target_date date,
-    snapshot_at timestamptz default null
+    snapshot_at timestamptz default null,
+    p_department text default null
 )
 returns table (
     person text,
     platform text,
+    production_department text,
     scan_count bigint,
     multiple_order_count bigint,
     first_scan_at timestamptz,
@@ -27,6 +32,7 @@ as $$
     select
         trim(scanned_by) as person,
         coalesce(nullif(trim(platform), ''), '未标记平台') as platform,
+        coalesce(production_department, 'DTF') as production_department,
         count(*) as scan_count,
         count(*) filter (
             where coalesce(multiple_count, 1) > 1
@@ -36,6 +42,8 @@ as $$
     from public.barcode_scans
     where scanned_by is not null
       and trim(scanned_by) <> ''
+      and coalesce(production_department, 'DTF') =
+          coalesce(nullif(upper(trim(p_department)), ''), 'DTF')
       and scanned_at >= (
           target_date::timestamp at time zone 'America/New_York'
       )
@@ -48,7 +56,7 @@ as $$
                   at time zone 'America/New_York'
           )
       )
-    group by person, platform
+    group by person, platform, production_department
     order by person, platform;
 $$;
 
@@ -98,7 +106,7 @@ as $$
 $$;
 
 grant execute on function public.get_daily_qa_person_platform_summary(
-    date, timestamptz
+    date, timestamptz, text
 ) to anon, authenticated, service_role;
 grant execute on function public.get_daily_hotstamp_person_platform_summary(
     date, timestamptz

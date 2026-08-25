@@ -40,6 +40,11 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 4. `production/summaries/04_pair_workflow.sql`
 5. `production/summaries/05_qa_period.sql`
 
+启用扫码记录的多生产部门范围时，先执行
+`production/barcode_scan_department_scope.sql`，再按上述顺序重新执行 `01–05`。
+最新版质检函数会删除旧的无部门签名，只保留带 `p_department` 的签名，避免
+PostgREST 因默认参数重载而返回 `PGRST203`。
+
 每日平台消耗按 `production/consumption/README.md` 执行 `01–02`。
 
 ## 动态角色权限安装顺序

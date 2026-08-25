@@ -11,7 +11,7 @@ an activity log.
 | --- | --- | --- | --- |
 | `app.py` | Problem tracking under the `生产管理` navigation group | application entry and shared UI | authentication, page layout, Supabase client |
 | `pages/0_注册.py` | Employee status, combined profile/lifecycle handling, registration and audit | `ui/people/` | shared authentication, scoped employee selector, employee access state and Supabase client |
-| `pages/1_质检.py` | First workflow in the grouped `生产管理` navigation: QA scanning and production summary | `ui/production/summary.py` | shared production filters, time utilities, authentication |
+| `pages/1_质检.py` | First workflow in the grouped `生产管理` navigation: department-scoped QA scanning and production summary | `ui/production/summary.py`, `ui/production/simple_summary.py` | active production-department catalog, shared production filters, time utilities, authentication; UV uses the platform-neutral summary view |
 | `pages/2_烫印.py` | Hotstamp scanning and production summary | `ui/production/summary.py` | same production summary contract as QA with a different operation field |
 | `pages/3_平台.py` | Platform production detail | `ui/platform_summary.py` | production database summaries and shared time handling |
 | `pages/4_库存.py` | Production inventory operations | `ui/inventory/summary.py` | shared inventory filters, SKU order, stock review, batch history, forecasting |

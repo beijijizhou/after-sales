@@ -166,6 +166,14 @@
 
 ## Production And QA
 
+- QA daily workflow and period analysis are scoped by the selected active
+  production department. The same department must constrain every summary RPC,
+  hourly/workflow view, and detail-row fallback so UV work never appears under
+  DTF or vice versa.
+- UV quality inspection is platform-neutral and has no hotstamp pairing stage.
+  Its current review focuses on total QA volume, people, hourly output, daily
+  history and productivity; do not show Haloo/small-platform comparisons or
+  QA-to-hotstamp workflow controls in the UV scope.
 - The after-sales manual-registration analysis is visible to the `after_sales`
   role and to `admin`, because administrators inherit all application access.
   It imports every weekly Google workbook as an append-only source batch and

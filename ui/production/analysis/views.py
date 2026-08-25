@@ -27,7 +27,7 @@ def render_summary_metrics(rows, daily):
     )
 
 
-def render_daily_summary(daily):
+def render_daily_summary(daily, show_platform_breakdown=True):
     dated = add_date_labels(daily)
     chart_data = dated.melt(
         id_vars=["日期", "日期标签", "完整日期"],
@@ -57,6 +57,10 @@ def render_daily_summary(daily):
     )
     st.altair_chart(chart.properties(height=330), width="stretch")
     display = daily.copy()
+    if not show_platform_breakdown:
+        display = display.drop(
+            columns=["Haloo", "小平台"], errors="ignore"
+        )
     display["日期"] = display["日期"].apply(format_date_with_weekday)
     st.dataframe(
         display, hide_index=True, width="stretch",

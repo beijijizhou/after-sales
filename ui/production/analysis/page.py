@@ -1,6 +1,7 @@
 import streamlit as st
 
 from ui.production.components import render_person_platform_table
+from ui.production.simple_summary import render_person_total_table
 from ui.production.analysis.filters import (
     render_period_date_filter,
     render_period_filters,
@@ -26,7 +27,8 @@ from utils.production.period_summary import (
 
 
 def render_qa_period_analysis(
-    supabase, selected_date, user_column, snapshot_at=None
+    supabase, selected_date, user_column, snapshot_at=None,
+    department=None,
 ):
     start_date, end_date = get_period_dates(selected_date)
     st.subheader("质检总结分析")
@@ -40,7 +42,8 @@ def render_qa_period_analysis(
 
     try:
         rpc_rows = load_period_person_platform_rows(
-            supabase, start_date, end_date, user_column, snapshot_at
+            supabase, start_date, end_date, user_column,
+            snapshot_at, department,
         )
     except Exception as error:
         st.warning("质检区间汇总函数尚未更新")
@@ -56,8 +59,9 @@ def render_qa_period_analysis(
         st.info("当前日期范围没有质检数据")
         return
 
+    show_platform_breakdown = department != "UV"
     filtered, filter_state = render_period_filters(
-        rows, start_date, end_date
+        rows, start_date, end_date, show_platform_breakdown
     )
     if filtered.empty:
         st.info("当前筛选条件没有质检数据")
@@ -67,6 +71,22 @@ def render_qa_period_analysis(
         filtered, filter_state.start_date, filter_state.end_date
     )
     render_summary_metrics(filtered, daily)
+    if not show_platform_breakdown:
+        people_tab, daily_tab, rate_tab = st.tabs([
+            "人员分析", "每日汇总", "时产分析",
+        ])
+        with people_tab:
+            render_person_total_table(
+                build_period_person_platform_summary(filtered), "质检"
+            )
+        with daily_tab:
+            render_daily_summary(
+                daily, show_platform_breakdown=False
+            )
+        with rate_tab:
+            render_productivity_chart(daily, filtered)
+        return
+
     people_tab, daily_tab, platform_tab, client_tab, rate_tab = st.tabs([
         "人员分析", "每日汇总", "平台分析",
         "Haloo / 小平台", "时产分析",

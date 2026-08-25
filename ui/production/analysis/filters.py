@@ -28,10 +28,15 @@ def render_period_date_filter(default_start, default_end):
     )
 
 
-def render_period_filters(rows, start_date, end_date):
-    person_col, client_col, platform_col = st.columns(3)
+def render_period_filters(
+    rows, start_date, end_date, show_platform_breakdown=True,
+):
     people_options = sorted(rows["人员"].dropna().unique())
     reset_invalid_selection("qa_period_people", people_options)
+    if show_platform_breakdown:
+        person_col, client_col, platform_col = st.columns(3)
+    else:
+        person_col = st
     people = person_col.multiselect(
         "质检人员", people_options,
         key="qa_period_people", placeholder="全部人员",
@@ -40,6 +45,15 @@ def render_period_filters(rows, start_date, end_date):
     people_rows = filter_period_rows(
         rows, start_date, end_date, people=people
     )
+    if not show_platform_breakdown:
+        return people_rows, PeriodFilterState(
+            start_date=start_date,
+            end_date=end_date,
+            people=tuple(people),
+            client_type="全部",
+            platforms=(),
+        )
+
     client_type = client_col.segmented_control(
         "客户类型",
         ["全部", HALOO_PLATFORM, OTHER_CLIENT],

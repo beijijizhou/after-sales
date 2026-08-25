@@ -2,6 +2,7 @@ import unittest
 
 import pandas as pd
 
+from ui.production.simple_summary import build_person_total_table
 from utils.production.platform_summary import (
     build_person_platform_summary_from_rpc,
 )
@@ -25,6 +26,19 @@ class ProductionPlatformSummaryTests(unittest.TestCase):
         self.assertEqual(result.loc[0, "Haloo 占比"], 50.0)
         self.assertEqual(result.loc[0, "小平台数量"], 10)
         self.assertEqual(result.loc[0, "小平台占比"], 50.0)
+
+    def test_uv_person_table_ignores_platform_columns(self):
+        summary = build_person_platform_summary_from_rpc(pd.DataFrame([
+            rpc_row("Haloo", 10, 2),
+            rpc_row("汉森", 5, 1),
+        ]))
+
+        result = build_person_total_table(summary)
+
+        self.assertEqual(result.columns.tolist(), [
+            "人员", "总生产数量", "多件订单数量", "多件占比", "时产量",
+        ])
+        self.assertNotIn("Haloo 数量", result.columns)
 
 
 def rpc_row(platform, scan_count, multiple_count):

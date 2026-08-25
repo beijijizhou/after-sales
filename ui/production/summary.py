@@ -3,12 +3,17 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from db.access import load_production_departments
 from ui.production.components import (
     get_working_hours_from_user_summary,
     render_hourly_production,
     render_kpis,
     render_person_platform_table,
     render_workflow_analysis,
+)
+from ui.production.simple_summary import (
+    render_hourly_total,
+    render_person_total_table,
 )
 from ui.production.analysis import render_qa_period_analysis
 from utils.date_display import format_date_with_weekday
@@ -51,9 +56,11 @@ def render_refresh_multiple_counts_button(supabase, selected_date):
                 st.info("请先在 Supabase SQL Editor 运行 sql/production/refresh_barcode_multiple_counts.sql")
 
 
-def load_rpc_summary(supabase, selected_date, user_column, snapshot_at):
+def load_rpc_summary(
+    supabase, selected_date, user_column, snapshot_at, department=None,
+):
     rpc_summary_rows = load_person_platform_summary_rows(
-        supabase, selected_date, user_column, snapshot_at
+        supabase, selected_date, user_column, snapshot_at, department
     )
     if rpc_summary_rows.empty:
         raise ValueError("人员平台汇总 RPC 返回空数据")
@@ -66,19 +73,37 @@ def load_rpc_summary(supabase, selected_date, user_column, snapshot_at):
     if user_summary.empty:
         raise ValueError(f"人员汇总字段不匹配：{list(rpc_summary_rows.columns)}")
 
-    hourly_rows = load_hourly_summary_rows(supabase, selected_date, user_column, snapshot_at)
-    hourly_summary = summarize_hourly_from_rpc(hourly_rows, selected_date)
-    hourly_person_rows = load_hourly_person_client_rows(
-        supabase, selected_date, user_column, snapshot_at
-    )
-    person_switch_df = build_person_switch_table(hourly_person_rows)
     try:
-        workflow_rows = load_pair_platform_workflow_rows(
-            supabase, selected_date, snapshot_at
+        hourly_rows = load_hourly_summary_rows(
+            supabase, selected_date, user_column, snapshot_at, department
         )
-        pair_workflow_df = build_pair_workflow_table(workflow_rows)
-    except Exception:
+        hourly_summary = summarize_hourly_from_rpc(
+            hourly_rows, selected_date
+        )
+    except Exception as error:
+        if not _is_missing_department_rpc(error):
+            raise
+        raw_df = load_daily_production_rows(
+            supabase, selected_date, user_column, snapshot_at, department
+        )
+        hourly_summary = summarize_by_hour(
+            prepare_production_df(raw_df, user_column), selected_date
+        )
+    if department == "UV":
+        person_switch_df = pd.DataFrame()
         pair_workflow_df = pd.DataFrame()
+    else:
+        hourly_person_rows = load_hourly_person_client_rows(
+            supabase, selected_date, user_column, snapshot_at, department
+        )
+        person_switch_df = build_person_switch_table(hourly_person_rows)
+        try:
+            workflow_rows = load_pair_platform_workflow_rows(
+                supabase, selected_date, snapshot_at, department
+            )
+            pair_workflow_df = build_pair_workflow_table(workflow_rows)
+        except Exception:
+            pair_workflow_df = pd.DataFrame()
     return (
         user_summary,
         person_platform_summary,
@@ -88,8 +113,18 @@ def load_rpc_summary(supabase, selected_date, user_column, snapshot_at):
     )
 
 
-def load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at):
-    raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
+def _is_missing_department_rpc(error):
+    detail = str(error)
+    return "PGRST202" in detail and "p_department" in detail
+
+
+def load_legacy_summary(
+    supabase, selected_date, title, user_column, snapshot_at,
+    department=None,
+):
+    raw_df = load_daily_production_rows(
+        supabase, selected_date, user_column, snapshot_at, department
+    )
     if raw_df.empty:
         raise ValueError(f"{selected_date.isoformat()} 没有生产数据")
 
@@ -107,17 +142,26 @@ def load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at
     )
 
 
-def resolve_production_summary(supabase, selected_date, title, user_column, snapshot_at):
+def resolve_production_summary(
+    supabase, selected_date, title, user_column, snapshot_at,
+    department=None,
+):
     try:
         user_summary, person_platform_summary, hourly_summary, person_switch_df, pair_workflow_df = load_rpc_summary(
-            supabase, selected_date, user_column, snapshot_at
+            supabase, selected_date, user_column, snapshot_at, department
         )
     except Exception as e:
         if "RPC 返回空数据" in str(e):
-            return load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at)
+            return load_legacy_summary(
+                supabase, selected_date, title, user_column,
+                snapshot_at, department,
+            )
         st.warning("数据库汇总函数暂时不可用，当前使用明细数据计算。")
         st.caption(f"RPC 详情：{e}")
-        return load_legacy_summary(supabase, selected_date, title, user_column, snapshot_at)
+        return load_legacy_summary(
+            supabase, selected_date, title, user_column,
+            snapshot_at, department,
+        )
 
     working_hours = get_working_hours_from_user_summary(user_summary)
     if hourly_summary.empty:
@@ -125,14 +169,16 @@ def resolve_production_summary(supabase, selected_date, title, user_column, snap
             "每小时产量正在使用旧算法。请在 Supabase SQL Editor 运行最新版 "
             "sql/production/summaries/02_hourly_totals.sql"
         )
-        raw_df = load_daily_production_rows(supabase, selected_date, user_column, snapshot_at)
+        raw_df = load_daily_production_rows(
+            supabase, selected_date, user_column, snapshot_at, department
+        )
         df = prepare_production_df(raw_df, user_column)
         hourly_summary = summarize_by_hour(df, selected_date)
         person_switch_df = pd.DataFrame()
         pair_workflow_df = pd.DataFrame()
-    if pair_workflow_df.empty:
+    if pair_workflow_df.empty and department != "UV":
         raw_df = load_daily_production_rows(
-            supabase, selected_date, user_column, snapshot_at
+            supabase, selected_date, user_column, snapshot_at, department
         )
         pair_workflow_df = build_pair_workflow_from_detail(raw_df)
     return (
@@ -158,6 +204,12 @@ def render_production_summary(supabase, selected_date, title, user_column):
         )
 
     if user_column == "scanned_by":
+        departments = load_production_departments(supabase) or ["DTF"]
+        if st.session_state.get("qa_production_department") not in departments:
+            st.session_state["qa_production_department"] = departments[0]
+        department = st.selectbox(
+            "生产部门", departments, key="qa_production_department"
+        )
         daily_tab, analysis_tab = st.tabs([
             "当日工作流", "总结分析",
         ])
@@ -168,12 +220,13 @@ def render_production_summary(supabase, selected_date, title, user_column):
             )
             render_daily_production_content(
                 supabase, selected_date, title,
-                user_column, snapshot_at,
+                user_column, snapshot_at, department,
             )
         with analysis_tab:
             try:
                 render_qa_period_analysis(
-                    supabase, selected_date, user_column, snapshot_at
+                    supabase, selected_date, user_column,
+                    snapshot_at, department,
                 )
             except Exception as e:
                 st.error(f"数据加载失败：{e}")
@@ -185,18 +238,26 @@ def render_production_summary(supabase, selected_date, title, user_column):
 
 
 def render_daily_production_content(
-    supabase, selected_date, title, user_column, snapshot_at
+    supabase, selected_date, title, user_column, snapshot_at,
+    department=None,
 ):
     try:
         user_summary, person_platform_summary, hourly_summary, person_switch_df, pair_workflow_df, working_hours = (
-            resolve_production_summary(supabase, selected_date, title, user_column, snapshot_at)
+            resolve_production_summary(
+                supabase, selected_date, title, user_column,
+                snapshot_at, department,
+            )
         )
         render_kpis(user_summary, working_hours)
-        render_person_platform_table(person_platform_summary, title)
-        render_hourly_production(hourly_summary)
-        render_workflow_analysis(
-            person_switch_df, pair_workflow_df, title, selected_date
-        )
+        if department == "UV":
+            render_person_total_table(person_platform_summary, title)
+            render_hourly_total(hourly_summary)
+        else:
+            render_person_platform_table(person_platform_summary, title)
+            render_hourly_production(hourly_summary)
+            render_workflow_analysis(
+                person_switch_df, pair_workflow_df, title, selected_date
+            )
     except Exception as e:
         if "没有生产数据" in str(e) or "没有" + title in str(e):
             st.warning(str(e))

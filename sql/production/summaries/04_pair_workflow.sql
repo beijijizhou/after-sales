@@ -3,13 +3,17 @@ drop function if exists public.get_daily_pair_platform_workflow_summary(
 );
 drop function if exists public.get_daily_pair_platform_workflow_summary(date);
 drop function if exists public.get_daily_pair_workflow_summary(
+    date, timestamptz, text
+);
+drop function if exists public.get_daily_pair_workflow_summary(
     date, timestamptz
 );
 drop function if exists public.get_daily_pair_workflow_summary(date);
 
 create or replace function public.get_daily_pair_workflow_summary(
     target_date date,
-    snapshot_at timestamptz default null
+    snapshot_at timestamptz default null,
+    p_department text default null
 )
 returns table (
     segment_start_at timestamptz,
@@ -36,6 +40,8 @@ as $$
           and trim(scanned_by) <> ''
           and hotstamp_by is not null
           and trim(hotstamp_by) <> ''
+          and coalesce(production_department, 'DTF') =
+              coalesce(nullif(upper(trim(p_department)), ''), 'DTF')
           and scanned_at >= (
               target_date::timestamp at time zone 'America/New_York'
           )
@@ -82,7 +88,7 @@ as $$
 $$;
 
 grant execute on function public.get_daily_pair_workflow_summary(
-    date, timestamptz
+    date, timestamptz, text
 ) to anon, authenticated, service_role;
 
 notify pgrst, 'reload schema';

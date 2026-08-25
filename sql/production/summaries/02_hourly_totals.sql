@@ -1,3 +1,6 @@
+drop function if exists public.get_daily_qa_hourly_summary(
+    date, timestamptz, text
+);
 drop function if exists public.get_daily_qa_hourly_summary(date, timestamptz);
 drop function if exists public.get_daily_qa_hourly_summary(date);
 drop function if exists public.get_daily_hotstamp_hourly_summary(
@@ -7,7 +10,8 @@ drop function if exists public.get_daily_hotstamp_hourly_summary(date);
 
 create or replace function public.get_daily_qa_hourly_summary(
     target_date date,
-    snapshot_at timestamptz default null
+    snapshot_at timestamptz default null,
+    p_department text default null
 )
 returns table (
     hour_start_at timestamptz,
@@ -30,6 +34,8 @@ as $$
     from public.barcode_scans
     where scanned_by is not null
       and trim(scanned_by) <> ''
+      and coalesce(production_department, 'DTF') =
+          coalesce(nullif(upper(trim(p_department)), ''), 'DTF')
       and scanned_at >= (
           target_date::timestamp at time zone 'America/New_York'
       )
@@ -88,7 +94,7 @@ as $$
 $$;
 
 grant execute on function public.get_daily_qa_hourly_summary(
-    date, timestamptz
+    date, timestamptz, text
 ) to anon, authenticated, service_role;
 grant execute on function public.get_daily_hotstamp_hourly_summary(
     date, timestamptz

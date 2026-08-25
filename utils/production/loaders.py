@@ -13,21 +13,27 @@ def get_date_range(selected_date, snapshot_at=None):
     return start_at.isoformat(), end_at.isoformat()
 
 
-def load_daily_production_rows(supabase, selected_date, user_column, snapshot_at=None):
+def load_daily_production_rows(
+    supabase, selected_date, user_column, snapshot_at=None, department=None,
+):
     start_at, end_at = get_date_range(selected_date, snapshot_at)
     rows = []
     page_size = 1000
     offset = 0
 
     while True:
-        response = (
+        query = (
             supabase.table("barcode_scans")
             .select(
                 "id,barcode,scanned_by,hotstamp_by,"
-                "scanned_at,platform,multiple_count"
+                "scanned_at,platform,multiple_count,production_department"
             )
             .gte("scanned_at", start_at).lt("scanned_at", end_at)
-            .order("scanned_at", desc=False)
+        )
+        if department:
+            query = query.eq("production_department", department)
+        response = (
+            query.order("scanned_at", desc=False)
             .order("id", desc=False)
             .range(offset, offset + page_size - 1).execute()
         )
@@ -43,10 +49,15 @@ def load_daily_production_rows(supabase, selected_date, user_column, snapshot_at
     return df
 
 
-def load_summary_rpc(supabase, function_name, selected_date, snapshot_at=None):
+def load_summary_rpc(
+    supabase, function_name, selected_date, snapshot_at=None,
+    department=None,
+):
     params = {"target_date": selected_date.isoformat()}
     if snapshot_at:
         params["snapshot_at"] = snapshot_at.isoformat()
+    if department:
+        params["p_department"] = department
     response = supabase.rpc(function_name, params).execute()
     return pd.DataFrame(response.data)
 
@@ -59,46 +70,63 @@ def get_rpc_name(user_column, qa_function, hotstamp_function):
     return function_name_by_user_column.get(user_column)
 
 
-def load_person_platform_summary_rows(supabase, selected_date, user_column, snapshot_at=None):
+def load_person_platform_summary_rows(
+    supabase, selected_date, user_column, snapshot_at=None,
+    department=None,
+):
     function_name = get_rpc_name(
         user_column,
         "get_daily_qa_person_platform_summary",
         "get_daily_hotstamp_person_platform_summary",
     )
-    return load_summary_rpc(supabase, function_name, selected_date, snapshot_at) if function_name else pd.DataFrame()
+    return load_summary_rpc(
+        supabase, function_name, selected_date, snapshot_at, department
+    ) if function_name else pd.DataFrame()
 
 
-def load_hourly_summary_rows(supabase, selected_date, user_column, snapshot_at=None):
+def load_hourly_summary_rows(
+    supabase, selected_date, user_column, snapshot_at=None,
+    department=None,
+):
     function_name = get_rpc_name(
         user_column,
         "get_daily_qa_hourly_summary",
         "get_daily_hotstamp_hourly_summary",
     )
-    return load_summary_rpc(supabase, function_name, selected_date, snapshot_at) if function_name else pd.DataFrame()
+    return load_summary_rpc(
+        supabase, function_name, selected_date, snapshot_at, department
+    ) if function_name else pd.DataFrame()
 
 
-def load_hourly_person_client_rows(supabase, selected_date, user_column, snapshot_at=None):
+def load_hourly_person_client_rows(
+    supabase, selected_date, user_column, snapshot_at=None,
+    department=None,
+):
     function_name = get_rpc_name(
         user_column,
         "get_daily_qa_hourly_person_client_summary",
         "get_daily_hotstamp_hourly_person_client_summary",
     )
-    return load_summary_rpc(supabase, function_name, selected_date, snapshot_at) if function_name else pd.DataFrame()
+    return load_summary_rpc(
+        supabase, function_name, selected_date, snapshot_at, department
+    ) if function_name else pd.DataFrame()
 
 
 def load_pair_platform_workflow_rows(
-    supabase, selected_date, snapshot_at=None
+    supabase, selected_date, snapshot_at=None, department=None,
 ):
     return load_summary_rpc(
         supabase,
         "get_daily_pair_workflow_summary",
         selected_date,
         snapshot_at,
+        department,
     )
 
 
 def load_period_person_platform_rows(
-    supabase, start_date, end_date, user_column, snapshot_at=None
+    supabase, start_date, end_date, user_column, snapshot_at=None,
+    department=None,
 ):
     function_name = get_rpc_name(
         user_column,
@@ -114,5 +142,7 @@ def load_period_person_platform_rows(
     }
     if snapshot_at:
         params["snapshot_at"] = snapshot_at.isoformat()
+    if department:
+        params["p_department"] = department
     response = supabase.rpc(function_name, params).execute()
     return pd.DataFrame(response.data)

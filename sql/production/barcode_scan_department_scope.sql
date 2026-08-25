@@ -4,6 +4,9 @@ add column if not exists production_department text not null default 'DTF';
 create index if not exists idx_barcode_scans_department_date
 on public.barcode_scans (production_department, scanned_at);
 
+create unique index if not exists idx_barcode_scans_barcode_department
+on public.barcode_scans (barcode, production_department);
+
 create or replace function public.get_today_barcode_count_by_user(
     p_user text,
     p_department text default null
@@ -22,6 +25,11 @@ as $$
       and date(scanned_at at time zone 'America/New_York')
           = date(now() at time zone 'America/New_York');
 $$;
+
+drop function if exists public.get_daily_qa_person_platform_summary(
+    date, timestamptz
+);
+drop function if exists public.get_daily_qa_person_platform_summary(date);
 
 create or replace function public.get_daily_qa_person_platform_summary(
     target_date date,
@@ -72,6 +80,11 @@ as $$
     group by person, platform, production_department
     order by person, platform;
 $$;
+
+drop function if exists public.get_daily_qa_hourly_person_client_summary(
+    date, timestamptz
+);
+drop function if exists public.get_daily_qa_hourly_person_client_summary(date);
 
 create or replace function public.get_daily_qa_hourly_person_client_summary(
     target_date date,
@@ -136,4 +149,3 @@ grant execute on function public.get_daily_qa_hourly_person_client_summary(
 ) to anon, authenticated, service_role;
 
 notify pgrst, 'reload schema';
-

@@ -22,6 +22,7 @@ def load_consumable_value_snapshot(supabase):
         "department", "category", "brand", "material", "color", "size",
         "inventory_quantity", "tracked_quantity", "regular_inventory_value",
         "transfer_inventory_value", "missing_cost_quantity", "inventory_value",
+        "quantity_unit",
     ]
     if items.empty:
         return pd.DataFrame(columns=columns)
@@ -53,6 +54,7 @@ def load_consumable_value_snapshot(supabase):
         data["unit_cost"].isna(), 0
     )
     data["inventory_value"] = data["regular_inventory_value"]
+    data["quantity_unit"] = data["base_unit"].fillna("").astype(str)
     return data[columns]
 
 
