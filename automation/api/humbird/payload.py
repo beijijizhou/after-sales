@@ -11,9 +11,17 @@ def build_production_item_payload(
     end_date,
     page=1,
     page_size=PAGE_SIZE,
+    start_hour=0,
+    end_hour=23,
 ):
-    start_at = datetime.combine(start_date, time.min, NEW_YORK)
-    end_at = datetime.combine(end_date, time.max, NEW_YORK)
+    start_at = datetime.combine(
+        start_date, time(hour=int(start_hour)), NEW_YORK
+    )
+    end_at = datetime.combine(
+        end_date,
+        time(hour=int(end_hour), minute=59, second=59, microsecond=999999),
+        NEW_YORK,
+    )
     return {
         "page": page,
         "page_size": page_size,

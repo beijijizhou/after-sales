@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 import pandas as pd
 
 from utils.erp.catalog import normalize_color
@@ -158,6 +158,27 @@ class ColoredProductionInventoryTests(unittest.TestCase):
         self.assertEqual(source.iloc[0]["库存颜色口径"], "绿色")
         self.assertEqual(source.iloc[0]["转换状态"], "已标准化")
 
+    def test_source_mapping_keeps_light_gray_as_inventory_color(self):
+        production = pd.DataFrame([{
+            "部门": "DTF", "品类": "彩色短袖", "材质": "180g",
+            "颜色": "灰色", "尺码": "L", "数量": 12,
+            "运营商": "S2B",
+        }])
+        inventory = pd.DataFrame([{
+            "brand": "临时进货", "material": "180g",
+            "color": "浅灰", "size": "L", "quantity": 100,
+        }])
+
+        source, allocation = build_colored_tshirt_inventory_review(
+            production, inventory
+        )
+
+        self.assertEqual(source.iloc[0]["生产颜色"], "浅灰")
+        self.assertEqual(source.iloc[0]["库存颜色"], "浅灰")
+        self.assertEqual(source.iloc[0]["映射状态"], "已匹配")
+        self.assertEqual(allocation.iloc[0]["颜色"], "浅灰")
+        self.assertEqual(allocation.iloc[0]["预计扣减"], 12)
+
     def test_mapping_audit_keeps_raw_and_normalized_color(self):
         production = pd.DataFrame([{
             "部门": "DTF", "品类": "彩色短袖", "材质": "180g",
@@ -220,32 +241,38 @@ class ColoredProductionInventoryTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["库存/SKU待核对"], 10)
         self.assertEqual(result.iloc[0]["尚未读取平台"], "Haloo")
 
-    def test_fast_platform_cache_enters_colored_consumption_model(self):
+    def test_colored_history_reuses_unified_period_production_model(self):
         target = pd.Timestamp("2026-08-06").date()
-        fast_daily = pd.DataFrame([
-            {"颜色": "红色", "尺码": "L", "生产数量": 120},
-        ])
+        period = type("Period", (), {
+            "data": pd.DataFrame([{
+                "颜色": "浅灰", "尺码": "L", "平台生产日均": 120.0,
+            }]),
+            "effective_days": 30,
+            "requested_days": 30,
+        })()
 
         with patch(
             "automation.sync.colored_models."
-            "load_daily_colored_production",
-            side_effect=lambda day, require_complete=False, **_kwargs: (
-                fast_daily if day == target else pd.DataFrame()
-            ),
-        ) as load_daily:
+            "load_recent_production_model",
+            return_value=period,
+        ) as load_period:
             result = load_colored_consumption_history(
-                object(), target, days=2
+                object(), target, days=30
             )
 
         self.assertEqual(result.iloc[0]["每日消耗"], 120)
-        self.assertEqual(result.iloc[0]["有效天数"], 1)
-        self.assertTrue(all(
-            call.kwargs["require_complete"] is False
-            for call in load_daily.call_args_list
-        ))
+        self.assertEqual(result.iloc[0]["有效天数"], 30)
+        self.assertEqual(result.iloc[0]["窗口总消耗"], 3600)
+        self.assertEqual(result.iloc[0]["颜色"], "浅灰")
+        load_period.assert_called_once_with(
+            target, 30, "彩色短袖", ANY
+        )
 
     def test_golden_maps_to_yellow(self):
         self.assertEqual(normalize_color("golden"), "黄色")
+
+    def test_aurora_blue_maps_to_blue(self):
+        self.assertEqual(normalize_color("Aurora Blue"), "蓝色")
 
     def test_shortage_is_capped_at_zero(self):
         allocation = pd.DataFrame([{

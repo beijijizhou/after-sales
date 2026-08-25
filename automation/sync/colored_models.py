@@ -2,16 +2,12 @@
 
 import pandas as pd
 
+from automation.production_period import load_recent_production_model
 from automation.sync.colored_source import (
-    load_daily_colored_production,
     load_daily_colored_production_source,
 )
 from db.inventory.core.constants import SIZE_COLUMNS
 from db.planning import build_daily_usage_contract, empty_daily_usage_contract
-from utils.daily_usage_model import (
-    EFFECTIVE_DAYS_GLOBAL_WINDOW,
-    build_daily_usage_summary,
-)
 from utils.erp.inventory_mapping import KEY_COLUMNS
 
 
@@ -20,55 +16,31 @@ COLORED_REASON_PREFIX = "彩色短袖生产自动扣减 "
 
 
 def load_colored_consumption_history(supabase, current_date, days=14):
-    frames, observation_dates = [], []
-    cache_dates, missing_cache_dates = [], []
-    for offset in range(int(days)):
-        target_date = current_date.fromordinal(current_date.toordinal() - offset)
-        daily = load_daily_colored_production(
-            target_date, require_complete=False, supabase=supabase
-        )
-        if daily.empty:
-            missing_cache_dates.append(target_date)
-            continue
-        daily = daily.copy()
-        daily["日期"] = target_date
-        daily["颜色"] = daily["颜色"].replace({"浅灰": "灰色"})
-        frames.append(daily)
-        observation_dates.append(target_date)
-        cache_dates.append(target_date)
-    ledger_dates = []
-    if missing_cache_dates:
-        ledger = load_colored_ledger_history(
-            supabase, min(missing_cache_dates), max(missing_cache_dates)
-        )
-        for target_date in missing_cache_dates:
-            daily = ledger[ledger["日期"] == target_date].copy()
-            if daily.empty:
-                continue
-            frames.append(daily)
-            observation_dates.append(target_date)
-            ledger_dates.append(target_date)
     columns = [
         "颜色", "尺码", "每日消耗", "有效天数", "自然日均消耗",
         "窗口总消耗", "窗口天数",
     ]
-    if not frames:
-        empty = pd.DataFrame(columns=columns)
-        empty.attrs.update({"cache_dates": (), "ledger_dates": ()})
-        return empty
-    summary = build_daily_usage_summary(
-        pd.concat(frames, ignore_index=True), ["颜色", "尺码"], "生产数量",
-        current_date, days, date_column="日期",
-        effective_day_mode=EFFECTIVE_DAYS_GLOBAL_WINDOW,
-        observation_dates=observation_dates, usage_column="每日消耗",
-        effective_days_column="有效天数", natural_usage_column="自然日均消耗",
-        total_usage_column="窗口总消耗", window_days_column="窗口天数",
-        round_digits=3,
+    model = load_recent_production_model(
+        current_date, int(days), CATEGORY, supabase
     )
-    result = summary[columns]
+    if model.data.empty:
+        empty = pd.DataFrame(columns=columns)
+        empty.attrs.update({"source": "empty", "ledger_dates": ()})
+        return empty
+    result = model.data.rename(columns={
+        "平台生产日均": "每日消耗",
+    }).copy()
+    result["有效天数"] = int(model.effective_days)
+    result["自然日均消耗"] = result["每日消耗"]
+    result["窗口总消耗"] = (
+        pd.to_numeric(result["每日消耗"], errors="coerce").fillna(0)
+        * int(model.requested_days or days)
+    )
+    result["窗口天数"] = int(model.requested_days or days)
+    result = result[columns]
     result.attrs.update({
-        "cache_dates": tuple(sorted(cache_dates)),
-        "ledger_dates": tuple(sorted(ledger_dates)),
+        "source": "production_period",
+        "ledger_dates": (),
     })
     return result
 

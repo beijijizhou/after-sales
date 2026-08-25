@@ -2,11 +2,14 @@ from datetime import date
 import unittest
 from unittest.mock import Mock, patch
 
+import pandas as pd
+
 from automation.api.s2b.client import (
     fetch_s2b_production_records,
     new_york_production_bounds,
 )
 from automation.api.s2b.parser import parse_s2b_production_records
+from utils.erp.parser import parse_normalized_production_data
 
 
 class S2BProductionApiTests(unittest.TestCase):
@@ -80,6 +83,63 @@ class S2BProductionApiTests(unittest.TestCase):
         self.assertEqual(
             row["数据口径"], "S2B 账单生产时间（纽约）"
         )
+
+    def test_s2b_female_label_uses_confirmed_adult_tshirt_rule(self):
+        result = parse_s2b_production_records([{
+            "id": 100,
+            "order_code": "ORDER-2",
+            "order_item_code": "ORDER-2-1",
+            "basic_product_name": "180g女士大码烫画T恤-前面（美国直发）",
+            "color_name": "Aurora Blue",
+            "size_name": "M",
+            "num": 2,
+            "order_status_text": "已生产",
+            "product_batch_number": "B2",
+            "production_at": "2026-08-02 15:30:00",
+        }])
+
+        row = result.iloc[0]
+        self.assertEqual(row["品类"], "彩色短袖")
+        self.assertEqual(row["颜色"], "蓝色")
+        self.assertEqual(row["版型确认状态"], "已确认成人短袖")
+
+    def test_unconfirmed_female_label_does_not_enter_adult_model(self):
+        result = parse_s2b_production_records([{
+            "id": 101,
+            "order_code": "ORDER-3",
+            "order_item_code": "ORDER-3-1",
+            "basic_product_name": "Women Premium T-Shirt",
+            "color_name": "Pink",
+            "size_name": "S",
+            "num": 1,
+            "order_status_text": "已生产",
+            "product_batch_number": "B3",
+            "production_at": "2026-08-02 15:30:00",
+        }])
+
+        row = result.iloc[0]
+        self.assertEqual(row["品类"], "短袖版型待确认")
+        self.assertEqual(row["版型确认状态"], "待人工确认")
+
+    def test_longfeng_female_label_uses_confirmed_adult_rule(self):
+        result = parse_normalized_production_data(pd.DataFrame([{
+            "生产项编码": "LF-1",
+            "生产单号": "LF-ORDER-1",
+            "商品": "美国-洛杉矶 女款圆领短袖T恤（正面）",
+            "商品底款": "美国-洛杉矶 女款圆领短袖T恤（正面）",
+            "颜色": "Black",
+            "尺码": "XL",
+            "数量": 1,
+            "生产项状态": "已生产",
+            "工艺路线": "默认工艺路线",
+            "创建时间": "2026-08-03 10:00:00",
+            "生产完成时间": "2026-08-03 12:00:00",
+            "运营商": "隆丰",
+        }]))
+
+        row = result.iloc[0]
+        self.assertEqual(row["品类"], "黑白短袖")
+        self.assertEqual(row["版型确认状态"], "已确认成人短袖")
 
 
 if __name__ == "__main__":

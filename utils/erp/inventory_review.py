@@ -3,9 +3,7 @@ import pandas as pd
 from utils.erp.inventory_mapping import normalize_production_for_inventory
 
 
-COLOR_TARGETS = {
-    "浅灰": "灰色",
-}
+COLOR_TARGETS = {}
 COLORED_CANONICAL_COLORS = {
     "红色", "橙色", "黄色", "绿色", "蓝色", "紫色", "粉色",
     "浅灰", "灰色", "深灰", "杏色", "棕色", "TiffanyBlue",

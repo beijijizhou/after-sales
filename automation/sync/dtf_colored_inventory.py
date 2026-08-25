@@ -26,7 +26,7 @@ from utils.erp.inventory_mapping import normalize_size
 CATEGORY = "彩色短袖"
 SOURCE_TYPE = "production_sync"
 AGGREGATE_PLATFORM = "全部衣服平台"
-COLORED_MAPPING_RULE_VERSION = "colored-v2-l-to-green"
+COLORED_MAPPING_RULE_VERSION = "colored-v4-aurora-blue-audience-review"
 
 
 def colored_daily_reason(movement_date):

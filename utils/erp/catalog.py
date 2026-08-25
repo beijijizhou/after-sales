@@ -1,3 +1,5 @@
+import pandas as pd
+
 from utils.erp.hansen_styles import (
     find_hansen_hoodie_style,
     find_hansen_uv_style,
@@ -10,7 +12,7 @@ COLOR_ALIASES = {
     "橘色": "橙色", "yellow": "黄色", "golden": "黄色",
     "green": "绿色", "l": "绿色",
     "army green": "绿色", "mint green": "绿色",
-    "blue": "蓝色", "sapphire blue": "蓝色",
+    "blue": "蓝色", "sapphire blue": "蓝色", "aurora blue": "蓝色",
     "blue-green": "TiffanyBlue", "blue green": "TiffanyBlue",
     "bluegreen": "TiffanyBlue", "蓝绿色": "TiffanyBlue",
     "purple": "紫色", "light purple": "紫色",
@@ -53,7 +55,15 @@ THREED_CATEGORY_RULES = {
 DTF_CATEGORY_RULES = {
     "帆布袋": "帆布袋",
 }
-GARMENT_CATEGORIES = {"黑白短袖", "彩色短袖", "卫衣", "3D满复印"}
+PENDING_TSHIRT_CATEGORY = "短袖版型待确认"
+FEMALE_TSHIRT_PATTERN = r"女款|女士|women(?:'s)?|woman|female|ladies|lady"
+CONFIRMED_ADULT_TSHIRT_RULES = (
+    ("s2b", "180g女士大码烫画t恤"),
+    ("隆丰", "美国-洛杉矶 女款圆领短袖t恤"),
+)
+GARMENT_CATEGORIES = {
+    "黑白短袖", "彩色短袖", PENDING_TSHIRT_CATEGORY, "卫衣", "3D满复印",
+}
 
 
 def normalize_color(value):
@@ -121,6 +131,28 @@ def normalize_production_catalog(df):
 
     result.loc[is_tshirt & ~is_colored, "品类"] = "黑白短袖"
     result.loc[is_tshirt & is_colored, "品类"] = "彩色短袖"
+    product_title = result.get(
+        "商品", pd.Series("", index=result.index)
+    ).fillna("").astype(str).str.strip().str.casefold()
+    platform = result.get(
+        "运营商", pd.Series("", index=result.index)
+    ).fillna("").astype(str).str.strip().str.casefold()
+    female_labeled = product_title.str.contains(
+        FEMALE_TSHIRT_PATTERN, regex=True
+    )
+    confirmed_adult = pd.Series(False, index=result.index)
+    for confirmed_platform, title_pattern in CONFIRMED_ADULT_TSHIRT_RULES:
+        confirmed_adult = confirmed_adult | (
+            platform.eq(confirmed_platform)
+            & product_title.str.contains(title_pattern, regex=False)
+        )
+    pending_audience = is_tshirt & female_labeled & ~confirmed_adult
+    result["版型确认状态"] = ""
+    result.loc[is_tshirt & confirmed_adult, "版型确认状态"] = (
+        "已确认成人短袖"
+    )
+    result.loc[pending_audience, "版型确认状态"] = "待人工确认"
+    result.loc[pending_audience, "品类"] = PENDING_TSHIRT_CATEGORY
     result.loc[is_hoodie, "品类"] = "卫衣"
     return _split_size_and_model(result)
 

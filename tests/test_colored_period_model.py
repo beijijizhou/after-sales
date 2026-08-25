@@ -100,19 +100,22 @@ class ColoredPeriodModelTests(unittest.TestCase):
         self.assertEqual(chunks[0], (date(2026, 5, 18), date(2026, 5, 24)))
         self.assertEqual(chunks[-1], (date(2026, 8, 10), date(2026, 8, 15)))
 
-    def test_diy19_platforms_use_one_calendar_day_per_chunk(self):
+    def test_high_volume_platforms_use_one_calendar_day_per_chunk(self):
         start = date(2026, 8, 14)
         end = date(2026, 8, 16)
         weekly = _date_chunks(start, end, 7)
 
         diy = _platform_chunks("七创", start, end, weekly)
+        humbird = _platform_chunks("Haloo", start, end, weekly)
         ordinary = _platform_chunks("S2B", start, end, weekly)
 
-        self.assertEqual(diy, [
+        daily = [
             (date(2026, 8, 14), date(2026, 8, 14)),
             (date(2026, 8, 15), date(2026, 8, 15)),
             (date(2026, 8, 16), date(2026, 8, 16)),
-        ])
+        ]
+        self.assertEqual(diy, daily)
+        self.assertEqual(humbird, daily)
         self.assertEqual(ordinary, weekly)
 
     def test_forced_diy19_daily_read_does_not_reuse_stale_cache(self):
@@ -139,6 +142,38 @@ class ColoredPeriodModelTests(unittest.TestCase):
         fetch.assert_called_once()
         self.assertEqual(len(rows), 1)
         self.assertEqual(source, "七创单日API")
+
+    def test_humbird_busy_day_falls_back_to_six_hour_chunks(self):
+        rows = pd.DataFrame([
+            _production_row("浅灰", "L", 10, "品牌A")
+        ])
+        calls = []
+
+        def load(_platform, _start, _end, **kwargs):
+            calls.append((kwargs.get("start_hour"), kwargs.get("end_hour")))
+            if len(calls) == 1:
+                raise RuntimeError("参数异常：请求数量超过1w条")
+            return ProductionDataResult(rows.copy(), "Haloo API")
+
+        with patch(
+            "automation.sync.colored_period.load_production_cache",
+            return_value=None,
+        ), patch(
+            "automation.sync.colored_period.load_production_data",
+            side_effect=load,
+        ), patch(
+            "automation.sync.colored_period.save_production_cache",
+        ):
+            result, source = _load_chunk(
+                "Haloo", date(2026, 8, 10), date(2026, 8, 10),
+                {"api_key": "test"}, force_refresh=True,
+            )
+
+        self.assertEqual(calls, [
+            (None, None), (0, 5), (6, 11), (12, 17), (18, 23),
+        ])
+        self.assertEqual(len(result), 4)
+        self.assertIn("单日高峰分时", source)
 
     def test_platform_and_date_chunks_merge_brands_by_color_and_size(self):
         rows = pd.DataFrame([

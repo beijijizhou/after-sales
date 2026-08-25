@@ -199,6 +199,31 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
         self.assertEqual(int(forecast.iloc[0]["建议点货量"]), 450)
         self.assertEqual(forecast.iloc[0]["建议点货尺码"], "S:450件")
 
+    def test_forecast_keeps_demand_color_without_inventory_sku_visible(self):
+        stock = pd.DataFrame([{
+            "颜色": "蓝色", "S": 100,
+            **{size: 0 for size in SIZE_COLUMNS if size != "S"},
+            "总库存": 100,
+        }])
+        model = pd.DataFrame([
+            {"color": "蓝色", "size": "S", "consumption_quantity": 10},
+            {
+                "color": "Aurora Blue", "size": "4XL",
+                "consumption_quantity": 1,
+            },
+        ])
+
+        forecast = build_inventory_consumption_alerts(
+            stock, model, target_days=55,
+            inventory_date=date(2026, 8, 24),
+            current_date=date(2026, 8, 24),
+        )
+
+        aurora = forecast[forecast["颜色"].eq("Aurora Blue")].iloc[0]
+        self.assertEqual(int(aurora["库存基准总数"]), 0)
+        self.assertEqual(int(aurora["预测日耗合计"]), 1)
+        self.assertEqual(int(aurora["建议点货量"]), 55)
+
     def test_warehouse_average_uses_outbound_intervals(self):
         model = pd.DataFrame([{
             "color": "白",

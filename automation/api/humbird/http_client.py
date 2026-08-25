@@ -32,6 +32,8 @@ def fetch_humbird_production_records_http(
     end_date,
     credentials,
     report_progress=None,
+    start_hour=0,
+    end_hour=23,
 ):
     report = report_progress or (lambda _message: None)
     token = str((credentials or {}).get("token") or "").strip()
@@ -57,7 +59,8 @@ def fetch_humbird_production_records_http(
     report(f"2/3 正在直接读取 {platform} 生产列表 API")
     while expected_total is None or len(records) < expected_total:
         payload = build_production_item_payload(
-            start_date, end_date, page=page, page_size=PAGE_SIZE
+            start_date, end_date, page=page, page_size=PAGE_SIZE,
+            start_hour=start_hour, end_hour=end_hour,
         )
         body = _json_body(payload)
         response = session.post(

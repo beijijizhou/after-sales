@@ -36,11 +36,15 @@ def fetch_open_production_records(
     credentials,
     report_progress=None,
     include_product_details=True,
+    start_hour=0,
+    end_hour=23,
 ):
     client = HumbirdOpenApiClient(credentials)
     report = report_progress or (lambda _message: None)
     report("1/3 正在通过蜂鸟官方开放 API 读取生产项")
-    records = client.production_items(start_date, end_date)
+    records = client.production_items(
+        start_date, end_date, start_hour=start_hour, end_hour=end_hour
+    )
     report(f"2/3 已读取 {len(records):,} 个生产项")
     if include_product_details and records:
         records = _hydrate_product_details(client, records, report)
@@ -57,12 +61,16 @@ class HumbirdOpenApiClient:
             raise ValueError("蜂鸟开放平台缺少 api_key")
         self.session = session or requests.Session()
 
-    def production_items(self, start_date, end_date, statuses=None):
+    def production_items(
+        self, start_date, end_date, statuses=None, start_hour=0, end_hour=23,
+    ):
         def fetch_page(page):
             body = {
                 "page": page,
                 "page_size": PAGE_SIZE,
-                "created_range": _date_range(start_date, end_date),
+                "created_range": _date_range(
+                    start_date, end_date, start_hour, end_hour
+                ),
             }
             if statuses is not None:
                 body["status"] = list(statuses)
@@ -206,9 +214,15 @@ def _response_data(response, api_type):
     return data if isinstance(data, dict) else {}
 
 
-def _date_range(start_date, end_date):
-    start_at = datetime.combine(start_date, time.min, NEW_YORK)
-    end_at = datetime.combine(end_date, time.max, NEW_YORK)
+def _date_range(start_date, end_date, start_hour=0, end_hour=23):
+    start_at = datetime.combine(
+        start_date, time(hour=int(start_hour)), NEW_YORK
+    )
+    end_at = datetime.combine(
+        end_date,
+        time(hour=int(end_hour), minute=59, second=59, microsecond=999999),
+        NEW_YORK,
+    )
     if (end_date - start_date).days > 29:
         raise ValueError("蜂鸟开放平台单次最多查询 30 天")
     return {

@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from db.inventory.core.queries import load_inventory_items
+from utils.erp.catalog import PENDING_TSHIRT_CATEGORY
 from utils.erp.inventory_review import (
     build_colored_tshirt_inventory_review,
 )
@@ -12,6 +13,26 @@ def render_colored_inventory_review(supabase, production_df):
     st.caption(
         "这是扣减前预览，不会修改库存。未匹配数据不会进入预计扣减。"
     )
+    categories = production_df.get(
+        "品类", pd.Series("", index=production_df.index)
+    )
+    pending_audience = production_df[
+        categories.eq(PENDING_TSHIRT_CATEGORY)
+    ].copy()
+    if not pending_audience.empty:
+        pending_audience["数量"] = pd.to_numeric(
+            pending_audience["数量"], errors="coerce"
+        ).fillna(0).astype(int)
+        pending_total = int(pending_audience["数量"].sum())
+        st.warning(
+            f"有 {pending_total:,} 件名称带女款/女士/Women 的短袖版型待确认，"
+            "确认前不会进入普通短袖库存映射。"
+        )
+        pending_summary = pending_audience.groupby(
+            ["运营商", "商品", "颜色", "尺码"], as_index=False,
+            dropna=False,
+        )["数量"].sum()
+        st.dataframe(pending_summary, hide_index=True, width="stretch")
     inventory = load_inventory_items(
         supabase, "DTF", "彩色短袖"
     )
@@ -48,8 +69,23 @@ def render_colored_inventory_review(supabase, production_df):
             },
             {
                 "生产数据": "浅灰",
-                "库存目标": "灰色",
-                "规则": "已确认颜色别名",
+                "库存目标": "浅灰",
+                "规则": "统一正式颜色",
+            },
+            {
+                "生产数据": "Aurora Blue",
+                "库存目标": "蓝色",
+                "规则": "统一颜色别名",
+            },
+            {
+                "生产数据": "S2B 女士大码 / 隆丰女款圆领短袖",
+                "库存目标": "普通成人短袖",
+                "规则": "均已确认实际为男/成人版型",
+            },
+            {
+                "生产数据": "其他女款/女士/Women 短袖",
+                "库存目标": "暂不映射",
+                "规则": "版型待人工确认",
             },
             {
                 "生产数据": "其他颜色、尺码",

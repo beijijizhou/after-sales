@@ -94,7 +94,8 @@ def load_production_data(
         if credentials.get("api_key"):
             try:
                 records = fetch_open_production_records(
-                    start_date, end_date, credentials, report_progress
+                    start_date, end_date, credentials, report_progress,
+                    start_hour=start_hour, end_hour=end_hour,
                 )
                 api_source = "官方开放 API"
             except Exception as open_error:
@@ -116,6 +117,8 @@ def load_production_data(
                         end_date,
                         fallback,
                         report_progress,
+                        start_hour=start_hour,
+                        end_hour=end_hour,
                     )
                 except HumbirdAuthenticationError as token_error:
                     if not refresh_credentials:
@@ -124,6 +127,7 @@ def load_production_data(
                     records = fetch_humbird_production_records_http(
                         platform, start_date, end_date, fallback,
                         report_progress,
+                        start_hour=start_hour, end_hour=end_hour,
                     )
                 api_source = "旧接口备用通道"
         else:
@@ -134,6 +138,8 @@ def load_production_data(
                     end_date,
                     credentials,
                     report_progress,
+                    start_hour=start_hour,
+                    end_hour=end_hour,
                 )
             except HumbirdAuthenticationError as token_error:
                 if not refresh_credentials:
@@ -142,6 +148,7 @@ def load_production_data(
                 records = fetch_humbird_production_records_http(
                     platform, start_date, end_date, refreshed,
                     report_progress,
+                    start_hour=start_hour, end_hour=end_hour,
                 )
             api_source = "直接 API"
         data = filter_production_time(

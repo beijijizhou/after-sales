@@ -6,8 +6,13 @@ from datetime import timedelta
 
 import pandas as pd
 
+from automation.api.humbird import (
+    is_result_limit_error,
+    load_busy_day_chunks,
+)
 from automation.api.diy19 import DIY19_BASE_URLS
 from automation.production import DTF_PRODUCTION_PLATFORMS, load_production_data
+from automation.playwright.haloo import ERP_PLATFORM_NAMES
 from automation.production_batch import ALL_CLOTHING_PLATFORMS
 from automation.production_cache import load_production_cache, save_production_cache
 from automation.sync.credentials import load_platform_credentials
@@ -475,17 +480,34 @@ def _load_chunk(
     )
     if cached is not None:
         return cached.data, cached.source
-    result = load_production_data(
-        platform, start_date, end_date, credentials=credentials
-    )
+    try:
+        result = load_production_data(
+            platform, start_date, end_date, credentials=credentials
+        )
+    except Exception as error:
+        if not _needs_subday_split(platform, start_date, end_date, error):
+            raise
+        data, source = load_busy_day_chunks(
+            load_production_data, platform, start_date, credentials
+        )
+        save_production_cache(platform, start_date, end_date, data, source)
+        return data, source
     save_production_cache(
         platform, start_date, end_date, result.data, result.source
     )
     return result.data, result.source
 
 
+def _needs_subday_split(platform, start_date, end_date, error):
+    return (
+        platform in ERP_PLATFORM_NAMES
+        and start_date == end_date
+        and is_result_limit_error(error)
+    )
+
+
 def _platform_chunks(platform, start_date, end_date, default_chunks):
-    if platform in DIY19_BASE_URLS:
+    if platform in DIY19_BASE_URLS or platform in ERP_PLATFORM_NAMES:
         return _date_chunks(start_date, end_date, 1)
     return default_chunks
 

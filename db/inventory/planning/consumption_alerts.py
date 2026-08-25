@@ -20,7 +20,6 @@ def build_inventory_consumption_alerts(
         return inventory_df.copy()
 
     active_sizes = sizes or SIZE_COLUMNS
-    stock_df = inventory_df.groupby("颜色", as_index=False)[SIZE_COLUMNS].sum()
     model_df = model_df.rename(columns={
         "color": "颜色",
         "size": "尺码",
@@ -33,6 +32,8 @@ def build_inventory_consumption_alerts(
         model_df.groupby(["颜色", "尺码"], as_index=False)["消耗数量"]
         .sum()
     )
+    inventory_df = _append_demand_only_colors(inventory_df, model_df)
+    stock_df = inventory_df.groupby("颜色", as_index=False)[SIZE_COLUMNS].sum()
 
     alert_by_color = {}
     elapsed_days = max((current_date - inventory_date).days, 0) if inventory_date and current_date else 0
@@ -111,6 +112,24 @@ def build_inventory_consumption_alerts(
         }
 
     return attach_alert_columns(inventory_df, alert_by_color, coverage_days)
+
+
+def _append_demand_only_colors(inventory_df, model_df):
+    stock_colors = set(inventory_df["颜色"].dropna().astype(str))
+    demand_colors = set(model_df["颜色"].dropna().astype(str))
+    missing = sorted(demand_colors - stock_colors)
+    if not missing:
+        return inventory_df
+    rows = []
+    for color in missing:
+        row = {column: pd.NA for column in inventory_df.columns}
+        row["颜色"] = color
+        for size in SIZE_COLUMNS:
+            row[size] = 0
+        if "总库存" in row:
+            row["总库存"] = 0
+        rows.append(row)
+    return pd.concat([inventory_df, pd.DataFrame(rows)], ignore_index=True)
 
 
 def build_low_stock_text(days_by_size, alert_days):

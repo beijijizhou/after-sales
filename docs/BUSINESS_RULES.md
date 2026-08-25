@@ -690,3 +690,25 @@ forecast as an estimate.
 - `utils/auth/constants.py` defines technical permission identifiers and page
   requirements only. Runtime role composition comes from `app_roles` and
   `app_role_permissions` in the database.
+
+## 彩色短袖颜色口径
+
+- 彩色短袖的浅灰色统一使用正式颜色 `浅灰`。ERP 中的 `gray`、`grey`、
+  `灰`、`灰色`、`light gray`、`light grey` 和 `浅灰色`均标准化为`浅灰`。
+- ERP 颜色 `Aurora Blue` 统一映射为正式库存颜色 `蓝色`，不得单独生成
+  `Aurora Blue` 库存或点货行。
+- 库存 SKU、生产消耗模型、点货预测和系统库存扣减必须使用同一`浅灰`
+  口径，不得再把生产数据二次转换为库存`灰色`。
+- 历史 SKU 身份调整必须通过现有 SKU 修改流程执行并保留变更审计。
+
+## 短袖版型确认口径
+
+- 不得仅根据 ERP 商品名称中的`女款`、`女士`、`Women`等字样，自动判定
+  实际库存版型。新出现的此类商品先标记为`短袖版型待确认`，在用户确认
+  前不得进入普通黑白或彩色短袖库存映射、扣减和点货模型。
+- S2B 的`180g女士大码烫画T恤`虽使用女士名称，但实际是男/成人短袖，
+  已由用户确认，继续进入普通黑白或彩色短袖模型。
+- 隆丰的`美国-洛杉矶 女款圆领短袖T恤`虽使用女款名称，但实际也是
+  男/成人短袖，已由用户确认，继续进入普通黑白或彩色短袖模型。
+- 版型待确认行必须在生产映射界面显示平台、商品名称、颜色、尺码和数量；
+  不得把版型判断仅隐藏在代码中。

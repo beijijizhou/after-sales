@@ -52,7 +52,9 @@ def render_colored_mapping_review(current_date, supabase=None):
     st.info(f"已读取平台：{included}｜尚未读取平台：{missing}")
     st.markdown("#### 生产字段标准化")
     st.caption(
-        "颜色先按别名标准化，浅灰再映射到库存灰色；尺码统一为 S–5XL。"
+        "颜色先按别名标准化，浅灰直接使用库存统一口径，Aurora Blue 并入"
+        "蓝色；尺码统一为 S–5XL。S2B 女士大码及隆丰女款圆领短袖已确认按"
+        "普通成人短袖处理，其他新出现的女款名称必须先人工确认。"
         "异常会明确显示，不会静默丢弃。"
     )
     if source_map.empty:
