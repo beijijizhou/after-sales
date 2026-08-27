@@ -5,6 +5,8 @@ from unittest.mock import Mock
 import pandas as pd
 
 from db.inventory.operations.daily_outbound_versions import (
+    NO_OUTBOUND_ACK_PREFIX,
+    acknowledge_no_daily_outbound,
     build_daily_outbound_edit_rows,
     save_daily_outbound_revision,
     void_daily_outbound_revision,
@@ -15,6 +17,28 @@ from db.inventory.planning.demand_anomaly import (
 
 
 class DailyOutboundVersionTests(unittest.TestCase):
+    def test_no_outbound_ack_creates_zero_change_revision(self):
+        supabase = Mock()
+        query = supabase.table.return_value
+        query.select.return_value.eq.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+        query.insert.return_value.execute.return_value.data = [{"id": "daily-ack"}]
+
+        result = acknowledge_no_daily_outbound(
+            supabase, "DTF", "黑白短袖", date(2026, 8, 25),
+            "Andy", "无调货",
+        )
+
+        revision_rows = [
+            call.args[0]
+            for call in query.insert.call_args_list
+            if "requested_total" in call.args[0]
+        ]
+        self.assertEqual(result["status"], "acknowledged")
+        self.assertEqual(revision_rows[0]["requested_total"], 0)
+        self.assertTrue(
+            revision_rows[0]["note"].startswith(NO_OUTBOUND_ACK_PREFIX)
+        )
+
     def test_void_restores_inventory_and_marks_logical_batch_voided(self):
         supabase = Mock()
         select_execute = (

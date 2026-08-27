@@ -1,9 +1,12 @@
 from hashlib import sha1
 
+import pandas as pd
 import streamlit as st
 
 from db.inventory import build_inventory_table
 from ui.inventory.history.workflows.page import (
+    filter_inventory_history_data,
+    load_inventory_history_data,
     render_inventory_history,
 )
 from ui.inventory.history.workflows.revisions import (
@@ -41,11 +44,12 @@ from ui.inventory.stock.table import (
 )
 
 
+@st.fragment
 def render_inventory_tabs(
     supabase, department, category, inventory_df, raw_df,
     inventory_date, selected_date, current_date, visible_sizes, can_edit,
-    can_view_cost, history_data, movement_types, filter_title,
-    undo_history_data=None, operation_inventory_df=None,
+    can_view_cost, movement_types, filter_title, history_filters,
+    operation_inventory_df=None,
     operation_raw_df=None,
     history_filter_active=False,
 ):
@@ -57,6 +61,9 @@ def render_inventory_tabs(
         tab_names, key=inventory_tab_state_key(department, category),
         on_change="rerun"
     )))
+    history_data, complete_history_data = _load_open_history_tab(
+        tabs, supabase, department, history_filters
+    )
 
     if tabs["库存明细"].open:
         with tabs["库存明细"]:
@@ -150,7 +157,7 @@ def render_inventory_tabs(
             st.caption(f"{t('当前流水筛选')}：{filter_title}")
             _render_history(
                 supabase, department, "all", history_data, visible_sizes,
-                movement_types, quantity_search_data=undo_history_data,
+                movement_types, quantity_search_data=complete_history_data,
                 show_all_filtered=history_filter_active,
             )
 
@@ -167,7 +174,7 @@ def render_inventory_tabs(
                     )
             _render_history(
                 supabase, department, "undo",
-                undo_history_data or history_data, visible_sizes,
+                complete_history_data, visible_sizes,
                 movement_types,
             )
 
@@ -232,6 +239,29 @@ def _render_history(
         quantity_search_data=quantity_search_data,
         show_all_filtered=show_all_filtered,
     )
+
+
+def _load_open_history_tab(tabs, supabase, department, filters):
+    history_open = tabs["库存流水"].open
+    reversal_open = tabs["批次修改与撤销"].open
+    if not history_open and not reversal_open:
+        return None, None
+    try:
+        with st.status("正在加载库存流水…", expanded=True) as status:
+            status.write("正在读取当前部门的完整批次与流水")
+            complete = load_inventory_history_data(
+                supabase, department, limit=10000
+            )
+            status.update(
+                label="库存流水已加载", state="complete", expanded=False
+            )
+    except Exception as error:
+        st.error(f"{t('库存数据加载失败')}: {error}")
+        empty = pd.DataFrame()
+        complete = (empty, empty.copy(), empty.copy())
+    if reversal_open:
+        return None, complete
+    return filter_inventory_history_data(complete, *filters), complete
 
 
 def _select_current_inventory_date(current_date):

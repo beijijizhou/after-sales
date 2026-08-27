@@ -1,7 +1,6 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import pandas as pd
 import streamlit as st
 
 from db.inventory import (
@@ -19,10 +18,10 @@ from db.inventory.core.snapshots import (
     filter_snapshot_to_active_skus,
     should_use_saved_snapshot,
 )
+from db.inventory.core.queries import clear_inventory_query_cache
 from db.inventory.sku import load_sku_imports
 from ui.inventory.history.workflows.page import (
-    filter_inventory_history_data,
-    load_inventory_history_data,
+    clear_inventory_history_cache,
 )
 from ui.inventory.history.core.filters import MOVEMENT_TYPE_ORDER
 from ui.inventory.i18n import get_language, render_language_selector, t
@@ -42,7 +41,6 @@ from ui.inventory.operations.outbound_status import (
 )
 from ui.inventory.operations.pages import render_daily_outbound_operation
 from ui.inventory.page_tabs import (
-    inventory_tab_state_key,
     render_inventory_tabs,
 )
 from ui.inventory.shared import (
@@ -63,6 +61,8 @@ def render_inventory_summary(supabase):
     render_language_selector()
     saved_message = st.session_state.pop("inventory_saved_message", None)
     if saved_message:
+        clear_inventory_query_cache()
+        clear_inventory_history_cache()
         st.success(saved_message)
     render_saved_outbound_audit_feedback(
         OUTBOUND_TEXT[get_language()]
@@ -79,26 +79,6 @@ def render_inventory_summary(supabase):
     ) = render_inventory_dimension_filters(
         dimensions_df, key="inventory_global"
     )
-    active_tab = st.session_state.get(
-        inventory_tab_state_key(department, category), t("库存明细")
-    )
-    needs_history = active_tab in {t("库存流水"), t("批次修改与撤销")}
-    empty_history = (pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
-    complete_history_data = empty_history
-    if needs_history:
-        try:
-            with st.status("正在加载库存流水…", expanded=True) as status:
-                status.write("正在读取当前部门的完整批次与流水")
-                complete_history_data = load_inventory_history_data(
-                    supabase, department, limit=10000
-                )
-                status.update(
-                    label="库存流水已加载", state="complete",
-                    expanded=False,
-                )
-        except Exception as error:
-            st.error(f"{t('库存数据加载失败')}: {error}")
-            return
     movement_types, selected_date, _use_snapshot_date = (
         render_inventory_activity_filters(
             MOVEMENT_TYPE_ORDER,
@@ -224,20 +204,15 @@ def render_inventory_summary(supabase):
         if inventory_df.empty:
             st.warning(t("暂无库存数据"))
 
-        history_data = filter_inventory_history_data(
-            complete_history_data,
-            category, brands, materials, colors, selected_sizes,
-        )
         history_filter_active = bool(
             brands or materials or colors or selected_sizes
         )
         render_inventory_tabs(
             supabase, department, category, inventory_df, raw_df,
             inventory_date, selected_date, current_date,
-            visible_sizes, can_edit, can_view_cost, history_data,
-            movement_types,
+            visible_sizes, can_edit, can_view_cost, movement_types,
             filter_title,
-            undo_history_data=complete_history_data,
+            (category, brands, materials, colors, selected_sizes),
             operation_inventory_df=operation_inventory_df,
             operation_raw_df=complete_category_raw_df,
             history_filter_active=history_filter_active,

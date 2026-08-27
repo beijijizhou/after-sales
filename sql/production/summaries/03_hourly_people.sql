@@ -36,13 +36,13 @@ as $$
         ) at time zone 'America/New_York' as hour_start_at,
         trim(scanned_by) as person,
         coalesce(production_department, 'DTF') as production_department,
-        count(*) filter (
+        sum(greatest(coalesce(multiple_count, 1), 1)) filter (
             where lower(coalesce(trim(platform), '')) = 'haloo'
         ) as haloo_count,
-        count(*) filter (
+        sum(greatest(coalesce(multiple_count, 1), 1)) filter (
             where lower(coalesce(trim(platform), '')) <> 'haloo'
         ) as other_count,
-        count(*) as total_count
+        sum(greatest(coalesce(multiple_count, 1), 1)) as total_count
     from public.barcode_scans
     where scanned_by is not null
       and trim(scanned_by) <> ''
@@ -85,13 +85,13 @@ as $$
             'hour', scanned_at at time zone 'America/New_York'
         ) at time zone 'America/New_York' as hour_start_at,
         trim(hotstamp_by) as person,
-        count(*) filter (
+        sum(greatest(coalesce(multiple_count, 1), 1)) filter (
             where lower(coalesce(trim(platform), '')) = 'haloo'
         ) as haloo_count,
-        count(*) filter (
+        sum(greatest(coalesce(multiple_count, 1), 1)) filter (
             where lower(coalesce(trim(platform), '')) <> 'haloo'
         ) as other_count,
-        count(*) as total_count
+        sum(greatest(coalesce(multiple_count, 1), 1)) as total_count
     from public.barcode_scans
     where hotstamp_by is not null
       and trim(hotstamp_by) <> ''

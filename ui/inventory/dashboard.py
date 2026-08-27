@@ -16,6 +16,9 @@ from db.inventory.dashboard import (
     build_automatic_missing_dates,
     load_daily_completion_status,
 )
+from db.inventory.operations.daily_outbound_versions import (
+    acknowledge_no_daily_outbound,
+)
 from ui.inventory.dashboard_overview import (
     history_period,
     render_completion_overview as _render_completion_overview,
@@ -31,6 +34,7 @@ from ui.inventory.planning.uv_source import (
     render_uv_spreadsheet_selector,
 )
 from utils.auth import get_current_operator_name
+from utils.auth import has_permission
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -78,6 +82,7 @@ def _render_daily_completion(supabase, today):
         summary, completed, today, start_date,
         history_end, check_days, missing,
     )
+    _render_no_outbound_acknowledgement(supabase)
     scope_key = "inventory_dashboard_auto_flow_scope"
     if requested_flow:
         st.session_state[scope_key] = requested_flow
@@ -97,6 +102,49 @@ def _render_daily_completion(supabase, today):
         auto_load=bool(requested_flow),
         flow_scope=active_flow,
     )
+
+
+def _render_no_outbound_acknowledgement(supabase):
+    movement_date = st.session_state.get(
+        "inventory_no_outbound_ack_date"
+    )
+    if movement_date is None:
+        return
+    st.markdown("#### 确认当日无出库")
+    st.info(
+        f"{movement_date:%Y-%m-%d}｜黑白短袖：仓库确认当日无出库。"
+        "保存后只完成核对，不改变库存，不计入消耗。"
+    )
+    left, right = st.columns(2)
+    if left.button(
+        "取消", key="inventory_no_outbound_cancel", width="stretch"
+    ):
+        st.session_state.pop("inventory_no_outbound_ack_date", None)
+        st.rerun()
+    confirmed = st.checkbox(
+        "我已核对当日确实没有仓库出货",
+        key="inventory_no_outbound_confirm",
+    )
+    if not right.button(
+        "保存无出库确认",
+        type="primary", width="stretch",
+        disabled=not confirmed or not has_permission("can_edit_inventory"),
+        key="inventory_no_outbound_save",
+    ):
+        return
+    try:
+        acknowledge_no_daily_outbound(
+            supabase, "DTF", "黑白短袖", movement_date,
+            get_current_operator_name(), "仓库确认当日无出库、无调货",
+        )
+    except Exception as error:
+        st.error(f"无出库确认保存失败：{error}")
+        return
+    st.session_state.pop("inventory_no_outbound_ack_date", None)
+    st.session_state["inventory_dashboard_saved_message"] = (
+        f"{movement_date:%m/%d} 黑白短袖已确认无出库；库存未变动。"
+    )
+    st.rerun()
 
 
 def _filter_automatic_missing_dates(missing_dates, flow_label):

@@ -28,10 +28,17 @@ from ui.inventory.i18n import t
 from ui.inventory.shared import filter_inventory_rows
 
 
-def load_inventory_history_data(supabase, department, limit=500):
-    movements = load_inventory_movements(supabase, department, "", limit=limit)
-    imports = load_sku_imports(supabase, department, "", limit=limit)
+@st.cache_data(ttl=30, show_spinner=False)
+def load_inventory_history_data(_supabase, department, limit=500):
+    movements = load_inventory_movements(
+        _supabase, department, "", limit=limit
+    )
+    imports = load_sku_imports(_supabase, department, "", limit=limit)
     return movements, imports, build_movement_batches(movements, imports)
+
+
+def clear_inventory_history_cache():
+    load_inventory_history_data.clear()
 
 
 def filter_inventory_history_data(

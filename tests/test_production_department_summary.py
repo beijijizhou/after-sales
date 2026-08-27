@@ -198,6 +198,19 @@ class ProductionDepartmentSummaryTests(unittest.TestCase):
                 re.compile(r"coalesce\(production_department, 'DTF'\)\s*="),
             )
 
+    def test_production_summary_sql_counts_actual_pieces(self):
+        root = Path(__file__).resolve().parents[1]
+        sql_files = [
+            "01_person_platform.sql",
+            "02_hourly_totals.sql",
+            "03_hourly_people.sql",
+            "04_pair_workflow.sql",
+            "05_qa_period.sql",
+        ]
+        for filename in sql_files:
+            sql = (root / "sql/production/summaries" / filename).read_text()
+            self.assertIn("greatest(coalesce(multiple_count, 1), 1)", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

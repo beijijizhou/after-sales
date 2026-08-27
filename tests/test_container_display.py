@@ -161,6 +161,35 @@ class ContainerDisplayTests(unittest.TestCase):
         self.assertEqual(result["货柜记录ID"].iloc[0], "363m紫色T｜08/13到货")
         self.assertTrue(result["货柜号"].eq("").all())
 
+    def test_non_apparel_container_item_can_use_blank_color(self):
+        source = pd.DataFrame([{
+            "货柜记录ID": "第十四柜",
+            "发货日期": date(2026, 7, 8), "预计运输天数": 48,
+            "货柜号": "TRHU5477320", "部门": "UV", "品类": "保温杯",
+            "品牌": "", "材质": "直杯", "颜色": "",
+            "型号": "600ML", "数量": 8700, "成本": 2.362,
+            "状态": "在途", "备注": "B20｜174箱×50件",
+        }])
+
+        result = normalize_container_rows(source)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["颜色"], "")
+
+    def test_apparel_container_item_still_requires_color(self):
+        source = pd.DataFrame([{
+            "货柜记录ID": "T-60",
+            "发货日期": date(2026, 8, 25), "预计运输天数": 1,
+            "货柜号": "", "部门": "DTF", "品类": "黑白短袖",
+            "品牌": "杂牌", "材质": "160g", "颜色": "",
+            "型号": "M", "数量": 1440, "成本": 1.38,
+            "状态": "在途", "备注": "颜色缺失",
+        }])
+
+        result = normalize_container_rows(source)
+
+        self.assertTrue(result.empty)
+
     def test_uv_uses_compact_model_rows(self):
         source = pd.DataFrame([
             container_row("UV", "铁牌", "1040", 20_000),

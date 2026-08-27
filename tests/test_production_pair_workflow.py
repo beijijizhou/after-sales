@@ -31,7 +31,7 @@ class ProductionPairWorkflowTests(unittest.TestCase):
             detail_row(1, "13:01", "质检甲", "烫印甲", "Haloo"),
             detail_row(2, "13:40", "质检甲", "烫印甲", "Haloo"),
             detail_row(3, "13:41", "质检甲", "烫印乙", "Haloo"),
-            detail_row(4, "13:42", "质检甲", "烫印乙", "SDS"),
+            detail_row(4, "13:42", "质检甲", "烫印乙", "SDS", 3),
             detail_row(5, "16:00", "质检甲", "烫印乙", "SDS"),
         ])
 
@@ -39,10 +39,10 @@ class ProductionPairWorkflowTests(unittest.TestCase):
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result.loc[0, "主要烫印人员"], "烫印乙")
-        self.assertEqual(result.loc[0, "烫印人员明细"], "烫印乙 3、烫印甲 2")
-        self.assertEqual(result.loc[0, "总产量"], 5)
+        self.assertEqual(result.loc[0, "烫印人员明细"], "烫印乙 5、烫印甲 2")
+        self.assertEqual(result.loc[0, "总产量"], 7)
         self.assertEqual(result.loc[0, "切换次数"], 1)
-        self.assertIn("09:41–12:00 烫印乙（3）", result.loc[0, "工作流"])
+        self.assertIn("09:41–12:00 烫印乙（5）", result.loc[0, "工作流"])
 
 
 def segment_row(start, end, qa, hotstamp, count):
@@ -56,13 +56,14 @@ def segment_row(start, end, qa, hotstamp, count):
     }
 
 
-def detail_row(row_id, scanned_at, qa, hotstamp, platform):
+def detail_row(row_id, scanned_at, qa, hotstamp, platform, multiple_count=1):
     return {
         "id": row_id,
         "scanned_at": f"2026-08-03T{scanned_at}:00+00:00",
         "scanned_by": qa,
         "hotstamp_by": hotstamp,
         "platform": platform,
+        "multiple_count": multiple_count,
     }
 
 

@@ -40,6 +40,41 @@ def build_daily_completion_dates(movements, consumable_batches):
     }
 
 
+def active_daily_outbound_ack_dates(batches):
+    """Return active black/white dates explicitly confirmed as no outbound."""
+    from db.inventory.operations.daily_outbound_versions import (
+        NO_OUTBOUND_ACK_PREFIX,
+    )
+
+    dates = set()
+    for batch in batches or []:
+        if str(batch.get("status") or "") != "active":
+            continue
+        current_revision = int(batch.get("current_revision") or 0)
+        current = next((
+            revision
+            for revision in batch.get(
+                "inventory_daily_outbound_revisions", []
+            )
+            if int(revision.get("revision_number") or 0)
+            == current_revision
+        ), None)
+        if current is None:
+            continue
+        if int(current.get("requested_total") or 0) != 0:
+            continue
+        if not str(current.get("note") or "").startswith(
+            NO_OUTBOUND_ACK_PREFIX
+        ):
+            continue
+        movement_date = pd.to_datetime(
+            batch.get("movement_date"), errors="coerce"
+        )
+        if not pd.isna(movement_date):
+            dates.add(movement_date.date())
+    return dates
+
+
 def build_daily_completion_table(completed, start_date, end_date):
     expected = {
         start_date + timedelta(days=offset)

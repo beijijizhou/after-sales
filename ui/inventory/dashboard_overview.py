@@ -77,7 +77,19 @@ def render_operation_table(operation_table, today=None):
         if row["待补日期"] == "无":
             columns[6].write("—")
         elif project == "黑白短袖":
-            columns[6].page_link("pages/4_库存.py", label="去补录")
+            columns[6].page_link("pages/4_库存.py", label="补录出库")
+            if columns[6].button(
+                "确认无出库",
+                key="inventory_dashboard_no_outbound",
+                width="stretch",
+            ):
+                target_date = missing_date_target(
+                    row["待补日期"], today
+                )
+                if target_date is not None:
+                    st.session_state[
+                        "inventory_no_outbound_ack_date"
+                    ] = target_date
         elif project == "DTF 耗材":
             if columns[6].button(
                 "去补录", key="inventory_dashboard_consumable_makeup",
@@ -100,6 +112,11 @@ def render_operation_table(operation_table, today=None):
 
 def consumable_makeup_target(missing_text, today):
     """Resolve the first missing business date for the consumables page."""
+    return missing_date_target(missing_text, today)
+
+
+def missing_date_target(missing_text, today):
+    """Resolve the first missing business date in a dashboard row."""
     text = str(missing_text or "").strip()
     if not text or text == "无" or today is None:
         return None

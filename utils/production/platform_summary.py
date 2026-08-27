@@ -9,7 +9,7 @@ def summarize_by_user(df, user_column):
         df
         .groupby(user_column, as_index=False)
         .agg(
-            scan_count=("barcode", "size"),
+            scan_count=("production_quantity", "sum"),
             multiple_order_count=("is_multiple_order", "sum"),
         )
         .rename(columns={user_column: "name"})
@@ -20,7 +20,13 @@ def summarize_by_user(df, user_column):
 def build_person_platform_summary(df, user_column):
     pivot_df = (
         df
-        .pivot_table(index=user_column, columns="platform", values="barcode", fill_value=0, aggfunc="size")
+        .pivot_table(
+            index=user_column,
+            columns="platform",
+            values="production_quantity",
+            fill_value=0,
+            aggfunc="sum",
+        )
         .reset_index()
         .rename(columns={user_column: "人员"})
     )

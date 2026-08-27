@@ -52,6 +52,11 @@ def build_pair_workflow_from_detail(raw_rows):
     )
     rows["scanned_by"] = _clean_text(rows["scanned_by"])
     rows["hotstamp_by"] = _clean_text(rows["hotstamp_by"])
+    if "multiple_count" not in rows.columns:
+        rows["multiple_count"] = 1
+    rows["production_quantity"] = pd.to_numeric(
+        rows["multiple_count"], errors="coerce"
+    ).fillna(1).clip(lower=1).astype(int)
     rows = rows.dropna(subset=["scanned_at"])
     rows = rows[
         (rows["scanned_by"] != "") & (rows["hotstamp_by"] != "")
@@ -71,7 +76,7 @@ def build_pair_workflow_from_detail(raw_rows):
     ).agg(
         segment_start_at=("scanned_at", "min"),
         segment_end_at=("scanned_at", "max"),
-        scan_count=("id", "size"),
+        scan_count=("production_quantity", "sum"),
     )
     return build_pair_workflow_table(segments.rename(columns={
         "scanned_by": "qa_person",

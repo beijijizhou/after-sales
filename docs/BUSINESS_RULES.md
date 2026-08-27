@@ -170,6 +170,9 @@
   production department. The same department must constrain every summary RPC,
   hourly/workflow view, and detail-row fallback so UV work never appears under
   DTF or vice versa.
+- QA and hotstamp production totals represent actual pieces. Each scan contributes
+  at least one piece and contributes `multiple_count` pieces for a multi-piece
+  order; multi-piece order count remains the number of affected scan records.
 - UV quality inspection is platform-neutral and has no hotstamp pairing stage.
   Its current review focuses on total QA volume, people, hourly output, daily
   history and productivity; do not show Haloo/small-platform comparisons or

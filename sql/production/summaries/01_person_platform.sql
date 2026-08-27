@@ -33,7 +33,7 @@ as $$
         trim(scanned_by) as person,
         coalesce(nullif(trim(platform), ''), '未标记平台') as platform,
         coalesce(production_department, 'DTF') as production_department,
-        count(*) as scan_count,
+        sum(greatest(coalesce(multiple_count, 1), 1)) as scan_count,
         count(*) filter (
             where coalesce(multiple_count, 1) > 1
         ) as multiple_order_count,
@@ -80,7 +80,7 @@ as $$
     select
         trim(hotstamp_by) as person,
         coalesce(nullif(trim(platform), ''), '未标记平台') as platform,
-        count(*) as scan_count,
+        sum(greatest(coalesce(multiple_count, 1), 1)) as scan_count,
         count(*) filter (
             where coalesce(multiple_count, 1) > 1
         ) as multiple_order_count,

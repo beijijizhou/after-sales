@@ -27,8 +27,8 @@ as $$
         date_trunc(
             'hour', scanned_at at time zone 'America/New_York'
         ) at time zone 'America/New_York' as hour_start_at,
-        count(*) as scan_count,
-        count(*) filter (
+        sum(greatest(coalesce(multiple_count, 1), 1)) as scan_count,
+        sum(greatest(coalesce(multiple_count, 1), 1)) filter (
             where lower(coalesce(trim(platform), '')) = 'haloo'
         ) as haloo_count
     from public.barcode_scans
@@ -70,8 +70,8 @@ as $$
         date_trunc(
             'hour', scanned_at at time zone 'America/New_York'
         ) at time zone 'America/New_York' as hour_start_at,
-        count(*) as scan_count,
-        count(*) filter (
+        sum(greatest(coalesce(multiple_count, 1), 1)) as scan_count,
+        sum(greatest(coalesce(multiple_count, 1), 1)) filter (
             where lower(coalesce(trim(platform), '')) = 'haloo'
         ) as haloo_count
     from public.barcode_scans

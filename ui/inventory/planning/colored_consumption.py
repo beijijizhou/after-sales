@@ -5,10 +5,7 @@ from automation.production import DTF_PRODUCTION_PLATFORMS
 from automation.sync.colored_period import (
     LOOKBACK_DAYS,
     build_colored_platform_status,
-    load_colored_api_period_model,
-    refresh_colored_api_period,
 )
-from utils.auth.session import get_current_operator_name
 from ui.inventory.planning.colored_daily import (
     render_colored_daily_deduction_form,
 )
@@ -22,6 +19,11 @@ from ui.inventory.planning.colored_review import (
 from ui.inventory.planning.comparison import render_model_detail
 from ui.inventory.planning.colored_persistence import (
     render_cached_model_persistence,
+)
+from ui.inventory.planning.colored_model_source import (
+    default_refresh_platforms,
+    load_colored_model,
+    refresh_colored_model,
 )
 from ui.table_layout import fit_table_height
 
@@ -55,7 +57,7 @@ def _render_colored_consumption_model(
         "不同品牌属于调货来源，统一合并到相同颜色和尺码；仓库每日出库"
         "只作备份审计，不参与本模型。"
     )
-    model = load_colored_api_period_model(current_date, supabase=supabase)
+    model = load_colored_model(supabase, current_date)
     if model.source == "database" and not model.data.empty:
         st.success(
             "已从数据库加载最近 30 天彩色短袖生产消耗模型；"
@@ -86,7 +88,7 @@ def _render_colored_consumption_model(
         selected_platforms = st.multiselect(
             "选择生产平台",
             options=list(DTF_PRODUCTION_PLATFORMS),
-            default=_default_refresh_platforms(platform_status),
+            default=default_refresh_platforms(platform_status),
             key="colored_consumption_refresh_platforms",
             placeholder="请选择 Haloo、莆田或其他平台",
         )
@@ -95,54 +97,10 @@ def _render_colored_consumption_model(
             key="refresh_colored_90_day_api_model",
             disabled=not selected_platforms,
         ):
-            model = _refresh_colored_model(
+            model = refresh_colored_model(
                 supabase, current_date, selected_platforms
             )
     _render_colored_model_result(model, visible_sizes)
-
-
-def _default_refresh_platforms(status):
-    pending_states = {
-        "未开始", "读取失败", "部分读取", "已读取｜日期待核对",
-    }
-    pending = set(status.loc[
-        status["读取状态"].isin(pending_states), "平台"
-    ].astype(str))
-    return [
-        platform for platform in DTF_PRODUCTION_PLATFORMS
-        if platform in pending
-    ]
-
-
-def _refresh_colored_model(supabase, current_date, platforms):
-    selected = tuple(platforms)
-    progress = st.progress(
-        0, text="准备读取：" + "、".join(selected)
-    )
-
-    def report(done, total, message):
-        progress.progress(
-            done / max(total, 1), text=f"{done}/{total}｜{message}"
-        )
-
-    try:
-        model = refresh_colored_api_period(
-            current_date, st.secrets, report_progress=report,
-            supabase=supabase,
-            operator=get_current_operator_name(),
-            platforms=selected,
-        )
-    except Exception as error:
-        progress.empty()
-        st.error(f"平台数据更新失败：{error}")
-        return load_colored_api_period_model(
-            current_date, supabase=supabase
-        )
-    progress.empty()
-    st.success(
-        f"已更新最近 {LOOKBACK_DAYS} 天：" + "、".join(selected)
-    )
-    return model
 
 
 def _render_colored_model_result(model, visible_sizes=None):

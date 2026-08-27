@@ -13,11 +13,15 @@ from db.inventory.dashboard_completion import (
     DAILY_FLOW_LABELS,
     active_consumable_issue_dates as _active_consumable_issue_dates,
     active_inventory_movements as _active_inventory_movements,
+    active_daily_outbound_ack_dates,
     build_automatic_missing_dates,
     build_daily_completion_dates,
     build_daily_completion_table,
     build_today_completion_status,
     build_today_completion_table,
+)
+from db.inventory.operations.daily_outbound_versions import (
+    load_daily_outbound_revisions,
 )
 
 
@@ -51,6 +55,12 @@ def load_daily_completion_status(
     )
     completed = build_daily_completion_dates(
         movements, consumable_batches
+    )
+    acknowledgements = load_daily_outbound_revisions(
+        supabase, "DTF", "黑白短袖", start_date, today
+    )
+    completed["black_white"].update(
+        active_daily_outbound_ack_dates(acknowledgements)
     )
     history_end = today - timedelta(days=1)
     return (

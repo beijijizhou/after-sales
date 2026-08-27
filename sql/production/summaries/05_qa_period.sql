@@ -31,7 +31,7 @@ as $$
         coalesce(
             nullif(trim(platform), ''), '未标记平台'
         ) as platform,
-        count(*) as scan_count,
+        sum(greatest(coalesce(multiple_count, 1), 1)) as scan_count,
         count(*) filter (
             where coalesce(multiple_count, 1) > 1
         ) as multiple_order_count,

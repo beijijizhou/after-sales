@@ -3,6 +3,116 @@ import pandas as pd
 from db.inventory.operations.adjustments import reverse_inventory_batch
 
 
+NO_OUTBOUND_ACK_PREFIX = "completion_ack｜当日无出库"
+
+
+def acknowledge_no_daily_outbound(
+    supabase, department, category, movement_date, created_by, note="",
+):
+    """Record an audited zero-change completion for one business date."""
+    operator = str(created_by or "").strip() or "system"
+    batches = (
+        supabase.table("inventory_daily_outbound_batches")
+        .select("id,current_revision,status")
+        .eq("department", department)
+        .eq("category", category)
+        .eq("movement_date", movement_date.isoformat())
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if batches:
+        batch = batches[0]
+        current_revision = int(batch.get("current_revision") or 0)
+        if current_revision:
+            revisions = (
+                supabase.table("inventory_daily_outbound_revisions")
+                .select("id,requested_total,note")
+                .eq("daily_outbound_batch_id", batch["id"])
+                .eq("revision_number", current_revision)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            current = revisions[0] if revisions else {}
+            current_note = str(current.get("note") or "")
+            if (
+                batch.get("status") == "active"
+                and int(current.get("requested_total") or 0) == 0
+                and current_note.startswith(NO_OUTBOUND_ACK_PREFIX)
+            ):
+                return {
+                    "daily_outbound_batch_id": batch["id"],
+                    "revision_id": current.get("id"),
+                    "revision_number": current_revision,
+                    "status": "acknowledged",
+                }
+            if (
+                batch.get("status") == "active"
+                and int(current.get("requested_total") or 0) > 0
+            ):
+                raise ValueError("该日期已有正式出库批次，不能确认为无出库")
+    else:
+        inserted = (
+            supabase.table("inventory_daily_outbound_batches")
+            .insert({
+                "department": department,
+                "category": category,
+                "movement_date": movement_date.isoformat(),
+                "created_by": operator,
+                "updated_by": operator,
+            })
+            .execute()
+            .data
+            or []
+        )
+        if not inserted:
+            raise ValueError("无法创建无出库核对批次")
+        batch = inserted[0]
+        current_revision = 0
+
+    next_revision = current_revision + 1
+    full_note = NO_OUTBOUND_ACK_PREFIX
+    if str(note or "").strip():
+        full_note += f"｜{str(note).strip()}"
+    revision = (
+        supabase.table("inventory_daily_outbound_revisions")
+        .insert({
+            "daily_outbound_batch_id": batch["id"],
+            "revision_number": next_revision,
+            "action": "create" if next_revision == 1 else "edit",
+            "inventory_batch_id": None,
+            "reversal_inventory_batch_id": None,
+            "requested_total": 0,
+            "applied_total": 0,
+            "shortage_total": 0,
+            "note": full_note,
+            "created_by": operator,
+        })
+        .execute()
+        .data
+        or []
+    )
+    (
+        supabase.table("inventory_daily_outbound_batches")
+        .update({
+            "current_revision": next_revision,
+            "status": "active",
+            "updated_by": operator,
+        })
+        .eq("id", batch["id"])
+        .execute()
+    )
+    return {
+        "daily_outbound_batch_id": batch["id"],
+        "revision_id": revision[0]["id"] if revision else None,
+        "revision_number": next_revision,
+        "status": "acknowledged",
+    }
+
+
 def save_daily_outbound_revision(
     supabase,
     department,

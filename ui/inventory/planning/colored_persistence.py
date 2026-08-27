@@ -5,6 +5,9 @@ from automation.sync.colored_period import (
     persist_cached_colored_api_period,
 )
 from utils.auth.session import get_current_operator_name
+from ui.inventory.planning.colored_model_source import (
+    clear_colored_model_cache,
+)
 
 
 def render_cached_model_persistence(supabase, current_date, model):
@@ -33,6 +36,7 @@ def render_cached_model_persistence(supabase, current_date, model):
         st.error(f"本地模型保存失败：{error}")
     else:
         _render_persistence_result(result)
+        clear_colored_model_cache()
     return load_colored_api_period_model(
         current_date, supabase=supabase
     )

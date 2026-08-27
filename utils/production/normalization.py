@@ -33,6 +33,7 @@ def prepare_production_df(df, user_column):
     df["multiple_count"] = pd.to_numeric(
         df["multiple_count"], errors="coerce"
     ).fillna(1).clip(lower=1).astype(int)
+    df["production_quantity"] = df["multiple_count"]
     df["is_multiple_order"] = df["multiple_count"] > 1
     return df[df[user_column] != ""]
 

@@ -10,6 +10,7 @@ from db.inventory import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT, SIZE_COLUMNS
 
 CONTAINER_STATUSES = ["在途", "取消"]
 DEFAULT_TRANSIT_DAYS = 55
+COLOR_REQUIRED_CATEGORIES = {"黑白短袖", "彩色短袖"}
 
 
 def build_container_template(today=None):
@@ -64,9 +65,12 @@ def normalize_container_rows(df):
     result["成本"] = pd.to_numeric(result["成本"], errors="coerce").fillna(0)
     result.loc[~result["状态"].isin(CONTAINER_STATUSES), "状态"] = "在途"
     result = result.dropna(subset=["发货日期", "预计到货日期"])
-    result = result[
-        (result["部门"] != "") & (result["材质"] != "") & (result["颜色"] != "")
-    ]
+    has_required_identity = (result["部门"] != "") & (result["材质"] != "")
+    missing_required_color = (
+        result["品类"].isin(COLOR_REQUIRED_CATEGORIES)
+        & result["颜色"].eq("")
+    )
+    result = result[has_required_identity & ~missing_required_color]
     identifiers = [
         "货柜记录ID", "发货日期", "预计运输天数", "预计到货日期",
         "货柜号", "部门", "品类", "品牌", "材质", "颜色", "成本",

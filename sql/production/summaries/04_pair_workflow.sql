@@ -33,6 +33,7 @@ as $$
             scanned_at,
             trim(scanned_by) as qa_person,
             trim(hotstamp_by) as hotstamp_person,
+            greatest(coalesce(multiple_count, 1), 1) as production_quantity,
             lag(trim(hotstamp_by))
                 over person_order as previous_hotstamp
         from public.barcode_scans
@@ -81,7 +82,7 @@ as $$
         max(scanned_at) as segment_end_at,
         qa_person,
         hotstamp_person,
-        count(*) as scan_count
+        sum(production_quantity) as scan_count
     from segmented_rows
     group by qa_person, segment_id, hotstamp_person
     order by segment_start_at, qa_person;

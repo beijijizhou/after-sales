@@ -82,13 +82,16 @@ def summarize_by_hour(df, selected_date):
     df = add_ny_hour(df)
     if df.empty:
         return pd.DataFrame()
+    df["haloo_quantity"] = df["production_quantity"].where(
+        df["client"] == HALOO_PLATFORM, 0
+    )
 
     hourly_df = (
         df
         .groupby("hour", as_index=False)
         .agg(
-            scan_count=("barcode", "size"),
-            haloo_count=("client", lambda values: (values == HALOO_PLATFORM).sum()),
+            scan_count=("production_quantity", "sum"),
+            haloo_count=("haloo_quantity", "sum"),
         )
     )
     hourly_df = (

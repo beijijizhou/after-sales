@@ -27,6 +27,7 @@ from db.inventory.dashboard import (
     build_daily_completion_table,
     build_today_completion_status,
     build_today_completion_table,
+    active_daily_outbound_ack_dates,
 )
 from ui.inventory.dashboard import (
     _filter_automatic_missing_dates,
@@ -36,6 +37,20 @@ from ui.inventory.dashboard_overview import consumable_makeup_target
 
 
 class InventoryDashboardTests(unittest.TestCase):
+    def test_black_white_completion_accepts_no_outbound_acknowledgement(self):
+        result = active_daily_outbound_ack_dates([{
+            "movement_date": "2026-08-25",
+            "current_revision": 1,
+            "status": "active",
+            "inventory_daily_outbound_revisions": [{
+                "revision_number": 1,
+                "requested_total": 0,
+                "note": "completion_ack｜当日无出库｜无调货",
+            }],
+        }])
+
+        self.assertEqual(result, {date(2026, 8, 25)})
+
     def test_consumable_makeup_link_prefills_first_missing_business_date(self):
         self.assertEqual(
             consumable_makeup_target("08/20", date(2026, 8, 21)),

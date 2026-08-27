@@ -1,11 +1,14 @@
 import pandas as pd
+import streamlit as st
 
 from db.inventory.core.constants import DEFAULT_CATEGORY, DEFAULT_DEPARTMENT
 from db.inventory.core.pagination import fetch_range_pages
 from db.inventory.core.query_filters import apply_inventory_dimension_filters
 
 
-def load_inventory_dimensions(supabase):
+@st.cache_data(ttl=120, show_spinner=False)
+def load_inventory_dimensions(_supabase):
+    supabase = _supabase
     response = (
         supabase.table("inventory_items")
         .select("department,category,brand,material,color,size")
@@ -69,10 +72,12 @@ def load_inventory_departments(supabase):
     return departments or [DEFAULT_DEPARTMENT]
 
 
+@st.cache_data(ttl=20, show_spinner=False)
 def load_inventory_items(
-    supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY,
+    _supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY,
     active_only=True,
 ):
+    supabase = _supabase
     query = (
         supabase
         .table("inventory_items")
@@ -126,10 +131,12 @@ def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=D
     return pd.DataFrame(rows)
 
 
+@st.cache_data(ttl=20, show_spinner=False)
 def load_latest_inventory_movement_date(
-    supabase, department, category="", brands=None, materials=None,
+    _supabase, department, category="", brands=None, materials=None,
     colors=None, sizes=None,
 ):
+    supabase = _supabase
     query = (
         supabase.table("inventory_movements")
         .select("movement_date")
@@ -151,6 +158,13 @@ def load_latest_inventory_movement_date(
         rows[0].get("movement_date"), errors="coerce"
     )
     return None if pd.isna(parsed) else parsed.date()
+
+
+def clear_inventory_query_cache():
+    """Invalidate shared reads after an inventory or SKU mutation."""
+    load_inventory_dimensions.clear()
+    load_inventory_items.clear()
+    load_latest_inventory_movement_date.clear()
 
 
 def load_recent_inventory_outbound(
