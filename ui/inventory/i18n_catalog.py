@@ -3,6 +3,7 @@ LANGUAGES = {"中文": "zh", "English": "en", "Español": "es"}
 TRANSLATIONS = {
     "en": {
         "库存": "Inventory", "库存明细": "Inventory Details", "点货预测": "Reorder Forecast",
+        "显示零库存 SKU": "Show zero-stock SKUs",
         "消耗模型": "Consumption Models",
         "每日出入库": "Daily Inbound / Outbound", "历史与撤销": "History & Undo",
         "仓库每日出货及历史": "Warehouse Daily Outbound & History",
@@ -248,6 +249,7 @@ TRANSLATIONS = {
     },
     "es": {
         "库存": "Inventario", "库存明细": "Detalle de inventario", "点货预测": "Pronóstico de reposición",
+        "显示零库存 SKU": "Mostrar SKU sin existencias",
         "消耗模型": "Modelos de consumo",
         "每日出入库": "Entradas / salidas diarias", "历史与撤销": "Historial y deshacer",
         "仓库每日出货及历史": "Salida diaria de almacén e historial",

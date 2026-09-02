@@ -1,2 +1,4 @@
 2026-08-08 run: confirmed Google Sheet metadata for spreadsheet 1kbbexU-zePCPw5Rg5R2fJlcbnRLVFPYZQcL5U_Qoy7Y. Workbook contains tab 0807 but not 0808, so per automation rule no A:K detail read, no prior-day fallback, and no inventory deduction preview generated. Status only; waiting for same-day tab creation/data.
 runtime: ~6m
+2026-09-01 run: confirmed spreadsheet 1kbbexU-zePCPw5Rg5R2fJlcbnRLVFPYZQcL5U_Qoy7Y contains tab 0901 with grid 1073x28 and 193 returned A:K rows. A:K has 26 rows with material+quantity candidates totaling 3,604 pieces (Tie_2030 2479, Tie_1040 437, Tie_yuan_2020 375, Lv_yuan_2020 214, Lv_2030 82, CHEPAI 17), but no row in A:K carries a completed status value, so zero rows qualify for the daily deduction checklist under the automation rule. No inventory write and no Google Sheet edit performed; waiting for manual confirmation after the sheet exposes completed rows/status.
+runtime: ~12m

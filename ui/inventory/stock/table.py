@@ -66,7 +66,17 @@ def render_inventory_table(
         st.warning(
             t("该部门库存账已经 {days} 天没有更新").format(days=days)
         )
-    display_df = render_inventory_table_filters(inventory_df, visible_sizes)
+    show_zero_stock = st.checkbox(
+        t("显示零库存 SKU"),
+        value=False,
+        key=(
+            f"inventory_show_zero_stock_{department}_{category or 'all'}_"
+            f"{'historical' if is_historical else 'current'}"
+        ),
+    )
+    display_df = render_inventory_table_filters(
+        inventory_df, visible_sizes, include_zero_stock=show_zero_stock,
+    )
     column_config = {
         "总库存": st.column_config.NumberColumn(
             t("总库存（全部尺码）"), format="%d"
