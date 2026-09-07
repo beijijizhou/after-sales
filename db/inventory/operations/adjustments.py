@@ -97,8 +97,14 @@ def normalize_adjustment_rows(df):
     df["操作"] = df["操作"].replace({"减少": "扣减"})
     df = df[df["操作"].isin(["增加", "扣减", "设置"])]
     df = df[df["材质"] != ""]
-    df = df[df["尺码"].isin(SIZE_COLUMNS)]
-    columns = ["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "成本", "备注"]
+    df = df[df["尺码"] != ""]
+    scope_columns = [
+        column for column in ["部门", "品类"] if column in df.columns
+    ]
+    columns = [
+        *scope_columns, "日期", "操作", "品牌", "材质", "颜色",
+        "尺码", "数量", "成本", "备注",
+    ]
     return df[columns].reset_index(drop=True)
 
 

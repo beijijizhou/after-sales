@@ -124,23 +124,33 @@ def render_inventory_tabs(
                 current_date, visible_sizes, raw_df,
             )
 
-    if "仓库每日出库" in tabs and tabs["仓库每日出库"].open:
-        with tabs["仓库每日出库"]:
+    if "每日出库" in tabs and tabs["每日出库"].open:
+        with tabs["每日出库"]:
             if not can_edit:
                 st.info(t("当前账号只有库存查看权限，不能修改库存"))
             else:
+                st.info(
+                    "表格中人工确认的数量是正式每日出库；生产平台或 "
+                    "Google Sheets 数据只在“系统数据参考”中辅助核对。"
+                )
                 render_daily_outbound_operation(
-                    supabase, department, "黑白短袖", raw_df, can_edit,
+                    supabase, department, category, raw_df, can_edit,
                 )
 
-    if "系统库存扣减" in tabs and tabs["系统库存扣减"].open:
-        with tabs["系统库存扣减"]:
-            if not can_edit:
-                st.info(t("当前账号只有库存查看权限，不能修改库存"))
-            elif department == "DTF":
-                render_colored_daily_deduction(supabase, current_date)
+    if "系统数据参考" in tabs and tabs["系统数据参考"].open:
+        with tabs["系统数据参考"]:
+            st.info(
+                "系统读取仅供核对和备用，不直接形成正式每日出库，"
+                "也不会在这里修改库存。"
+            )
+            if department == "DTF":
+                render_colored_daily_deduction(
+                    supabase, current_date, reference_only=True
+                )
             elif department == "UV":
-                render_uv_daily_deduction(supabase, current_date)
+                render_uv_daily_deduction(
+                    supabase, current_date, reference_only=True
+                )
 
     if tabs["临时库存调整"].open:
         with tabs["临时库存调整"]:
@@ -167,11 +177,10 @@ def render_inventory_tabs(
                 "选择完整业务批次后，可以修改替换、数量校准或整批撤销；"
                 "原批次、修正版和撤销记录都会保留。"
             )
-            if department == "DTF" and category in {"", "黑白短袖"}:
-                with st.expander("每日出库版本历史", expanded=False):
-                    render_daily_outbound_revision_history(
-                        supabase, department, "黑白短袖"
-                    )
+            if category:
+                render_daily_outbound_revision_history(
+                    supabase, department, category
+                )
             _render_history(
                 supabase, department, "undo",
                 complete_history_data, visible_sizes,
@@ -208,13 +217,13 @@ def inventory_tab_keys(department, can_view_cost=False, category=""):
     keys = ["库存明细", "点货预测", "消耗模型"]
     department = str(department or "").strip().upper()
     category = str(category or "").strip()
-    if department == "DTF" and category in {"", "黑白短袖"}:
-        keys.append("仓库每日出库")
+    if department in {"DTF", "UV"}:
+        keys.append("每日出库")
     if (
         department == "UV"
         or (department == "DTF" and category in {"", "彩色短袖"})
     ):
-        keys.append("系统库存扣减")
+        keys.append("系统数据参考")
     keys.extend([
         "临时库存调整", "库存流水", "批次修改与撤销",
     ])

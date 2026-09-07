@@ -10,7 +10,7 @@ from utils.daily_consumption import (
 
 
 class DailyConsumptionPolicyTests(unittest.TestCase):
-    def test_inventory_flows_keep_only_input_and_model_source_different(self):
+    def test_inventory_flows_share_manual_entry_and_keep_model_sources(self):
         black_white = inventory_daily_consumption_flow(
             "DTF", "黑白短袖"
         )
@@ -18,8 +18,10 @@ class DailyConsumptionPolicyTests(unittest.TestCase):
         uv = inventory_daily_consumption_flow("UV", "铁板画")
 
         self.assertEqual(black_white.entry_source, ENTRY_MANUAL)
-        self.assertEqual(colored.entry_source, ENTRY_SYSTEM)
-        self.assertEqual(uv.entry_source, ENTRY_SYSTEM)
+        self.assertEqual(colored.entry_source, ENTRY_MANUAL)
+        self.assertEqual(uv.entry_source, ENTRY_MANUAL)
+        self.assertIn("生产系统数据", colored.model_source)
+        self.assertIn("Google Sheets", uv.model_source)
         self.assertEqual(colored.ledger, black_white.ledger)
         self.assertEqual(uv.ledger, black_white.ledger)
 

@@ -19,6 +19,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class SharedReuseContractTests(unittest.TestCase):
+    def test_project_guide_requires_actor_and_time_for_every_mutation(self):
+        guide = (PROJECT_ROOT / "AGENTS.md").read_text()
+
+        self.assertIn(
+            "Every business mutation must record who performed it and when",
+            guide,
+        )
+        self.assertIn("what happened, who did it, and when", guide)
+        self.assertIn("legacy event predates audit", guide)
+
     def test_unique_values_normalizes_once(self):
         self.assertEqual(
             unique_values([" 白 ", None, "", "黑", "白"]),

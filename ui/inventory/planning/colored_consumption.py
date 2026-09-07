@@ -160,14 +160,22 @@ def _render_colored_model_result(model, visible_sizes=None):
     )
 
 
-def render_colored_daily_deduction(supabase, current_date):
+def render_colored_daily_deduction(
+    supabase, current_date, reference_only=False,
+):
     view = st.segmented_control(
-        "彩色短袖库存扣减视图",
-        ["每日扣减", "生产字段映射"],
-        default="每日扣减",
-        key="colored_daily_deduction_view",
-    ) or "每日扣减"
+        "彩色短袖系统数据视图",
+        ["每日数据参考", "生产字段映射"] if reference_only
+        else ["每日扣减", "生产字段映射"],
+        default="每日数据参考" if reference_only else "每日扣减",
+        key=(
+            "colored_daily_reference_view"
+            if reference_only else "colored_daily_deduction_view"
+        ),
+    ) or ("每日数据参考" if reference_only else "每日扣减")
     if view == "生产字段映射":
         _render_colored_mapping_review(current_date, supabase=supabase)
         return
-    render_colored_daily_deduction_form(supabase, current_date)
+    render_colored_daily_deduction_form(
+        supabase, current_date, reference_only=reference_only
+    )

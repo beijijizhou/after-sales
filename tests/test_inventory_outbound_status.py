@@ -29,6 +29,9 @@ from ui.inventory.operations.outbound_status import (
     clear_daily_outbound_backfill,
     finish_daily_outbound_backfill,
 )
+from ui.inventory.operations.outbound_entry import (
+    daily_outbound_entry_state_key,
+)
 
 
 class BatchQueryStub:
@@ -49,6 +52,17 @@ class BatchQueryStub:
 
 
 class OutboundStatusTests(unittest.TestCase):
+    def test_daily_outbound_editor_state_is_scoped_by_department_category(self):
+        movement_date = date(2026, 9, 7)
+        colored = daily_outbound_entry_state_key(
+            "DTF|彩色短袖", "zh", 1, movement_date
+        )
+        uv = daily_outbound_entry_state_key(
+            "UV|铁板画", "zh", 1, movement_date
+        )
+
+        self.assertNotEqual(colored, uv)
+
     def test_missing_date_opens_and_clears_daily_outbound_backfill(self):
         state = {"daily_outbound_version": 3}
         missing_date = date(2026, 8, 6)
@@ -86,36 +100,41 @@ class OutboundStatusTests(unittest.TestCase):
         self.assertEqual(_format_signed_quantity(-500), "-500")
         self.assertEqual(_format_signed_quantity(0), "0")
 
-    def test_manual_and_system_inventory_operations_have_distinct_tabs(self):
+    def test_inventory_flows_share_daily_outbound_and_keep_system_reference(self):
         self.assertIn(
-            "仓库每日出库",
+            "每日出库",
             inventory_tab_keys("DTF", category=""),
         )
         self.assertIn(
-            "系统库存扣减",
+            "系统数据参考",
             inventory_tab_keys("DTF", category=""),
         )
         self.assertIn(
-            "仓库每日出库",
+            "每日出库",
             inventory_tab_keys("DTF", category="黑白短袖"),
         )
         self.assertNotIn(
-            "系统库存扣减",
+            "系统数据参考",
             inventory_tab_keys("DTF", category="黑白短袖"),
         )
         self.assertIn(
-            "系统库存扣减",
+            "每日出库",
             inventory_tab_keys("DTF", category="彩色短袖"),
         )
         self.assertIn(
+            "系统数据参考", inventory_tab_keys("DTF", category="彩色短袖")
+        )
+        self.assertIn(
+            "每日出库", inventory_tab_keys("UV", category="铁板画")
+        )
+        self.assertIn(
+            "系统数据参考", inventory_tab_keys("UV", category="铁板画")
+        )
+        self.assertNotIn(
             "系统库存扣减", inventory_tab_keys("UV", category="铁板画")
         )
-        self.assertNotIn(
-            "仓库每日出库", inventory_tab_keys("DTF", category="卫衣")
-        )
-        self.assertNotIn(
-            "系统库存扣减", inventory_tab_keys("DTF", category="卫衣")
-        )
+        self.assertIn("每日出库", inventory_tab_keys("DTF", category="卫衣"))
+        self.assertNotIn("系统数据参考", inventory_tab_keys("DTF", category="卫衣"))
         self.assertNotIn(
             "客户销售出库",
             inventory_tab_keys("DTF", category="黑白短袖"),
@@ -471,6 +490,42 @@ class OutboundStatusTests(unittest.TestCase):
 
         normal = filter_history_batches(batches, "all")
         self.assertEqual(normal["备注"].tolist(), ["仓库每日出货"])
+
+        with_reversed = filter_history_batches(
+            batches, "all", include_reversed=True
+        )
+        self.assertEqual(
+            with_reversed["类型"].tolist(), ["出库", "已撤销出库"]
+        )
+
+    def test_reversal_ledger_labels_original_and_reversal(self):
+        movements = pd.DataFrame([
+            {
+                "movement_date": "2026-09-04",
+                "created_at": "2026-09-04T20:12:23Z",
+                "department": "DTF", "category": "黑白短袖",
+                "brand": "SK", "material": "180g", "color": "白",
+                "size": "S", "quantity_change": -3024,
+                "reason": "仓库每日出货", "created_by": "胡燕",
+                "batch_id": "original", "reversal_of_batch_id": None,
+            },
+            {
+                "movement_date": "2026-09-07",
+                "created_at": "2026-09-07T13:42:18Z",
+                "department": "DTF", "category": "黑白短袖",
+                "brand": "SK", "material": "180g", "color": "白",
+                "size": "S", "quantity_change": 3024,
+                "reason": "撤销：仓库每日出货", "created_by": "胡燕",
+                "batch_id": "undo", "reversal_of_batch_id": "original",
+            },
+        ])
+
+        details = build_movement_detail_table(movements, ["S"])
+
+        self.assertEqual(
+            set(details["流水记录类型"]),
+            {"⚪ 已撤销出库", "↩️ 撤销出库"},
+        )
 
     def test_uv_daily_sheet_is_one_ledger_batch_across_skus(self):
         movements = pd.DataFrame([

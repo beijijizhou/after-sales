@@ -39,7 +39,6 @@ insert into public.app_role_permissions (role_key, permission_key)
 select 'after_sales', permission_key
 from public.app_permissions
 where permission_key not in (
-    'can_view_cost', 'can_manage_cost',
     'can_view_finance_reports', 'can_view_finance_dashboard',
     'can_manage_access'
 )
@@ -48,7 +47,6 @@ on conflict do nothing;
 delete from public.app_role_permissions
 where role_key = 'after_sales'
   and permission_key in (
-      'can_view_cost', 'can_manage_cost',
       'can_view_finance_reports', 'can_view_finance_dashboard',
       'can_manage_access'
   );

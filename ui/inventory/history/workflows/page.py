@@ -68,16 +68,29 @@ def render_inventory_history(
     if batches.empty:
         st.info(t("暂无相关记录"))
         return
-    selected = filter_history_batches(batches, mode)
     department_key = str(department or "all").strip().lower()
     history_key = f"inventory_{department_key}_{mode}_history_batch"
     if mode == "all":
+        include_reversed = st.toggle(
+            "包含已撤销版本",
+            value=False,
+            key=f"inventory_{department_key}_ledger_include_reversed",
+            help=(
+                "开启后同时显示原批次、撤销流水和修正版，"
+                "用于复查一笔业务是如何被修改的。"
+            ),
+        )
+        selected = filter_history_batches(
+            batches, mode, include_reversed=include_reversed
+        )
         selected = _render_ledger_filters(
             selected, movements, quantity_search_data, visible_sizes,
             department, department_key,
         )
         if selected is None:
             return
+    else:
+        selected = filter_history_batches(batches, mode)
     if mode == "undo":
         selected, history_key = _render_reversal_filters(
             selected, department_key

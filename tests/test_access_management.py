@@ -237,7 +237,10 @@ class AccessManagementTests(unittest.TestCase):
         self.assertTrue(state["current_user"]["can_view_logistics"])
         self.assertTrue(state["current_user"]["can_manage_logistics"])
         self.assertTrue(state["current_user"]["can_edit_inventory"])
-        self.assertFalse(state["current_user"]["can_view_cost"])
+        self.assertTrue(state["current_user"]["can_view_cost"])
+        self.assertTrue(state["current_user"]["can_manage_cost"])
+        self.assertFalse(state["current_user"]["can_view_finance_reports"])
+        self.assertFalse(state["current_user"]["can_view_finance_dashboard"])
 
     @patch.object(auth_session.st, "session_state", new_callable=dict)
     @patch.object(auth_session, "load_user")
@@ -623,7 +626,7 @@ class AccessManagementTests(unittest.TestCase):
             / "sql" / "access" / "role_management"
         )
         scripts = sorted(sql_directory.glob("[0-9][0-9]_*.sql"))
-        self.assertEqual(len(scripts), 14)
+        self.assertEqual(len(scripts), 15)
         self.assertTrue(all(
             len(script.read_text().splitlines()) < 200 for script in scripts
         ))

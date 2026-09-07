@@ -13,16 +13,24 @@ from ui.operations import render_stock_change_review
 from utils.auth.session import get_current_operator_name, has_permission
 
 
-def render_colored_daily_deduction_form(supabase, current_date):
-    st.subheader("彩色短袖系统库存扣减")
+def render_colored_daily_deduction_form(
+    supabase, current_date, reference_only=False,
+):
+    st.subheader(
+        "彩色短袖生产数据参考"
+        if reference_only else "彩色短袖系统库存扣减"
+    )
     st.caption(
+        "从全部衣服平台读取当天生产数据，供每日出库核对和消耗模型使用；"
+        "本页不会扣减库存。"
+        if reference_only else
         "从全部衣服平台读取当天生产数据；按纽约日期生成批次，"
         "重复确认不会重复扣减。"
     )
     state_key = "colored_daily_deduction_preview"
     date_key = "colored_daily_deduction_date"
     deducted = load_colored_day_deducted_total(supabase, current_date)
-    if deducted:
+    if deducted and not reference_only:
         st.success(f"今日彩色短袖库存已扣减 {deducted:,} 件。")
         return
     if st.button("读取今日生产并生成扣减表", key="colored_daily_load"):
@@ -41,7 +49,10 @@ def render_colored_daily_deduction_form(supabase, current_date):
     render_stock_change_review(
         stock_change_comparison(preview),
         action="出库",
-        title="彩色短袖扣减库存核对",
+        title=(
+            "彩色短袖系统数据与当前库存参考"
+            if reference_only else "彩色短袖扣减库存核对"
+        ),
         identity_columns=[
             "状态", "生产平台", "原始生产颜色", "原始生产尺码",
             "材质", "品牌", "颜色", "尺码",
@@ -60,6 +71,12 @@ def render_colored_daily_deduction_form(supabase, current_date):
         preview.loc[preview["状态"] == "可扣减", "预计扣减"],
         errors="coerce",
     ).fillna(0).sum())
+    if reference_only:
+        st.caption(
+            f"系统建议参考量：{total:,} 件。请核对后到“每日出库”"
+            "直接修改并保存正式数量。"
+        )
+        return
     st.caption(f"本次实际可扣减：{total:,} 件；库存最低扣到 0。")
     if not has_permission("can_edit_inventory"):
         st.info("当前账号只有查看权限，不能确认扣减库存。")

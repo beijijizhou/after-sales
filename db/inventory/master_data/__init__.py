@@ -7,6 +7,7 @@ from db.inventory.master_data.repository import (
     load_master_data,
     load_materials,
     load_sku_catalog,
+    load_sku_change_log,
 )
 from db.inventory.master_data.initialization import (
     initialize_sku_inventory,
@@ -46,6 +47,7 @@ __all__ = [
     "load_master_data",
     "load_materials",
     "load_sku_catalog",
+    "load_sku_change_log",
     "load_uninitialized_skus",
     "update_skus",
 ]

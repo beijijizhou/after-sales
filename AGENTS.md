@@ -79,6 +79,23 @@ mapping rule/version, final row-level targets, quantities, operator, timestamp,
 status, and reversals. Users must be able to reconstruct why a row changed
 without reading source code or asking an administrator to query the database.
 
+Every business mutation must record who performed it and when it occurred.
+This applies to create, edit, activate, deactivate, inbound, outbound,
+stocktake/set, transfer, merge, allocation, costing, confirmation, correction,
+reversal, and deletion or void operations. Resolve a human operator from the
+authenticated session; reserve `system` for genuinely automated jobs and name
+the automation/source precisely enough to identify it. Store the immutable
+event timestamp as a timezone-aware database timestamp and keep the business
+date as a separate field; user-facing operation logs display the exact New York
+local time and operator. The corresponding SKU, batch, container, cost, or
+inventory history must expose these fields directly so an ordinary authorized
+user can answer what happened, who did it, and when without querying the
+database. Do not implement a mutation through an unaudited direct table update
+when an audited service or RPC is available. If a legacy event predates audit
+logging, label its actor or time explicitly as unrecorded instead of inventing
+attribution or hiding the audit gap. Add regression coverage for the audit
+write and its user-facing history whenever a new mutation path is introduced.
+
 Batch-oriented workflows are a core ERP design rule. For inbound inventory,
 outbound inventory, inventory adjustments, costing, containers, and similar
 multi-row business operations, present a batch summary first, then let the

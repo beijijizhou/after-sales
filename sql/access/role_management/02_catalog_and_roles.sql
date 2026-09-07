@@ -82,10 +82,12 @@ with seeds(role_key, permission_keys) as (
     ('after_sales', array[
         'can_edit_consumables','can_edit_container','can_edit_inventory',
         'can_input_after_sales','can_manage_consumable_sku',
-        'can_manage_logistics','can_manage_sku','can_mark_barcode_operations',
+        'can_manage_cost','can_manage_logistics','can_manage_sku',
+        'can_mark_barcode_operations',
         'can_register','can_use_image_stretch','can_view_app',
         'can_view_consumables','can_view_container','can_view_hotstamp',
-        'can_view_inventory','can_view_logistics','can_view_operation_tracking',
+        'can_view_cost','can_view_inventory','can_view_logistics',
+        'can_view_operation_tracking',
         'can_view_platform','can_view_production_data','can_view_qa'
     ]::text[]),
     ('warehouse', array[

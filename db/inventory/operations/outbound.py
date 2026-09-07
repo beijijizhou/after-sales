@@ -197,6 +197,7 @@ def convert_sku_package_entries(
             )
         total = package_count * units
         preview_rows.append({
+            "品类": sku.get("category", ""),
             "品牌": sku["brand"],
             "材质": sku["material"],
             "颜色": sku["color"],
@@ -209,6 +210,7 @@ def convert_sku_package_entries(
         adjustment_rows.append({
             "日期": movement_date,
             "操作": "扣减",
+            "品类": sku.get("category", ""),
             "品牌": sku["brand"],
             "材质": sku["material"],
             "颜色": sku["color"],
@@ -220,7 +222,10 @@ def convert_sku_package_entries(
     adjustments = pd.DataFrame(adjustment_rows)
     if not adjustments.empty:
         adjustments = adjustments.groupby(
-            ["日期", "操作", "品牌", "材质", "颜色", "尺码", "备注"],
+            [
+                "日期", "操作", "品类", "品牌", "材质", "颜色",
+                "尺码", "备注",
+            ],
             as_index=False,
             sort=False,
         )["数量"].sum()

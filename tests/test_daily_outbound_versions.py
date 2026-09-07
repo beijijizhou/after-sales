@@ -9,6 +9,7 @@ from db.inventory.operations.daily_outbound_versions import (
     acknowledge_no_daily_outbound,
     build_daily_outbound_edit_rows,
     save_daily_outbound_revision,
+    save_daily_outbound_scope,
     void_daily_outbound_revision,
 )
 from db.inventory.planning.demand_anomaly import (
@@ -17,6 +18,35 @@ from db.inventory.planning.demand_anomaly import (
 
 
 class DailyOutboundVersionTests(unittest.TestCase):
+    def test_all_category_uv_scope_saves_each_sku_category(self):
+        rows = pd.DataFrame([
+            {
+                "品类": "铁板画", "品牌": "", "材质": "铁牌",
+                "颜色": "", "尺码": "2030", "数量": 100,
+            },
+            {
+                "品类": "木板画", "品牌": "", "材质": "挂钟",
+                "颜色": "", "尺码": "30", "数量": 20,
+            },
+        ])
+        with unittest.mock.patch(
+            "db.inventory.operations.daily_outbound_versions.save_daily_outbound_revision",
+            side_effect=[
+                {"requested_total": 100, "applied_total": 90, "shortage_total": 10},
+                {"requested_total": 20, "applied_total": 20, "shortage_total": 0},
+            ],
+        ) as save:
+            result = save_daily_outbound_scope(
+                Mock(), "UV", "", date(2026, 9, 7), rows, "Andy"
+            )
+
+        self.assertEqual([call.args[2] for call in save.call_args_list], [
+            "铁板画", "木板画",
+        ])
+        self.assertEqual(result["category_count"], 2)
+        self.assertEqual(result["requested_total"], 120)
+        self.assertEqual(result["shortage_total"], 10)
+
     def test_no_outbound_ack_creates_zero_change_revision(self):
         supabase = Mock()
         query = supabase.table.return_value

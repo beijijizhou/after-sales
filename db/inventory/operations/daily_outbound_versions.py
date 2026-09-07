@@ -153,6 +153,46 @@ def save_daily_outbound_revision(
     return response.data or {}
 
 
+def save_daily_outbound_scope(
+    supabase, department, category, movement_date, rows, created_by,
+    note=None,
+):
+    """Save one visible outbound operation, splitting an all-category scope."""
+    source = pd.DataFrame(rows).copy()
+    if category:
+        return save_daily_outbound_revision(
+            supabase, department, category, movement_date, source,
+            created_by, note=note,
+        )
+    if "品类" not in source.columns:
+        raise ValueError("每日出库 SKU 缺少品类")
+    source["品类"] = source["品类"].fillna("").astype(str).str.strip()
+    if (source["品类"] == "").any():
+        raise ValueError("每日出库存在无法识别品类的 SKU")
+
+    results = []
+    for row_category, category_rows in source.groupby(
+        "品类", sort=False, dropna=False
+    ):
+        results.append(save_daily_outbound_revision(
+            supabase, department, row_category, movement_date,
+            category_rows.drop(columns=["品类"]), created_by, note=note,
+        ))
+    return {
+        "category_count": len(results),
+        "requested_total": sum(
+            int(result.get("requested_total") or 0) for result in results
+        ),
+        "applied_total": sum(
+            int(result.get("applied_total") or 0) for result in results
+        ),
+        "shortage_total": sum(
+            int(result.get("shortage_total") or 0) for result in results
+        ),
+        "results": results,
+    }
+
+
 def void_daily_outbound_revision(
     supabase, daily_outbound_batch_id, department, category, created_by,
     note="撤销每日出库",

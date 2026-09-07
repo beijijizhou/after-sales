@@ -15,10 +15,14 @@ def render_daily_outbound_operation(
     if not can_edit:
         st.info(t("当前账号只有库存查看权限，不能修改库存"))
         return
-    operation_category = _select_operation_category(
-        category, raw_df, "daily_outbound_category"
+    operation_category = (
+        category
+        if str(department or "").strip().upper() == "UV"
+        else _select_operation_category(
+            category, raw_df, "daily_outbound_category"
+        )
     )
-    if operation_category:
+    if operation_category or str(department or "").strip().upper() == "UV":
         render_daily_outbound(
             supabase, department, operation_category
         )

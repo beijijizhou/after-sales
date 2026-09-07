@@ -3,10 +3,11 @@
 import streamlit as st
 
 from db.inventory import normalize_adjustment_rows
-from db.inventory.operations.daily_outbound_versions import save_daily_outbound_revision
+from db.inventory.operations.daily_outbound_versions import save_daily_outbound_scope
 from db.inventory.operations.outbound_audit import find_outbound_inventory_issues, load_outbound_inventory
 from ui.inventory.operations.adjustment_preview import build_inventory_change_comparison, render_inventory_change_comparison
 from ui.inventory.operations.outbound_feedback import render_outbound_preview_summary
+from ui.inventory.display_scope import apply_routine_display_scope
 from utils.auth import get_current_operator_name
 
 
@@ -16,7 +17,10 @@ def render_outbound_review(
 ):
     """Render the mandatory inventory review and return saved total, or None."""
     st.markdown(f"#### {text['preview']}")
-    _render_package_preview(package_preview, entry_text)
+    _render_package_preview(
+        package_preview, entry_text, department,
+        show_category=not bool(category),
+    )
     adjustments = normalize_adjustment_rows(adjustments)
     if adjustments.empty:
         st.warning(text["empty"])
@@ -28,15 +32,22 @@ def render_outbound_review(
     except Exception as error:
         st.error(f"{text['inventory_check_error']}: {error}")
         return None
+    comparison_rows = (
+        adjustments
+        if not category else adjustments.drop(columns=["品类"], errors="ignore")
+    )
+    comparison = build_inventory_change_comparison(
+        inventory, comparison_rows
+    )
     render_inventory_change_comparison(
-        build_inventory_change_comparison(inventory, adjustments), action="扣减"
+        apply_routine_display_scope(comparison, department), action="扣减"
     )
     _render_inventory_issues(issues, text)
     st.warning(text["unsaved"])
     if not st.button(text["confirm"], width="stretch", type="primary"):
         return None
     try:
-        saved = save_daily_outbound_revision(
+        saved = save_daily_outbound_scope(
             supabase, department, category, movement_date, adjustments,
             get_current_operator_name(), note="仓库每日出货",
         )
@@ -53,10 +64,14 @@ def render_outbound_review(
     return total
 
 
-def _render_package_preview(preview, text):
+def _render_package_preview(
+    preview, text, department, *, show_category=False,
+):
     if preview.empty:
         return
-    display = preview.copy()
+    display = apply_routine_display_scope(preview, department)
+    if not show_category:
+        display = display.drop(columns=["品类"], errors="ignore")
     display["包装单位"] = display["包装单位"].map(text["packages"])
     display = display.rename(columns={
         "品牌": text["brand"], "材质": text["material"], "颜色": text["color"],

@@ -3,7 +3,7 @@
 import re
 
 
-def build_outbound_sku_lookup(sku_df):
+def build_outbound_sku_lookup(sku_df, *, uv_compact=False):
     from pandas import DataFrame
 
     lookup = {}
@@ -12,10 +12,25 @@ def build_outbound_sku_lookup(sku_df):
             continue
         identity = {
             key: str(row.get(key) or "").strip()
-            for key in ["brand", "material", "color", "size"]
+            for key in ["category", "brand", "material", "color", "size"]
         }
-        if all(identity.values()):
-            lookup[" / ".join(identity.values())] = identity
+        if uv_compact:
+            label_values = [
+                identity["category"], identity["material"], identity["size"],
+            ]
+            if not all(label_values):
+                continue
+        else:
+            if not all(
+                identity[key]
+                for key in ["brand", "material", "color", "size"]
+            ):
+                continue
+            label_values = [
+                identity["brand"], identity["material"],
+                identity["color"], identity["size"],
+            ]
+        lookup[" / ".join(label_values)] = identity
     return dict(sorted(lookup.items()))
 
 

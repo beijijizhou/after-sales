@@ -51,7 +51,8 @@ def render_uv_consumption_model(
     st.caption(
         f"每日消耗按 Google Sheets 最近 {UV_CONSUMPTION_LOOKBACK_DAYS} 天"
         "的有效数据日计算。点货、库存覆盖和全部在途货柜统一在“点货预测”计算；"
-        "每日扣减在“系统库存扣减”。"
+        "Google Sheets 当日数据在“系统数据参考”核对，正式库存变动"
+        "在“每日出库”登记。"
     )
     if model.empty:
         st.info("最近 14 天暂无已同步的 UV 每日消耗数据")
@@ -74,9 +75,19 @@ def render_uv_consumption_model(
         _render_uv_model_table(model)
 
 
-def render_uv_daily_deduction(supabase, current_date):
-    st.subheader("UV 系统库存扣减")
-    st.caption("先读取今天的 Google Sheets 数据并核对；确认后才会扣减库存。")
+def render_uv_daily_deduction(
+    supabase, current_date, reference_only=False,
+):
+    st.subheader(
+        "UV Google Sheets 数据参考"
+        if reference_only else "UV 系统库存扣减"
+    )
+    st.caption(
+        "读取今天的 Google Sheets 数据，供每日出库核对和消耗模型使用；"
+        "本页不会扣减库存。"
+        if reference_only else
+        "先读取今天的 Google Sheets 数据并核对；确认后才会扣减库存。"
+    )
     spreadsheet = render_uv_spreadsheet_selector()
     st.link_button("打开当前 Google 表格", spreadsheet["webViewLink"])
     st.link_button("打开 UV 数据文件夹", UV_GOOGLE_DRIVE_FOLDER_URL)
@@ -94,6 +105,12 @@ def render_uv_daily_deduction(supabase, current_date):
     ready_preview, pending, blocking = _render_preview(
         supabase, preview, current_date
     )
+    if reference_only:
+        st.caption(
+            f"系统建议参考量：{int(pending['预计扣减'].sum()):,} 件。"
+            "请核对后到“每日出库”直接修改并保存正式数量。"
+        )
+        return
     if not blocking.empty:
         details = "；".join(
             f"{row['表格产品']}：{row['状态']}"

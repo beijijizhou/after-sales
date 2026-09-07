@@ -15,14 +15,87 @@ from db.inventory.operations.outbound import (
     convert_sku_package_entries,
     extract_size_box_units,
 )
+from db.inventory.operations.adjustments import normalize_adjustment_rows
 from ui.inventory.operations.outbound_i18n import (
     to_display_table,
     to_internal_table,
 )
-from ui.inventory.operations.outbound_entry import SKU_ENTRY_TEXT
+from ui.inventory.operations.outbound_entry import (
+    SKU_ENTRY_TEXT,
+    daily_outbound_entry_state_key,
+    filter_sku_lookup_by_material,
+)
 
 
 class InventoryPackagingRuleTests(unittest.TestCase):
+    def test_uv_sku_lookup_is_filtered_by_selected_material(self):
+        lookup = {
+            "铁板画 / 铁牌 / 2030": {
+                "category": "铁板画", "material": "铁牌", "size": "2030",
+            },
+            "铁板画 / 铝牌 / 2030": {
+                "category": "铁板画", "material": "铝牌", "size": "2030",
+            },
+            "木板画 / 挂钟 / 25": {
+                "category": "木板画", "material": "挂钟", "size": "25",
+            },
+        }
+
+        filtered = filter_sku_lookup_by_material(lookup, ["铁牌", "挂钟"])
+
+        self.assertEqual(
+            list(filtered),
+            ["铁板画 / 铁牌 / 2030", "木板画 / 挂钟 / 25"],
+        )
+        self.assertEqual(filter_sku_lookup_by_material(lookup, []), {})
+
+    def test_uv_material_change_uses_a_new_editor_state(self):
+        date = pd.Timestamp("2026-09-07").date()
+
+        _, iron_key = daily_outbound_entry_state_key(
+            "UV|全部|materials:铁牌", "zh", 1, date
+        )
+        _, aluminum_key = daily_outbound_entry_state_key(
+            "UV|全部|materials:铝牌", "zh", 1, date
+        )
+
+        self.assertNotEqual(iron_key, aluminum_key)
+
+    def test_uv_compact_lookup_hides_brand_and_color_from_label(self):
+        sku_df = pd.DataFrame([{
+            "category": "铁板画", "brand": "内部品牌",
+            "material": "铁牌", "color": "", "size": "2030",
+            "is_active": True,
+        }])
+
+        lookup = build_outbound_sku_lookup(sku_df, uv_compact=True)
+
+        self.assertEqual(list(lookup), ["铁板画 / 铁牌 / 2030"])
+        self.assertEqual(lookup["铁板画 / 铁牌 / 2030"]["color"], "")
+
+    def test_uv_model_entry_keeps_category_and_model(self):
+        sku_df = pd.DataFrame([{
+            "category": "铁板画", "brand": "", "material": "铁牌",
+            "color": "", "size": "2030", "is_active": True,
+        }])
+        lookup = build_outbound_sku_lookup(sku_df, uv_compact=True)
+        entries = pd.DataFrame([{
+            "SKU": "铁板画 / 铁牌 / 2030", "包装单位": "Piece",
+            "包装数量": 120,
+        }])
+
+        adjustments, preview = convert_sku_package_entries(
+            entries, lookup, pd.Timestamp("2026-09-07").date()
+        )
+
+        self.assertEqual(adjustments.loc[0, "品类"], "铁板画")
+        self.assertEqual(adjustments.loc[0, "尺码"], "2030")
+        self.assertEqual(preview.loc[0, "总件数"], 120)
+
+        normalized = normalize_adjustment_rows(adjustments)
+        self.assertEqual(normalized.loc[0, "品类"], "铁板画")
+        self.assertEqual(normalized.loc[0, "尺码"], "2030")
+
     def test_piece_box_and_bag_are_available_with_piece_first(self):
         self.assertEqual(
             list(SKU_ENTRY_TEXT["zh"]["packages"].values()),

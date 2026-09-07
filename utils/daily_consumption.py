@@ -27,11 +27,11 @@ DAILY_CONSUMPTION_FLOWS = {
     ),
     "colored_tshirts": DailyConsumptionFlow(
         "colored_tshirts", "彩色短袖", "DTF", "彩色短袖",
-        ENTRY_SYSTEM, "生产系统数据", "生产库存流水",
+        ENTRY_MANUAL, "生产系统数据（参考）", "生产库存流水",
     ),
     "uv_production": DailyConsumptionFlow(
         "uv_production", "UV 生产库存", "UV", "*",
-        ENTRY_SYSTEM, "Google Sheets", "生产库存流水",
+        ENTRY_MANUAL, "Google Sheets（参考）", "生产库存流水",
     ),
 }
 

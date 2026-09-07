@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 import streamlit as st
 
 from db.inventory.dashboard import build_daily_operation_table, load_inventory_overview
+from ui.inventory.operations.outbound_status import (
+    activate_daily_outbound_backfill,
+)
 
 
 def render_overview(supabase, today):
@@ -76,20 +79,6 @@ def render_operation_table(operation_table, today=None):
         project = row["出库项目"]
         if row["待补日期"] == "无":
             columns[6].write("—")
-        elif project == "黑白短袖":
-            columns[6].page_link("pages/4_库存.py", label="补录出库")
-            if columns[6].button(
-                "确认无出库",
-                key="inventory_dashboard_no_outbound",
-                width="stretch",
-            ):
-                target_date = missing_date_target(
-                    row["待补日期"], today
-                )
-                if target_date is not None:
-                    st.session_state[
-                        "inventory_no_outbound_ack_date"
-                    ] = target_date
         elif project == "DTF 耗材":
             if columns[6].button(
                 "去补录", key="inventory_dashboard_consumable_makeup",
@@ -103,11 +92,39 @@ def render_operation_table(operation_table, today=None):
                     st.session_state["daily_consumable_issue_date"] = target_date
                 st.switch_page("pages/9_耗材库存.py")
         elif columns[6].button(
-            "预览补录", key=f"inventory_dashboard_preview_{project}",
+            "补录出库", key=f"inventory_dashboard_makeup_{project}",
             width="stretch",
         ):
-            requested_flow = project
+            target_date = missing_date_target(row["待补日期"], today)
+            if target_date is not None:
+                _open_inventory_daily_outbound(project, target_date)
+            st.switch_page("pages/4_库存.py")
+
+        if project != "DTF 耗材" and row["待补日期"] != "无":
+            if columns[6].button(
+                "确认无出库",
+                key=f"inventory_dashboard_no_outbound_{project}",
+                width="stretch",
+            ):
+                target_date = missing_date_target(
+                    row["待补日期"], today
+                )
+                if target_date is not None:
+                    st.session_state[
+                        "inventory_no_outbound_ack_date"
+                    ] = target_date
+                    st.session_state[
+                        "inventory_no_outbound_ack_project"
+                    ] = project
     return requested_flow
+
+
+def _open_inventory_daily_outbound(project, target_date):
+    department = "UV" if project == "UV 生产库存" else "DTF"
+    category = "" if department == "UV" else project
+    st.session_state["inventory_global_department"] = department
+    st.session_state[f"inventory_global_{department}_category"] = category
+    activate_daily_outbound_backfill(target_date)
 
 
 def consumable_makeup_target(missing_text, today):

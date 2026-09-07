@@ -29,10 +29,6 @@ from db.inventory.dashboard import (
     build_today_completion_table,
     active_daily_outbound_ack_dates,
 )
-from ui.inventory.dashboard import (
-    _filter_automatic_missing_dates,
-    _format_applied_result,
-)
 from ui.inventory.dashboard_overview import consumable_makeup_target
 
 
@@ -151,6 +147,27 @@ class InventoryDashboardTests(unittest.TestCase):
         self.assertEqual(result["uv"], {date(2026, 8, 4)})
         self.assertEqual(result["consumables"], {date(2026, 8, 2)})
 
+    def test_manual_daily_outbound_completes_colored_and_uv_flows(self):
+        movements = pd.DataFrame([
+            {
+                "department": "DTF", "category": "彩色短袖",
+                "movement_date": "2026-09-05", "quantity_change": -50,
+                "reason": "仓库每日出货", "batch_id": "color-manual",
+                "reversal_of_batch_id": None,
+            },
+            {
+                "department": "UV", "category": "铁板画",
+                "movement_date": "2026-09-05", "quantity_change": -20,
+                "reason": "仓库每日出货", "batch_id": "uv-manual",
+                "reversal_of_batch_id": None,
+            },
+        ])
+
+        result = build_daily_completion_dates(movements, pd.DataFrame())
+
+        self.assertEqual(result["colored"], {date(2026, 9, 5)})
+        self.assertEqual(result["uv"], {date(2026, 9, 5)})
+
     def test_consumable_completion_accepts_audited_no_change_acknowledgement(self):
         consumables = pd.DataFrame([{
             "id": "ack-1", "movement_type": "adjustment",
@@ -177,8 +194,9 @@ class InventoryDashboardTests(unittest.TestCase):
 
         self.assertEqual(result.loc["黑白短袖", "待处理日期"], "08/04")
         self.assertEqual(result.loc["彩色短袖", "待处理天数"], 0)
+        self.assertEqual(result.loc["UV 生产库存", "数据方式"], "人工登记")
         self.assertEqual(
-            result.loc["UV 生产库存", "处理方式"], "读取来源并扣减"
+            result.loc["UV 生产库存", "处理方式"], "补录实际出库"
         )
 
     def test_automatic_sources_are_registered_in_one_place(self):
@@ -200,20 +218,6 @@ class InventoryDashboardTests(unittest.TestCase):
         self.assertEqual(
             result,
             {date(2026, 8, 3): "UV 生产库存"},
-        )
-
-    def test_table_action_filters_automatic_preview_to_selected_flow(self):
-        missing = {
-            date(2026, 8, 2): "彩色短袖、UV 生产库存",
-            date(2026, 8, 3): "彩色短袖",
-            date(2026, 8, 4): "UV 生产库存",
-        }
-        self.assertEqual(
-            _filter_automatic_missing_dates(missing, "彩色短袖"),
-            {
-                date(2026, 8, 2): "彩色短袖",
-                date(2026, 8, 3): "彩色短袖",
-            },
         )
 
     def test_today_is_in_progress_instead_of_missing(self):
@@ -252,7 +256,7 @@ class InventoryDashboardTests(unittest.TestCase):
         self.assertEqual(result["计入补录"].unique().tolist(), ["否"])
         self.assertEqual(
             result.loc["彩色短袖", "下一步"],
-            "今日结束后由系统读取",
+            "今日结束后补录实际出库",
         )
 
     def test_daily_operation_table_combines_history_and_today(self):
@@ -276,7 +280,7 @@ class InventoryDashboardTests(unittest.TestCase):
         self.assertEqual(result.loc["彩色短袖", "待补日期"], "08/05")
         self.assertEqual(
             result.loc["彩色短袖", "当前操作"],
-            "系统预览并补扣 1 天",
+            "补录实际出库 1 天",
         )
 
     def test_batch_preview_summary_keeps_date_and_source(self):
@@ -349,21 +353,6 @@ class InventoryDashboardTests(unittest.TestCase):
         self.assertEqual(result.quantity, 2000)
         self.assertIn("手机壳 500 件待按材质和型号分配", result.message)
         self.assertIn("UV 系统库存扣减", result.message)
-
-    def test_applied_result_reports_refreshed_completion_state(self):
-        movement_date = date(2026, 8, 3)
-
-        completed = _format_applied_result(
-            movement_date, "colored", "彩色短袖", 548,
-            {"colored": {movement_date}},
-        )
-        pending = _format_applied_result(
-            movement_date, "colored", "彩色短袖", 500,
-            {"colored": set()},
-        )
-
-        self.assertIn("已完成", completed)
-        self.assertIn("仍有待处理数据", pending)
 
     def test_batch_loader_only_keeps_sources_missing_on_each_date(self):
         from unittest.mock import patch

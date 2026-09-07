@@ -1,5 +1,7 @@
 import pandas as pd
 
+from db.inventory.core.pagination import fetch_range_pages
+
 
 SPECIFICATION_TYPES = {
     "尺码": "size",
@@ -161,6 +163,27 @@ def load_sku_catalog(supabase, department_code, active_only=False):
         query = query.eq("is_active", True)
     response = query.order("category").order("sku_name").execute()
     return pd.DataFrame(response.data)
+
+
+def load_sku_change_log(supabase, department_code, limit=None):
+    """Load SKU master-data changes for the user-facing audit timeline."""
+    def fetch_page(start, end):
+        return (
+            supabase.table("inventory_sku_change_log")
+            .select(
+                "id,department,old_identity,new_identity,affected_items,"
+                "affected_quantity,changed_by,changed_at"
+            )
+            .eq("department", department_code)
+            .order("changed_at", desc=True)
+            .range(start, end)
+            .execute()
+            .data
+            or []
+        )
+
+    rows = fetch_range_pages(fetch_page, limit)
+    return pd.DataFrame(rows)
 
 
 def _required(value, label):

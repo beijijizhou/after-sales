@@ -154,6 +154,9 @@ def update_skus(
         supabase.table("inventory_items").update(values).eq(
             "id", row["id"]
         ).execute()
+        _record_item_change(
+            supabase, department_code, original, row, values, changed_by
+        )
         updated += 1
     return updated
 
@@ -221,6 +224,48 @@ def _build_sku_name(category, brand, material, color, specification):
             parts.append(cleaned)
             seen.add(normalized)
     return " ".join(parts)
+
+
+def _record_item_change(
+    supabase, department_code, original, edited, values, changed_by,
+):
+    """Preserve ordinary SKU edits, including activation changes."""
+    old_snapshot = _sku_snapshot(original)
+    new_snapshot = dict(old_snapshot)
+    new_snapshot.update({
+        "sku_name": values["sku_name"],
+        "category": values["category"],
+        "brand": values["brand"],
+        "material": values["material"],
+        "color": values["color"],
+        "size": values["size"],
+        "unit": values["unit"],
+        "is_active": values["is_active"],
+    })
+    supabase.table("inventory_sku_change_log").insert({
+        "department": _clean(department_code) or _clean(
+            original.get("department")
+        ),
+        "old_identity": old_snapshot,
+        "new_identity": new_snapshot,
+        "affected_items": 1,
+        "affected_quantity": int(original.get("quantity") or 0),
+        "changed_by": _clean(changed_by) or "system",
+    }).execute()
+
+
+def _sku_snapshot(row):
+    return {
+        "id": _clean(row.get("id")),
+        "sku_name": _clean(row.get("sku_name")),
+        "category": _clean(row.get("category")),
+        "brand": _clean(row.get("brand")),
+        "material": _clean(row.get("material")),
+        "color": _clean(row.get("color")),
+        "size": _clean(row.get("规格") or row.get("size")).upper(),
+        "unit": _clean(row.get("unit")) or "件",
+        "is_active": bool(row.get("is_active")),
+    }
 
 
 def _option_names(options):

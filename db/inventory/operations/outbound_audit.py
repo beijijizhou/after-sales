@@ -40,8 +40,10 @@ def load_uv_daily_consumption_total(supabase, movement_date):
     )
 
 
-def load_daily_outbound_dates(supabase, department, start_date, end_date):
-    rows = (
+def load_daily_outbound_dates(
+    supabase, department, start_date, end_date, category="",
+):
+    query = (
         supabase.table("inventory_movements")
         .select("movement_date,reason")
         .eq("department", department)
@@ -49,7 +51,11 @@ def load_daily_outbound_dates(supabase, department, start_date, end_date):
         .lt("quantity_change", 0)
         .gte("movement_date", start_date.isoformat())
         .lte("movement_date", end_date.isoformat())
-        .execute()
+    )
+    if category:
+        query = query.eq("category", category)
+    rows = (
+        query.execute()
         .data
         or []
     )
@@ -64,14 +70,18 @@ def load_daily_outbound_dates(supabase, department, start_date, end_date):
         if is_confirmed_outbound_row(movement_date, row.get("reason")):
             recorded_dates.add(movement_date)
     try:
-        versioned = (
+        versioned_query = (
             supabase.table("inventory_daily_outbound_batches")
             .select("movement_date")
             .eq("department", department)
             .eq("status", "active")
             .gte("movement_date", start_date.isoformat())
             .lte("movement_date", end_date.isoformat())
-            .execute()
+        )
+        if category:
+            versioned_query = versioned_query.eq("category", category)
+        versioned = (
+            versioned_query.execute()
             .data
             or []
         )
@@ -99,13 +109,16 @@ def find_missing_outbound_dates(recorded_dates, start_date, end_date):
 
 
 def load_outbound_inventory(supabase, department, category):
-    rows = (
+    query = (
         supabase.table("inventory_items")
-        .select("brand,material,color,size,quantity")
+        .select("category,brand,material,color,size,quantity")
         .eq("department", department)
-        .eq("category", category)
         .eq("is_active", True)
-        .execute()
+    )
+    if category:
+        query = query.eq("category", category)
+    rows = (
+        query.execute()
         .data
         or []
     )

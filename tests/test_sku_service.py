@@ -16,6 +16,7 @@ class _Response:
 class _UpdateQuery:
     def __init__(self, rows=None):
         self.values = None
+        self.insert_values = None
         self.rows = rows or []
 
     def select(self, *_args):
@@ -23,6 +24,10 @@ class _UpdateQuery:
 
     def update(self, values):
         self.values = values
+        return self
+
+    def insert(self, values):
+        self.insert_values = values
         return self
 
     def eq(self, *_args):
@@ -71,6 +76,39 @@ class SkuServiceTests(unittest.TestCase):
             supabase.rpc.call_args.args[0],
             "update_inventory_sku_identities",
         )
+
+    def test_status_change_is_written_to_sku_operation_log(self):
+        query = _UpdateQuery()
+        supabase = Mock()
+        supabase.table.return_value = query
+        original = pd.DataFrame([{
+            "id": "sku-1", "sku_name": "黑白短袖 杂牌 160g 黑 5XL",
+            "department": "DTF", "category": "黑白短袖", "brand": "杂牌",
+            "material": "160g", "color": "黑", "规格": "5XL",
+            "unit": "件", "quantity": 7848, "is_active": False,
+        }])
+        edited = original.copy()
+        edited.loc[0, "is_active"] = True
+        categories = pd.DataFrame([{
+            "id": "cat-1", "name": "黑白短袖", "specification_type": "size",
+        }])
+        brands = pd.DataFrame([{
+            "id": "brand-1", "name": "杂牌", "is_active": True,
+        }])
+        materials = pd.DataFrame([{
+            "id": "material-1", "name": "160g", "is_active": True,
+        }])
+
+        updated = update_skus(
+            supabase, original, edited, categories, brands, materials,
+            department_code="DTF", changed_by="Andy",
+        )
+
+        self.assertEqual(updated, 1)
+        self.assertTrue(query.values["is_active"])
+        self.assertFalse(query.insert_values["old_identity"]["is_active"])
+        self.assertTrue(query.insert_values["new_identity"]["is_active"])
+        self.assertEqual(query.insert_values["affected_quantity"], 7848)
 
     def test_existing_brand_is_merged_instead_of_rejected_as_duplicate(self):
         query = _UpdateQuery([

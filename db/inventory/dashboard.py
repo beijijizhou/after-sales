@@ -56,12 +56,18 @@ def load_daily_completion_status(
     completed = build_daily_completion_dates(
         movements, consumable_batches
     )
-    acknowledgements = load_daily_outbound_revisions(
-        supabase, "DTF", "黑白短袖", start_date, today
-    )
-    completed["black_white"].update(
-        active_daily_outbound_ack_dates(acknowledgements)
-    )
+    acknowledgement_scopes = {
+        "black_white": ("DTF", "黑白短袖"),
+        "colored": ("DTF", "彩色短袖"),
+        "uv": ("UV", ""),
+    }
+    for flow_code, (department, category) in acknowledgement_scopes.items():
+        acknowledgements = load_daily_outbound_revisions(
+            supabase, department, category, start_date, today
+        )
+        completed[flow_code].update(
+            active_daily_outbound_ack_dates(acknowledgements)
+        )
     history_end = today - timedelta(days=1)
     return (
         build_daily_completion_table(completed, start_date, history_end),
@@ -99,8 +105,6 @@ def build_daily_operation_table(summary, completed, today):
 def _daily_operation_label(row):
     missing = int(row["待处理天数"])
     if missing:
-        if row["数据方式"] == "系统读取":
-            return f"系统预览并补扣 {missing} 天"
         return f"补录实际出库 {missing} 天"
     return "无需补录"
 

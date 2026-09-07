@@ -48,12 +48,14 @@ def render_uv_daily_consumption_alert(supabase):
         )
 
 
-def render_daily_outbound_alert(supabase, department, lookback_days=7):
+def render_daily_outbound_alert(
+    supabase, department, category="", lookback_days=7,
+):
     today = datetime.now(ZoneInfo("America/New_York")).date()
     start_date = today - timedelta(days=lookback_days - 1)
     try:
         recorded_dates = load_daily_outbound_dates(
-            supabase, department, start_date, today
+            supabase, department, start_date, today, category=category
         )
     except Exception:
         return
@@ -69,7 +71,7 @@ def render_daily_outbound_alert(supabase, department, lookback_days=7):
             f"{value:%m/%d}" for value in previous_missing
         )
         st.error(
-            f"仓库每日出货待核对：最近 {lookback_days} 天缺少 "
+            f"每日出库待核对：最近 {lookback_days} 天缺少 "
             f"{labels} 的登记记录。"
         )
         st.caption("选择缺失日期后，直接进入该日的仓库出货补录。")
@@ -84,9 +86,9 @@ def render_daily_outbound_alert(supabase, department, lookback_days=7):
                 args=(missing_date,),
             )
     if not today_is_recorded:
-        st.warning("今日仓库出货尚未登记；完成出货后请确认保存。")
+        st.warning("今日出库尚未登记；完成出货后请确认保存。")
     elif not previous_missing:
-        st.success("仓库每日出货记录完整，今日已登记。")
+        st.success("每日出库记录完整，今日已登记。")
 
 
 def activate_daily_outbound_backfill(movement_date, state=None):

@@ -35,9 +35,7 @@ from ui.inventory.operations.outbound_feedback import (
 from ui.inventory.operations.outbound_i18n import TEXT as OUTBOUND_TEXT
 from ui.inventory.operations.outbound_status import (
     clear_daily_outbound_backfill,
-    render_colored_daily_consumption_alert,
     render_daily_outbound_alert,
-    render_uv_daily_consumption_alert,
 )
 from ui.inventory.operations.pages import render_daily_outbound_operation
 from ui.inventory.page_tabs import (
@@ -95,13 +93,10 @@ def render_inventory_summary(supabase):
         filter_title = "UV 生产库存（不含手机壳）"
     can_edit = has_permission("can_edit_inventory")
     flow = inventory_daily_consumption_flow(department, category)
-    if can_edit and flow:
-        if flow.entry_source == ENTRY_MANUAL:
-            render_daily_outbound_alert(supabase, department)
-        elif flow.code == "colored_tshirts":
-            render_colored_daily_consumption_alert(supabase)
-        elif flow.code == "uv_production":
-            render_uv_daily_consumption_alert(supabase)
+    if can_edit and flow and flow.entry_source == ENTRY_MANUAL:
+        render_daily_outbound_alert(
+            supabase, department, category=category
+        )
     st.session_state["inventory_today"] = datetime.now(ZoneInfo("America/New_York")).date()
 
     try:

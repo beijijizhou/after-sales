@@ -6,6 +6,7 @@ import pandas as pd
 
 from db.batches import filter_active_batch_records
 from utils.daily_consumption import COLORED_REASON_PREFIX, UV_REASON_PREFIX
+from utils.daily_consumption import MANUAL_INVENTORY_REASONS
 
 
 DAILY_FLOW_LABELS = {
@@ -31,17 +32,24 @@ def build_daily_completion_dates(movements, consumable_batches):
         ]),
         "colored": set(dates[
             outbound & department.eq("DTF") & category.eq("彩色短袖")
-            & reasons.str.split("｜").str[0].eq(colored_reason)
+            & (
+                reasons.isin(MANUAL_INVENTORY_REASONS)
+                | reasons.str.split("｜").str[0].eq(colored_reason)
+            )
         ]),
         "uv": set(dates[
-            outbound & department.eq("UV") & reasons.str.startswith(UV_REASON_PREFIX)
+            outbound & department.eq("UV")
+            & (
+                reasons.isin(MANUAL_INVENTORY_REASONS)
+                | reasons.str.startswith(UV_REASON_PREFIX)
+            )
         ]),
         "consumables": active_consumable_issue_dates(consumable_batches),
     }
 
 
 def active_daily_outbound_ack_dates(batches):
-    """Return active black/white dates explicitly confirmed as no outbound."""
+    """Return active production dates explicitly confirmed as no outbound."""
     from db.inventory.operations.daily_outbound_versions import (
         NO_OUTBOUND_ACK_PREFIX,
     )
@@ -84,13 +92,12 @@ def build_daily_completion_table(completed, start_date, end_date):
     for code, label in DAILY_FLOW_LABELS.items():
         recorded = set(completed.get(code, set())) & expected
         missing = sorted(expected - recorded)
-        automatic = code in {"colored", "uv"}
         rows.append({
-            "出库项目": label, "数据方式": "系统读取" if automatic else "人工登记",
+            "出库项目": label, "数据方式": "人工登记",
             "已完成天数": len(recorded), "检查天数": len(expected),
             "待处理天数": len(missing),
             "待处理日期": "、".join(value.strftime("%m/%d") for value in missing) or "无",
-            "处理方式": "读取来源并扣减" if automatic else "补录实际出库",
+            "处理方式": "补录实际出库",
         })
     return pd.DataFrame(rows)
 
@@ -122,13 +129,12 @@ def build_today_completion_status(completed, today):
 def build_today_completion_table(completed, today):
     rows = []
     for code, label in DAILY_FLOW_LABELS.items():
-        automatic = code in {"colored", "uv"}
         done = today in set(completed.get(code, set()))
         next_step = "无需处理" if done else (
-            "今日结束后由系统读取" if automatic else "今日结束后补录实际出库"
+            "今日结束后补录实际出库"
         )
         rows.append({
-            "出库项目": label, "数据方式": "系统读取" if automatic else "人工登记",
+            "出库项目": label, "数据方式": "人工登记",
             "今日状态": "已完成" if done else "进行中", "计入补录": "否",
             "下一步": next_step,
         })

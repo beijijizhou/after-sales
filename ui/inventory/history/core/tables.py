@@ -34,9 +34,26 @@ def build_movement_detail_table(movement_df, visible_sizes=None):
     ).fillna(0).astype(int)
     movement_df["display_quantity"] = movement_df["quantity_change"]
     movement_df["reason"] = movement_df.get("reason", "").fillna("").astype(str)
+    if "batch_id" not in movement_df.columns:
+        movement_df["batch_id"] = None
+    if "reversal_of_batch_id" not in movement_df.columns:
+        movement_df["reversal_of_batch_id"] = None
+    reversed_batch_ids = set(
+        movement_df["reversal_of_batch_id"].dropna().astype(str)
+    )
     movement_df["operation"] = movement_df.apply(
         lambda row: (
             "🟠 库存设置" if is_stocktake_reason(row["reason"])
+            else "↩️ 撤销出库" if (
+                pd.notna(row["reversal_of_batch_id"])
+                and row["quantity_change"] > 0
+            )
+            else "↩️ 撤销入库" if pd.notna(row["reversal_of_batch_id"])
+            else "⚪ 已撤销出库" if (
+                str(row["batch_id"]) in reversed_batch_ids
+                and row["quantity_change"] < 0
+            )
+            else "⚪ 已撤销入库" if str(row["batch_id"]) in reversed_batch_ids
             else "🟢 入库" if row["quantity_change"] > 0
             else "🔴 出库"
         ),

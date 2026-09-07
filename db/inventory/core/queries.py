@@ -7,14 +7,15 @@ from db.inventory.core.query_filters import apply_inventory_dimension_filters
 
 
 @st.cache_data(ttl=120, show_spinner=False)
-def load_inventory_dimensions(_supabase):
+def load_inventory_dimensions(_supabase, active_only=True):
     supabase = _supabase
-    response = (
+    query = (
         supabase.table("inventory_items")
         .select("department,category,brand,material,color,size")
-        .eq("is_active", True)
-        .execute()
     )
+    if active_only:
+        query = query.eq("is_active", True)
+    response = query.execute()
     inventory = pd.DataFrame(response.data)
     try:
         departments = pd.DataFrame(
@@ -81,7 +82,10 @@ def load_inventory_items(
     query = (
         supabase
         .table("inventory_items")
-        .select("department,category,brand,material,color,size,unit_cost,quantity,updated_at")
+        .select(
+            "department,category,brand,material,color,size,unit_cost,"
+            "quantity,is_active,updated_at"
+        )
         .eq("department", department)
     )
     if category:

@@ -7,15 +7,17 @@ from utils.daily_consumption import (
 from utils.inventory_movements import is_stocktake_reason
 
 
-def filter_history_batches(batch_df, mode):
+def filter_history_batches(batch_df, mode, include_reversed=False):
     reasons = batch_df["备注"].fillna("").astype(str)
     shortage_artifacts = reasons.str.contains(
         "临时库存调整｜每日出库缺口补足", regex=False
     )
-    normal_df = batch_df[
-        batch_df["记录类别"].eq("库存表格记录")
-        & ~shortage_artifacts
-    ]
+    allowed_records = (
+        batch_df["记录类别"].isin(["库存表格记录", "撤销记录"])
+        if include_reversed
+        else batch_df["记录类别"].eq("库存表格记录")
+    )
+    normal_df = batch_df[allowed_records & ~shortage_artifacts]
     daily_mask = normal_df["备注"].fillna("").map(
         is_daily_consumption_reason
     )

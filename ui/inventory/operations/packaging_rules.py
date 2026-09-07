@@ -108,8 +108,9 @@ def _render_sku_rule_table(
 
     rules = _render_material_rule_table(sku_df, text, language, version)
 
+    compact_sku = str(department or "").strip().upper() == "UV"
     labels = {
-        _sku_label(row): row
+        _sku_label(row, compact_sku=compact_sku): row
         for _, row in sku_df.iterrows()
     }
     sku_column = text["rule_sku"]
@@ -199,10 +200,13 @@ def _render_material_rule_table(sku_df, text, language, version):
     }
 
 
-def _sku_label(row):
+def _sku_label(row, *, compact_sku=False):
+    columns = (
+        ["category", "material", "size"]
+        if compact_sku else ["brand", "material", "color", "size"]
+    )
     details = " / ".join(
         str(row.get(column) or "").strip()
-        for column in ["brand", "material", "color", "size"]
-        if str(row.get(column) or "").strip()
+        for column in columns if str(row.get(column) or "").strip()
     )
     return details or str(row.get("sku_name") or "").strip()
