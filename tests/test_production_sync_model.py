@@ -13,6 +13,7 @@ from automation.production_batch import (
 )
 from automation.production_cache import save_production_cache
 from automation.production_period import (
+    _build_recent_model,
     load_period_production_model,
     load_recent_production_model,
 )
@@ -20,6 +21,28 @@ from automation.sync.daily import sync_production_day
 
 
 class ProductionSyncModelTests(unittest.TestCase):
+    def test_recent_model_daily_average_uses_observed_business_dates(self):
+        rows = pd.DataFrame([
+            {
+                "business_date": "2026-08-09", "颜色": "黑",
+                "尺码": "L", "quantity": 100,
+            },
+            {
+                "business_date": "2026-08-10", "颜色": "黑",
+                "尺码": "L", "quantity": 300,
+            },
+        ])
+
+        model = _build_recent_model(
+            rows, "quantity", 30, date(2026, 8, 9), date(2026, 9, 7),
+            effective_days=2,
+        )
+
+        self.assertEqual(model.requested_days, 30)
+        self.assertEqual(model.effective_days, 2)
+        self.assertEqual(model.total_quantity, 400)
+        self.assertEqual(model.data.iloc[0]["平台生产日均"], 200)
+
     def test_cache_miss_fetches_one_day_and_keeps_consumption_model(self):
         target = date(2026, 8, 6)
         production = pd.DataFrame([

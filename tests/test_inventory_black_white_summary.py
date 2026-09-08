@@ -13,18 +13,42 @@ from db.inventory.planning.consumption_alerts import (
     build_inventory_consumption_alerts,
 )
 from db.inventory.planning.consumption_comparison import (
+    FORECAST_SOURCE_WEIGHTS,
     build_period_model_comparison,
     build_prioritized_consumption_model,
     scale_forecast_daily_total,
 )
+from db.inventory.planning.consumption import (
+    build_consumption_order_mix_comparison,
+    build_consumption_order_mix_table,
+)
 from db.inventory.planning.demand_anomaly import (
     build_demand_anomaly_table,
 )
+from db.inventory.planning.warehouse_usage import build_warehouse_daily_totals
 from ui.inventory.planning.anomaly import ANOMALY_COLUMNS
 from ui.inventory.planning.forecast_table import FORECAST_COLUMNS
+from ui.inventory.planning.forecast_controls import _stable_usage_fingerprint
 
 
 class InventoryBlackWhiteSummaryTests(unittest.TestCase):
+    def test_warehouse_daily_totals_use_complete_days_and_recorded_dates(self):
+        outbound = pd.DataFrame([
+            {"日期": date(2026, 8, 9), "实际出库": 100},
+            {"日期": date(2026, 8, 9), "实际出库": 50},
+            {"日期": date(2026, 9, 7), "实际出库": 300},
+            {"日期": date(2026, 9, 8), "实际出库": 999},
+        ])
+
+        result = build_warehouse_daily_totals(
+            outbound, date(2026, 9, 8), days=30,
+        )
+
+        self.assertEqual(result["日期"].tolist(), [
+            date(2026, 9, 7), date(2026, 8, 9),
+        ])
+        self.assertEqual(result["仓库出库量"].tolist(), [300, 150])
+
     def test_missing_platform_share_uses_historical_weights(self):
         production = pd.DataFrame([{
             "system_daily_usage": 280,
@@ -125,7 +149,7 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
         self.assertEqual(int(row["预计当前库存"]), 130)
         self.assertEqual(int(row["预测日耗合计"]), 15)
 
-    def test_forecast_prioritizes_model_then_platform_then_warehouse(self):
+    def test_forecast_uses_only_warehouse_outbound_by_default(self):
         comparison = pd.DataFrame([{
             "颜色": "白",
             "尺码": "2XL",
@@ -136,7 +160,8 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
 
         result = build_prioritized_consumption_model(comparison)
 
-        self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 1310)
+        self.assertEqual(FORECAST_SOURCE_WEIGHTS, {"仓库出库日均": 1.0})
+        self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 1800)
 
     def test_missing_platform_reweights_available_sources(self):
         comparison = pd.DataFrame([{
@@ -149,7 +174,44 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
 
         result = build_prioritized_consumption_model(comparison)
 
-        self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 1067)
+        self.assertEqual(int(result.iloc[0]["consumption_quantity"]), 1300)
+
+    def test_order_mix_table_shows_color_ratio_and_fixed_size_order(self):
+        model = pd.DataFrame([
+            {"color": "白", "size": "M", "consumption_quantity": 300},
+            {"color": "黑", "size": "S", "consumption_quantity": 600},
+            {"color": "白", "size": "S", "consumption_quantity": 100},
+        ])
+
+        result = build_consumption_order_mix_table(model)
+
+        self.assertEqual(result.columns.tolist(), [
+            "颜色", *SIZE_COLUMNS, "合计", "黑白占比",
+        ])
+        self.assertEqual(result["颜色"].tolist(), ["黑", "白"])
+        self.assertEqual(result["合计"].tolist(), [600, 400])
+        self.assertEqual(result["黑白占比"].tolist(), [60.0, 40.0])
+
+    def test_order_mix_comparison_shows_baseline_adjustment_and_ratio(self):
+        base = pd.DataFrame([
+            {"color": "黑", "size": "S", "consumption_quantity": 600},
+            {"color": "白", "size": "M", "consumption_quantity": 400},
+        ])
+        adjusted = pd.DataFrame([
+            {"color": "黑", "size": "S", "consumption_quantity": 900},
+            {"color": "白", "size": "M", "consumption_quantity": 600},
+        ])
+
+        result = build_consumption_order_mix_comparison(base, adjusted)
+
+        self.assertEqual(result.columns.tolist(), [
+            "颜色", *SIZE_COLUMNS, "合计", "黑白占比",
+        ])
+        black = result.loc[result["颜色"] == "黑"].iloc[0]
+        white = result.loc[result["颜色"] == "白"].iloc[0]
+        self.assertEqual(black["S"], "600→900")
+        self.assertEqual(white["M"], "400→600")
+        self.assertEqual(black["黑白占比"], "60.0%")
 
     def test_user_can_change_forecast_weights(self):
         comparison = pd.DataFrame([{
@@ -180,6 +242,40 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
         adjusted = scale_forecast_daily_total(model, 200)
 
         self.assertEqual(adjusted["consumption_quantity"].tolist(), [60, 140])
+
+    def test_daily_override_recalculates_forecast_totals(self):
+        stock = pd.DataFrame([{
+            "颜色": "红", "S": 100, "M": 100,
+            **{
+                size: 0 for size in SIZE_COLUMNS
+                if size not in {"S", "M"}
+            },
+        }])
+        model = pd.DataFrame([
+            {"color": "红", "size": "S", "consumption_quantity": 30},
+            {"color": "红", "size": "M", "consumption_quantity": 70},
+        ])
+
+        adjusted = scale_forecast_daily_total(model, 200)
+        forecast = build_inventory_consumption_alerts(
+            stock, adjusted, target_days=10,
+            inventory_date=date(2026, 9, 8),
+            current_date=date(2026, 9, 8),
+        )
+
+        self.assertEqual(int(forecast.iloc[0]["预测日耗合计"]), 200)
+        self.assertEqual(int(forecast.iloc[0]["建议点货量"]), 1800)
+
+    def test_usage_fingerprint_does_not_depend_on_row_order(self):
+        model = pd.DataFrame([
+            {"color": "白", "size": "M", "consumption_quantity": 20},
+            {"color": "黑", "size": "S", "consumption_quantity": 10},
+        ])
+
+        self.assertEqual(
+            _stable_usage_fingerprint(model),
+            _stable_usage_fingerprint(model.iloc[::-1].reset_index(drop=True)),
+        )
 
     def test_forecast_calculates_target_days_reorder_quantity(self):
         stock = pd.DataFrame([{

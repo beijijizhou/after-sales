@@ -143,3 +143,61 @@ def build_consumption_model_table(model_df):
         .drop(columns=["_color_order"])
         .reset_index(drop=True)
     )
+
+
+def build_consumption_order_mix_table(model_df):
+    """Build the manager-facing black/white and size mix for one order model."""
+    display_df = build_consumption_model_table(model_df)
+    if display_df.empty:
+        return pd.DataFrame(columns=["颜色", *SIZE_COLUMNS, "合计", "黑白占比"])
+
+    display_df["合计"] = display_df[SIZE_COLUMNS].sum(axis=1).astype(int)
+    total = int(display_df["合计"].sum())
+    display_df["黑白占比"] = (
+        display_df["合计"].div(total).mul(100) if total else 0.0
+    )
+    return display_df[["颜色", *SIZE_COLUMNS, "合计", "黑白占比"]]
+
+
+def build_consumption_order_mix_comparison(
+    base_model_df, adjusted_model_df, base_label="调整前基准",
+):
+    """Show one compact baseline-to-adjusted row per color."""
+    base = build_consumption_order_mix_table(base_model_df).set_index("颜色")
+    adjusted = build_consumption_order_mix_table(adjusted_model_df).set_index("颜色")
+    colors = [color for color in ["黑", "白"] if color in base.index or color in adjusted.index]
+    colors.extend(sorted((set(base.index) | set(adjusted.index)) - set(colors)))
+
+    def _quantity(color, column, source):
+        if color not in source.index or column not in source:
+            return 0.0
+        return float(pd.to_numeric(source.at[color, column], errors="coerce") or 0)
+
+    rows = []
+    for color in colors:
+        row = {"颜色": color}
+        for column in [*SIZE_COLUMNS, "合计"]:
+            base_value = _quantity(color, column, base)
+            adjusted_value = _quantity(color, column, adjusted)
+            row[column] = f"{base_value:.0f}→{adjusted_value:.0f}"
+        adjusted_ratio = _quantity(color, "黑白占比", adjusted)
+        row["黑白占比"] = f"{adjusted_ratio:.1f}%"
+        rows.append(row)
+    return pd.DataFrame(
+        rows, columns=["颜色", *SIZE_COLUMNS, "合计", "黑白占比"]
+    )
+
+
+def calculate_equivalent_order_quantity(
+    model_df, base_model_df, base_order_quantity=DEFAULT_ORDER_QUANTITY,
+):
+    """Convert an adjusted model total into its equivalent order baseline."""
+    current_total = pd.to_numeric(
+        pd.DataFrame(model_df).get("consumption_quantity"), errors="coerce"
+    ).fillna(0).sum()
+    base_total = pd.to_numeric(
+        pd.DataFrame(base_model_df).get("consumption_quantity"), errors="coerce"
+    ).fillna(0).sum()
+    if base_total <= 0:
+        return int(base_order_quantity)
+    return max(int(round(float(base_order_quantity) * current_total / base_total)), 0)

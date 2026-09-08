@@ -7,9 +7,7 @@ from db.inventory.planning.warehouse_usage import (
 
 
 FORECAST_SOURCE_WEIGHTS = {
-    "15,000模型日耗": 0.30,
-    "平台生产日均": 0.10,
-    "仓库出库日均": 0.60,
+    "仓库出库日均": 1.0,
 }
 
 

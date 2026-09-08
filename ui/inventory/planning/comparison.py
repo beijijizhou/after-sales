@@ -167,8 +167,8 @@ def render_consumption_models(
         st.error(f"{t('消耗模型加载失败')}：{error}")
         return
     st.info(
-        "黑白短袖默认以仓库每日出库为主要权重，同时保留订单模型和"
-        "ERP 平台生产数据参与加权；ERP 生产数据也会长期保存用于分析。"
+        "黑白短袖点货预测只对订单模型和仓库每日出库设置权重；"
+        "ERP 平台生产数据长期保存并用于模型准确性核对，不参与预测权重。"
     )
     render_model_comparison(
         supabase, model_df, outbound_df, current_date, category

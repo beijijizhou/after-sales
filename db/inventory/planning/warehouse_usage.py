@@ -9,6 +9,31 @@ INTERVAL_COLUMNS = [
 ]
 
 
+def build_warehouse_daily_totals(outbound_df, current_date, days=30):
+    """Summarize recorded warehouse outbound by complete business day."""
+    columns = ["日期", "仓库出库量"]
+    source = pd.DataFrame(outbound_df).copy()
+    if source.empty or not {"日期", "实际出库"}.issubset(source.columns):
+        return pd.DataFrame(columns=columns)
+    source["日期"] = pd.to_datetime(source["日期"], errors="coerce").dt.date
+    source["实际出库"] = pd.to_numeric(
+        source["实际出库"], errors="coerce"
+    ).fillna(0).clip(lower=0)
+    start_date = current_date - timedelta(days=max(int(days), 1))
+    source = source[
+        source["日期"].ge(start_date) & source["日期"].lt(current_date)
+    ]
+    if source.empty:
+        return pd.DataFrame(columns=columns)
+    return (
+        source.groupby("日期", as_index=False)["实际出库"]
+        .sum()
+        .rename(columns={"实际出库": "仓库出库量"})
+        .sort_values("日期", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
 def build_warehouse_usage_intervals(outbound_df, current_date=None):
     if outbound_df.empty:
         return pd.DataFrame(columns=INTERVAL_COLUMNS)

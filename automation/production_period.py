@@ -57,9 +57,10 @@ def load_recent_production_model(
                 available = tuple(sorted(
                     persisted["platform"].dropna().astype(str).unique()
                 ))
+                effective_days = _observed_business_days(rows)
                 return _build_recent_model(
                     rows, "quantity", requested_days, start_date, end_date,
-                    included, available,
+                    included, available, effective_days=effective_days,
                 )
         except Exception:
             # Deployment may not have the unified fact tables yet. The exact
@@ -93,6 +94,7 @@ def load_recent_production_model(
         rows, "数量", requested_days, start_date, end_date,
         tuple(metadata.get("included_platforms") or ()),
         tuple(sorted(available)),
+        effective_days=_observed_business_days(rows),
     )
 
 
@@ -199,6 +201,7 @@ def _select_non_overlapping(candidates):
 def _build_recent_model(
     rows, quantity_field, days, start_date, end_date,
     included_platforms=(), available_platforms=(),
+    effective_days=None,
 ):
     source = pd.DataFrame(rows).copy()
     if source.empty:
@@ -212,12 +215,30 @@ def _build_recent_model(
         source[quantity_field], errors="coerce"
     ).fillna(0).clip(lower=0)
     total_quantity = float(source[quantity_field].sum())
+    divisor_days = max(int(effective_days or days), 1)
     data = source.groupby(
         ["颜色", "尺码"], as_index=False
     )[quantity_field].sum()
-    data["平台生产日均"] = data[quantity_field] / int(days)
+    data["平台生产日均"] = data[quantity_field] / divisor_days
     return PeriodProductionModel(
         data[["颜色", "尺码", "平台生产日均"]],
-        int(days), start_date, end_date, total_quantity, int(days),
+        divisor_days, start_date, end_date, total_quantity, int(days),
         tuple(included_platforms), tuple(available_platforms),
     )
+
+
+def _observed_business_days(rows):
+    source = pd.DataFrame(rows)
+    if source.empty:
+        return 0
+    if "business_date" in source:
+        dates = pd.to_datetime(source["business_date"], errors="coerce")
+        if dates.notna().any():
+            return int(dates.dt.date.nunique())
+    timestamps = pd.Series(pd.NaT, index=source.index, dtype="datetime64[ns]")
+    for column in ("生产完成时间", "创建时间", "开始时间"):
+        if column in source:
+            timestamps = timestamps.fillna(
+                pd.to_datetime(source[column], errors="coerce")
+            )
+    return int(timestamps.dt.date.nunique()) if timestamps.notna().any() else 0

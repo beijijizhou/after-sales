@@ -30,12 +30,13 @@ from db.inventory.planning.demand_anomaly import (
 from ui.inventory.planning.anomaly import render_demand_anomaly_monitor
 from ui.inventory.planning.forecast_controls import (
     render_forecast_calculation,
-    render_forecast_model_controls,
+    render_order_model_breakdown,
     render_forecast_usage_adjustment,
 )
 from ui.inventory.planning.forecast_table import render_reorder_forecast_table
 from ui.inventory.i18n import t
 from ui.planning import render_target_days_input
+from utils.runtime import is_deployed_runtime
 
 
 def render_consumption_planning_inputs(category):
@@ -54,20 +55,9 @@ def render_consumption_planning_inputs(category):
         )
         return DEFAULT_ORDER_QUANTITY, None, 0, target_days
 
-    columns = st.columns(4 if category == "黑白短袖" else 3)
-    if category == "黑白短袖":
-        order_quantity = columns[0].number_input(
-            t("Haloo 订单量"),
-            min_value=1000,
-            max_value=100000,
-            value=DEFAULT_ORDER_QUANTITY,
-            step=1000,
-            key="haloo_consumption_order_quantity",
-        )
-        date_column, buffer_column, target_column = columns[1:]
-    else:
-        order_quantity = DEFAULT_ORDER_QUANTITY
-        date_column, buffer_column, target_column = columns
+    columns = st.columns(3)
+    order_quantity = DEFAULT_ORDER_QUANTITY
+    date_column, buffer_column, target_column = columns
     arrival_date = date_column.date_input(
         t("预计到货日期"),
         value=today + timedelta(days=10),
@@ -102,6 +92,9 @@ def render_reorder_forecast(
     inventory_date,
     visible_sizes=None,
     target_days=55,
+    source_weights=None,
+    calculation_container=None,
+    anomaly_container=None,
 ):
     if category not in {"黑白短袖", "彩色短袖"}:
         return pd.DataFrame()
@@ -112,6 +105,7 @@ def render_reorder_forecast(
         return pd.DataFrame()
 
     try:
+        order_breakdown_container = None
         today = st.session_state.get("inventory_today")
         if today is None:
             from datetime import datetime
@@ -121,9 +115,9 @@ def render_reorder_forecast(
             today, DEFAULT_RECENT_DAYS, category, supabase
         )
         if category == "黑白短袖":
-            source_weights = render_forecast_model_controls(order_quantity)
             model_df = load_consumption_model(supabase, category)
             model_df = scale_consumption_model(model_df, order_quantity)
+            order_breakdown_container = st.container()
             if visible_sizes:
                 model_df = model_df[model_df["size"].isin(visible_sizes)]
         else:
@@ -133,7 +127,8 @@ def render_reorder_forecast(
         if category == "黑白短袖":
             try:
                 outbound_df = load_daily_outbound_history(
-                    supabase, department, category, today
+                    supabase, department, category, today,
+                    lookback_days=DEFAULT_RECENT_DAYS + 1,
                 )
                 if visible_sizes:
                     outbound_df = outbound_df[
@@ -174,22 +169,34 @@ def render_reorder_forecast(
             platform for platform in DTF_PRODUCTION_PLATFORMS
             if platform not in available_platforms
         ]
-        st.caption(
-            "30天生产数据覆盖："
-            f"完整 {len(complete_platforms)} 个平台｜"
-            f"已有数据 {len(available_platforms)} 个平台"
-            + (
-                "｜尚无数据：" + "、".join(missing_platforms)
-                if missing_platforms else ""
+        if category != "黑白短袖" or not is_deployed_runtime():
+            st.caption(
+                "30天生产数据覆盖："
+                f"完整 {len(complete_platforms)} 个平台｜"
+                f"已有数据 {len(available_platforms)} 个平台"
+                + (
+                    "｜尚无数据：" + "、".join(missing_platforms)
+                    if missing_platforms else ""
+                )
             )
-        )
-        forecast_model_df = render_forecast_usage_adjustment(
+        forecast_base_model_df = forecast_model_df.copy()
+        forecast_model_df, _ = render_forecast_usage_adjustment(
             forecast_model_df,
             production.total_quantity,
             DEFAULT_RECENT_DAYS,
             category,
             production.data,
+            outbound_df,
+            today,
+            production.effective_days,
         )
+        if order_breakdown_container is not None:
+            with order_breakdown_container:
+                render_order_model_breakdown(
+                    forecast_model_df,
+                    order_quantity,
+                    base_model_df=forecast_base_model_df,
+                )
         days_to_arrival = max((arrival_date - today).days, 0) if arrival_date and today else 0
         coverage_days = days_to_arrival + int(buffer_days)
         forecast_df = build_inventory_consumption_alerts(
@@ -222,8 +229,8 @@ def render_reorder_forecast(
     st.caption(t("库存按当前筛选材质合计，并合并同材质下的全部所选品牌。"))
     if category == "黑白短袖":
         st.caption(
-            "本页只计算黑白短袖：使用订单、仓库每日出库和黑白短袖"
-            "平台生产数据组成的可调权重模型。"
+            "本页只计算黑白短袖：仓库每日实际出库是正式消耗基准；"
+            "旧订单模型和平台生产数据均不参与预测。"
         )
     else:
         st.caption(
@@ -234,15 +241,25 @@ def render_reorder_forecast(
     st.caption("当前品类的自定义日耗会同步更新其建议点货量和货柜联动。")
     render_reorder_forecast_table(forecast_df)
     if category == "黑白短袖":
-        render_forecast_calculation(
-            comparison_df,
-            forecast_model_df,
-            production.effective_days,
-            production.start_date,
-            production.end_date,
+        calculation_target = (
+            calculation_container
+            if calculation_container is not None else st.container()
         )
-        if anomaly_error_message:
-            st.warning(f"{t('异常消耗加载失败')}: {anomaly_error_message}")
-        st.caption(t("异常出库仅用于提醒，不直接替代点货预测日耗。"))
-        render_demand_anomaly_monitor(anomaly_df)
+        with calculation_target:
+            render_forecast_calculation(
+                comparison_df,
+                forecast_model_df,
+                production.effective_days,
+                production.start_date,
+                production.end_date,
+            )
+        anomaly_target = (
+            anomaly_container
+            if anomaly_container is not None else st.container()
+        )
+        with anomaly_target:
+            if anomaly_error_message:
+                st.warning(f"{t('异常消耗加载失败')}: {anomaly_error_message}")
+            st.caption(t("异常出库仅用于提醒，不直接替代点货预测日耗。"))
+            render_demand_anomaly_monitor(anomaly_df)
     return forecast_model_df

@@ -27,6 +27,9 @@ from ui.inventory.planning.consumption import (
     render_consumption_planning_inputs,
     render_reorder_forecast,
 )
+from ui.inventory.planning.forecast_controls import (
+    render_forecast_model_controls,
+)
 from ui.inventory.stock.cost_summary import render_inventory_cost_summary
 from ui.inventory.stock.batch_costs import (
     render_batch_cost_workspace,
@@ -101,19 +104,51 @@ def render_inventory_tabs(
 
     if tabs["点货预测"].open:
         with tabs["点货预测"]:
-            order_quantity, arrival_date, buffer_days, target_days = (
-                render_consumption_planning_inputs(category)
-            )
-            forecast_usage_df = render_reorder_forecast(
-                supabase, department, category, inventory_df, order_quantity,
-                arrival_date, buffer_days, inventory_date, visible_sizes,
-                target_days=target_days,
-            )
-            if selected_date == current_date:
-                render_incoming_inventory_forecast(
-                    supabase, department, category, raw_df, current_date,
-                    forecast_usage_df, target_days=target_days,
+            if department == "DTF" and category == "黑白短袖":
+                forecast_tab, parameters_tab, anomaly_tab, incoming_tab = st.tabs([
+                    "点货建议", "点货预测参数", "异常消耗监控",
+                    "库存与最近到货联动",
+                ])
+                with parameters_tab:
+                    order_quantity, arrival_date, buffer_days, target_days = (
+                        render_consumption_planning_inputs(category)
+                    )
+                    source_weights = render_forecast_model_controls(
+                        order_quantity
+                    )
+                with forecast_tab:
+                    forecast_usage_df = render_reorder_forecast(
+                        supabase, department, category, inventory_df,
+                        order_quantity, arrival_date, buffer_days,
+                        inventory_date, visible_sizes,
+                        target_days=target_days,
+                        source_weights=source_weights,
+                        calculation_container=parameters_tab,
+                        anomaly_container=anomaly_tab,
+                    )
+                with incoming_tab:
+                    if selected_date == current_date:
+                        render_incoming_inventory_forecast(
+                            supabase, department, category, raw_df,
+                            current_date, forecast_usage_df,
+                            target_days=target_days,
+                        )
+                    else:
+                        st.info("到货联动只使用当前库存；请切换到今天查看。")
+            else:
+                order_quantity, arrival_date, buffer_days, target_days = (
+                    render_consumption_planning_inputs(category)
                 )
+                forecast_usage_df = render_reorder_forecast(
+                    supabase, department, category, inventory_df,
+                    order_quantity, arrival_date, buffer_days, inventory_date,
+                    visible_sizes, target_days=target_days,
+                )
+                if selected_date == current_date:
+                    render_incoming_inventory_forecast(
+                        supabase, department, category, raw_df, current_date,
+                        forecast_usage_df, target_days=target_days,
+                    )
     if tabs["消耗模型"].open:
         with tabs["消耗模型"]:
             order_quantity = st.session_state.get(
