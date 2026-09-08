@@ -34,8 +34,7 @@ def render_inventory_global_filters(
     )
     return (
         department, category, selected_brands, selected_materials,
-        selected_colors, selected_sizes, movement_types, selected_date,
-        use_snapshot_date,
+        selected_colors, selected_sizes, movement_types, selected_date, use_snapshot_date,
     )
 
 
@@ -177,10 +176,7 @@ def render_inventory_dimension_filters(
         placeholder=t("全部"),
         format_func=lambda value: "yuan" if value == "YUAN" else value,
     )
-    return (
-        department, category, selected_brands, selected_materials,
-        selected_colors, selected_sizes,
-    )
+    return department, category, selected_brands, selected_materials, selected_colors, selected_sizes
 def _reset_invalid_selectbox(key, options):
     reset_invalid_selectbox(st.session_state, key, options)
 

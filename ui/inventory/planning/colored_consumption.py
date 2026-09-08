@@ -28,6 +28,10 @@ from ui.inventory.planning.colored_model_source import (
 from ui.table_layout import fit_table_height
 
 
+# Compatibility for callers that imported the former private helper here.
+_default_refresh_platforms = default_refresh_platforms
+
+
 def render_colored_consumption(
     supabase, current_date, inventory_df, visible_sizes=None,
 ):

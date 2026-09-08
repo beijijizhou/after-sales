@@ -272,6 +272,9 @@ class UVSheetInventoryTests(unittest.TestCase):
         captured = {}
 
         class Response:
+            status_code = 200
+            headers = {}
+
             def raise_for_status(self):
                 return None
 

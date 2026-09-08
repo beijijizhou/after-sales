@@ -43,7 +43,9 @@ refactors, not after every small feature.
 - Inventory UI: `ui/inventory/`
 - Inventory history data components: `ui/inventory/history/core/`; history
   page, reversal, correction, and SKU workflows:
-  `ui/inventory/history/workflows/`.
+  `ui/inventory/history/workflows/`. SKU-import tables and SKU timeline
+  formatting live in focused modules at `ui/inventory/history/` instead of
+  their controllers.
 - Container workflow: `db/inventory/container/` and
   `ui/inventory/container/`
 - Consumables: `db/consumables/` and `ui/consumables/`, including
@@ -88,7 +90,8 @@ refactors, not after every small feature.
 - Container list, detail/packaging, and grouped summaries are separated in
   `ui/inventory/container/tables.py`, `detail_tables.py`, and
   `summary_tables.py`; in-transit progress and operations live in
-  `transit_view.py`.
+  `transit_view.py`. Container arrival sorting and batch summaries live in
+  `db/inventory/container/arrival_tables.py`.
 - Consumable SKU creation/catalog share `ui/consumables/sku_models.py`;
   customer sales separates party editing and preview-before-signing under
   `ui/inventory/sales/`.
