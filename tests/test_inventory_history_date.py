@@ -2,10 +2,17 @@ import unittest
 
 import pandas as pd
 
-from ui.inventory.history.workflows.page import filter_inventory_history_data
+from ui.inventory.history.workflows.page import (
+    filter_inventory_history_data,
+    has_active_history_filters,
+)
 
 
 class InventoryHistoryDateTests(unittest.TestCase):
+    def test_category_alone_expands_matching_ledger_history(self):
+        self.assertTrue(has_active_history_filters("铁板画", [], [], [], []))
+        self.assertFalse(has_active_history_filters("", [], [], [], []))
+
     def test_history_filter_keeps_all_dates_for_selected_sku(self):
         movements = pd.DataFrame([
             {

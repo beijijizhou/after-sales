@@ -121,6 +121,11 @@
 - The UI may combine arrival confirmation and inventory posting into one
   action for temporary or urgent arrivals, but the persisted state history
   must still record `在途 -> 已到柜 -> 已入库` and inventory is added once.
+- When inventory was already recorded through another audited inbound batch,
+  a user may explicitly choose status-only posting. It changes the container
+  to `已入库`, records the operator, time, and no-stock-change reason, and must
+  neither add inventory nor create an inventory movement. Reversing it restores
+  only the container status and must not subtract inventory.
 - Expected arrival is not actual arrival.
 - Manual arrival confirmation records a date, which may be in the future.
 - The confirmation operation time is recorded automatically in event history.
@@ -481,7 +486,10 @@ forecast as an estimate.
 
 - Logistics acquisition reuses the production-data department and platform
   catalog. Users select department first and then a platform belonging to that
-  department; do not maintain a separate hard-coded platform list.
+  department; do not maintain a separate hard-coded platform list. The ERP
+  platform selector defaults to S2B only when S2B is available in the selected
+  department; every other connected platform remains available for explicit
+  selection.
 - ERP logistics synchronization must show live, platform-specific progress for
   connection, order/label retrieval, persistence, carrier classification, and
   USPS candidate preparation; a completion-only summary is not sufficient.

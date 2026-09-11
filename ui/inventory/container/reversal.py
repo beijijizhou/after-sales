@@ -1,6 +1,7 @@
 import streamlit as st
 
 from db.inventory.container.workflow import (
+    get_container_posting_mode,
     get_container_undo_kind,
     undo_latest_container_confirmation,
 )
@@ -33,10 +34,24 @@ def render_container_undo_action(
         if not values.empty and values.iloc[0]:
             label = values.iloc[0]
     title = "撤销入库确认" if kind == "posting" else "撤销到柜确认"
+    posting_mode = None
+    if kind == "posting":
+        try:
+            posting_mode = get_container_posting_mode(
+                supabase, container_key
+            )
+        except Exception:
+            # Legacy postings predate the explicit mode marker. Preserve the
+            # existing stock-review path and let domain validation guard undo.
+            posting_mode = "unknown"
     effect = (
-        "系统会生成反向库存流水，货柜恢复为“已到柜”；"
-        "原入库和撤销记录都会保留。若当时使用了“到柜并直接入库”，"
-        "完成后还可以继续撤销到柜确认。"
+        (
+            "只恢复货柜状态，不会改变库存；原入库和撤销记录都会保留。"
+            if posting_mode == "status_only" else
+            "系统会生成反向库存流水，货柜恢复为“已到柜”；"
+            "原入库和撤销记录都会保留。若当时使用了“到柜并直接入库”，"
+            "完成后还可以继续撤销到柜确认。"
+        )
         if kind == "posting"
         else "货柜恢复到确认前状态，并清除实际到柜日期；"
         "原确认和撤销记录都会保留。"
@@ -48,20 +63,21 @@ def render_container_undo_action(
         st.markdown(f"#### {embedded_title}")
         _render_undo_workflow(
             supabase, target_df, container_key, key_prefix, embedded_title,
-            label, effect, kind,
+            label, effect, kind, posting_mode,
         )
         return
     with st.expander(title, expanded=False):
         _render_undo_workflow(
             supabase, target_df, container_key, key_prefix, title,
-            label, effect, kind,
+            label, effect, kind, posting_mode,
         )
 
 
 def _render_undo_workflow(
     supabase, target_df, container_key, key_prefix, title, label, effect, kind,
+    posting_mode=None,
 ):
-    if kind == "posting":
+    if kind == "posting" and posting_mode != "status_only":
         st.caption(
             "库存核对与“库存管理 → 批次修改与撤销”使用同一套"
             "当前库存、本次出库和撤销后库存口径。"
@@ -107,9 +123,13 @@ def _render_undo_controls(
     st.session_state["container_undo_saved"] = (
         f"{label} 已完成{title}，当前状态：{result['status']}"
     )
-    if result.get("kind") == "posting":
+    if result.get("kind") == "posting" and result.get("inventory_changed"):
         st.session_state["inventory_saved_message"] = (
             f"{label} 的入库批次已撤销；库存管理已同步生成反向流水，"
             "当前库存已恢复。"
+        )
+    elif result.get("kind") == "posting":
+        st.session_state["inventory_saved_message"] = (
+            f"{label} 已撤销入库确认；原确认未增加库存，当前库存未变。"
         )
     st.rerun()

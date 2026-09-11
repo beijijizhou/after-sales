@@ -5,6 +5,7 @@ import pandas as pd
 
 from db.inventory.container.workflow.reversal import (
     extract_inventory_batch_id,
+    get_container_posting_mode,
     get_container_undo_kind,
     undo_latest_container_confirmation,
 )
@@ -158,6 +159,17 @@ class ContainerReversalTests(unittest.TestCase):
             batch_id,
         )
 
+    @patch("db.inventory.container.workflow.reversal._load_latest_event")
+    def test_status_only_posting_mode_is_detected(self, load_event):
+        load_event.return_value = {
+            "note": "库存已提前录入｜本次仅确认入库，未增加库存"
+        }
+
+        self.assertEqual(
+            get_container_posting_mode(object(), "Binyu-0828"),
+            "status_only",
+        )
+
     def test_undo_kind_follows_current_state(self):
         self.assertEqual(get_container_undo_kind("已入库"), "posting")
         self.assertEqual(get_container_undo_kind("已到柜"), "arrival")
@@ -224,6 +236,38 @@ class ContainerReversalTests(unittest.TestCase):
         self.assertEqual(reverse.call_args.args[2], "Andy")
         self.assertEqual(insert.call_args.args[1]["event_type"], "撤销入库")
         self.assertEqual(result["batch_id"], batch_id)
+
+    @patch("db.inventory.container.workflow.reversal._insert_event")
+    @patch("db.inventory.container.workflow.reversal._update_container")
+    @patch("db.inventory.container.workflow.reversal._load_latest_event")
+    @patch("db.inventory.container.workflow.reversal._load_current_container")
+    @patch("db.inventory.container.workflow.reversal.reverse_batch")
+    def test_undo_status_only_posting_never_changes_inventory(
+        self, reverse, load_current, load_event, update, insert,
+    ):
+        load_current.return_value = {
+            "container_no": "Binyu-0828", "status": "已入库",
+            "actual_arrival_date": "2026-08-28",
+            "actual_arrival_at": None,
+            "department": "DTF", "category": "彩色短袖",
+        }
+        load_event.return_value = {
+            "previous_status": "已到柜",
+            "note": "库存已提前录入｜本次仅确认入库，未增加库存",
+        }
+        client = object()
+
+        result = undo_latest_container_confirmation(
+            client, "Binyu-0828", "Andy"
+        )
+
+        update.assert_called_once_with(
+            client, "Binyu-0828", {"status": "已到柜"}
+        )
+        reverse.assert_not_called()
+        self.assertFalse(result["inventory_changed"])
+        self.assertIsNone(result["batch_id"])
+        self.assertIn("无库存流水需要撤销", insert.call_args.args[1]["note"])
 
 
 if __name__ == "__main__":

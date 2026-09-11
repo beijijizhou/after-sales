@@ -6,8 +6,7 @@ from ui.inventory.shared.filters import _reset_invalid_selectbox
 from db.inventory.container.repository import load_inventory_containers
 from db.inventory.container.labels import get_container_display_label
 from ui.inventory.container.posting import (
-    post_container_with_feedback,
-    render_container_posting_stock_review,
+    render_container_posting_action,
 )
 from ui.inventory.container.tables import (
     render_container_inventory_summary,
@@ -118,27 +117,7 @@ def render_today_arrival_posting(supabase, raw_df):
         key="today_arrival_posting_target",
     )
     container_key = choices[selected]
-    total = int(
-        pd.to_numeric(
-            pending.loc[
-                pending["container_key"] == container_key,
-                "quantity",
-            ],
-            errors="coerce",
-        ).fillna(0).sum()
-    )
-    note = st.text_input(
-        "入库备注",
-        key=f"today_arrival_posting_note_{container_key}",
-    )
     target = pending[pending["container_key"] == container_key]
-    render_container_posting_stock_review(supabase, target)
-    st.warning(f"确认后库存将增加 {total:,} 件")
-    if not st.button(
-        "确认入库",
-        type="primary",
-        width="stretch",
-        key=f"today_arrival_posting_{container_key}",
-    ):
-        return
-    post_container_with_feedback(supabase, container_key, note, total)
+    render_container_posting_action(
+        supabase, target, container_key, key_prefix="today_arrival"
+    )

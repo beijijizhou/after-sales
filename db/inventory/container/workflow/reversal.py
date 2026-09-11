@@ -10,6 +10,7 @@ from db.inventory.container.workflow.state import (
     build_container_event,
     normalize_container_state,
 )
+from db.inventory.container.workflow.posting import STATUS_ONLY_POSTING_NOTE
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -46,30 +47,37 @@ def undo_latest_container_confirmation(
 def _undo_posting(supabase, container_key, current, operated_by, note):
     event = _load_latest_event(supabase, container_key, "入库")
     batch_id = extract_inventory_batch_id(event.get("note"))
-    if not batch_id:
+    status_only = is_status_only_container_posting(event.get("note"))
+    if not batch_id and not status_only:
         raise ValueError("这次入库没有关联库存批次，无法安全撤销")
     previous = event.get("previous_status") or STATE_ARRIVED
     if normalize_container_state(previous) != STATE_ARRIVED:
         raise ValueError("入库记录的上一步状态异常，请先核对操作历史")
 
     _update_container(supabase, container_key, {"status": previous})
-    try:
-        reverse_batch(
-            supabase,
-            BatchReference(
-                BatchKind.INVENTORY, batch_id,
-                current.get("department"), current.get("category"),
-            ),
-            operated_by,
-        )
-    except Exception:
-        _update_container(
-            supabase, container_key, {"status": current["status"]}
-        )
-        raise
+    if batch_id:
+        try:
+            reverse_batch(
+                supabase,
+                BatchReference(
+                    BatchKind.INVENTORY, batch_id,
+                    current.get("department"), current.get("category"),
+                ),
+                operated_by,
+            )
+        except Exception:
+            _update_container(
+                supabase, container_key, {"status": current["status"]}
+            )
+            raise
 
     undo_note = _undo_note(
-        note, f"已反向撤销库存批次：{batch_id}"
+        note,
+        (
+            f"已反向撤销库存批次：{batch_id}"
+            if batch_id else
+            "仅撤销货柜入库状态；原操作未增加库存，无库存流水需要撤销"
+        ),
     )
     undo_event = build_container_event(
         current,
@@ -83,7 +91,10 @@ def _undo_posting(supabase, container_key, current, operated_by, note):
         _parse_arrival_at(current.get("actual_arrival_at")),
     )
     _insert_event(supabase, undo_event)
-    return {"kind": "posting", "status": previous, "batch_id": batch_id}
+    return {
+        "kind": "posting", "status": previous, "batch_id": batch_id,
+        "inventory_changed": bool(batch_id),
+    }
 
 
 def _undo_arrival(supabase, container_key, current, operated_by, note):
@@ -162,6 +173,20 @@ def _load_latest_event(supabase, container_key, event_type):
 def extract_inventory_batch_id(note):
     match = BATCH_PATTERN.search(str(note or ""))
     return match.group(1) if match else None
+
+
+def is_status_only_container_posting(note):
+    return STATUS_ONLY_POSTING_NOTE in str(note or "")
+
+
+def get_container_posting_mode(supabase, container_key):
+    """Return how the latest posting affected inventory."""
+    event = _load_latest_event(supabase, container_key, "入库")
+    if extract_inventory_batch_id(event.get("note")):
+        return "inventory"
+    if is_status_only_container_posting(event.get("note")):
+        return "status_only"
+    return "unknown"
 
 
 def _update_container(supabase, container_key, values):

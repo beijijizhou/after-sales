@@ -103,6 +103,7 @@ from ui.logistics.sync_view import (
     _fetch_selected_sources,
     _format_elapsed,
     _load_selected_sources,
+    _render_erp_worker_setting,
     resolve_erp_workers,
 )
 from ui.logistics.source_gateway import (
@@ -1298,7 +1299,7 @@ class LogisticsTrackingTests(unittest.TestCase):
             default_logistics_platforms(
                 ("汉森", "S2B", "SDS2"), CONNECTED_PLATFORMS
             ),
-            ["S2B", "SDS2"],
+            ["S2B"],
         )
 
     def test_logistics_platform_default_falls_back_when_s2b_is_unavailable(self):
@@ -1306,7 +1307,7 @@ class LogisticsTrackingTests(unittest.TestCase):
             default_logistics_platforms(
                 ("汉森", "SDS1", "SDS2"), CONNECTED_PLATFORMS
             ),
-            ["SDS1", "SDS2"],
+            [],
         )
 
     def test_erp_logistics_sync_keeps_one_latest_status_row_per_platform(self):
@@ -1518,6 +1519,20 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(resolve_erp_workers(1, 7), 1)
         self.assertEqual(resolve_erp_workers(99, 10), 10)
         self.assertEqual(resolve_erp_workers("invalid", 2), 2)
+
+    def test_single_selected_platform_uses_fixed_worker_control(self):
+        with patch(
+            "ui.logistics.sync_view.st.session_state", new_callable=dict
+        ), patch(
+            "ui.logistics.sync_view.st.selectbox", return_value=1
+        ) as selectbox, patch(
+            "ui.logistics.sync_view.st.select_slider"
+        ) as slider:
+            workers = _render_erp_worker_setting(["S2B"])
+
+        self.assertEqual(workers, 1)
+        selectbox.assert_called_once()
+        slider.assert_not_called()
 
     @patch("automation.api.humbird.shipments.fetch_humbird_shipments_legacy")
     @patch("automation.api.humbird.shipments.fetch_humbird_shipments")

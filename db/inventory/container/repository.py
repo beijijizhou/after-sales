@@ -69,6 +69,18 @@ def load_container_search_records(supabase):
     return pd.DataFrame(response.data)
 
 
+def load_inventory_container(supabase, container_key):
+    """Load every SKU row for one business container batch."""
+    response = (
+        supabase.table("inventory_container_imports")
+        .select(CONTAINER_COLUMNS)
+        .eq("container_key", container_key)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return pd.DataFrame(response.data)
+
+
 def load_posted_container_by_inventory_batch(supabase, batch_id):
     """Resolve one posted container from its inventory movement batch."""
     events = (

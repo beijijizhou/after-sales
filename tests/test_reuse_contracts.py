@@ -123,7 +123,7 @@ class SharedReuseContractTests(unittest.TestCase):
         today = (PROJECT_ROOT / "ui/inventory/container/today.py").read_text()
         events = (PROJECT_ROOT / "ui/inventory/container/events.py").read_text()
         self.assertIn("def post_container_with_feedback", posting)
-        self.assertIn("post_container_with_feedback", today)
+        self.assertIn("render_container_posting_action", today)
         self.assertIn("post_container_with_feedback", events)
         self.assertNotIn("post_container_inventory(", today)
         self.assertNotIn("post_container_inventory(", events)

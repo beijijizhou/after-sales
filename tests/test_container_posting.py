@@ -1,7 +1,10 @@
 import unittest
 from unittest.mock import patch
 
-from db.inventory.container.workflow.posting import post_container_inventory
+from db.inventory.container.workflow.posting import (
+    STATUS_ONLY_POSTING_NOTE,
+    post_container_inventory,
+)
 
 
 class _Response:
@@ -83,6 +86,25 @@ class ContainerPostingTests(unittest.TestCase):
         self.assertEqual([event["event_type"] for event in events], ["入库"])
         self.assertEqual(events[0]["previous_status"], "已到柜")
         self.assertEqual(client.updates[0][1], {"status": "已入库"})
+
+    @patch("db.inventory.container.workflow.posting._apply_inventory_groups")
+    @patch("db.inventory.container.workflow.posting._ensure_not_posted")
+    @patch("db.inventory.container.workflow.posting._load_container_rows")
+    def test_status_only_posting_does_not_add_inventory(
+        self, load_rows, _ensure, apply_inventory
+    ):
+        load_rows.return_value = [_item("已到柜")]
+        client = _Supabase()
+
+        events = post_container_inventory(
+            client, "TEST-1", "Andy", "库存先前已录入",
+            add_inventory=False,
+        )
+
+        apply_inventory.assert_not_called()
+        self.assertEqual(client.updates[0][1], {"status": "已入库"})
+        self.assertIn(STATUS_ONLY_POSTING_NOTE, events[0]["note"])
+        self.assertNotIn("库存批次：", events[0]["note"])
 
 
 if __name__ == "__main__":

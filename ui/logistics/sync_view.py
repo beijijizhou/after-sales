@@ -65,7 +65,7 @@ def _render_erp_sync(supabase):
     selected = columns[1].multiselect(
         "生产平台（仅显示已接入物流接口）", connected,
         default=default_logistics_platforms(platforms, CONNECTED_PLATFORMS),
-        key=f"logistics_platforms_{department}",
+        key=f"logistics_platforms_s2b_default_{department}",
     )
     st.caption(
         f"{department} 已配置平台：{'、'.join(platforms) or '暂无'}｜"
@@ -330,6 +330,11 @@ def resolve_erp_workers(requested, platform_count):
 def _render_erp_worker_setting(selected):
     """Default to one worker for every selected ERP platform."""
     count = max(1, len(selected))
+    help_text = (
+        "默认等于当前勾选的平台数，一个平台对应一个读取线程；"
+        "这里只读取ERP订单、物流单号和面单链接，不运行OCR。"
+        "遇到单个平台接口限流时可手动降低。"
+    )
     signature = tuple(selected)
     signature_key = "logistics_erp_worker_platforms"
     widget_key = "logistics_erp_worker_count"
@@ -338,15 +343,19 @@ def _render_erp_worker_setting(selected):
         st.session_state[widget_key] = count
     elif st.session_state.get(widget_key) not in range(1, count + 1):
         st.session_state[widget_key] = count
+    if count == 1:
+        return st.selectbox(
+            "ERP平台并行线程数",
+            options=(1,),
+            disabled=True,
+            key="logistics_erp_single_worker_count",
+            help=help_text,
+        )
     return st.select_slider(
         "ERP平台并行线程数",
         options=tuple(range(1, count + 1)),
         key=widget_key,
-        help=(
-            "默认等于当前勾选的平台数，一个平台对应一个读取线程；"
-            "这里只读取ERP订单、物流单号和面单链接，不运行OCR。"
-            "遇到单个平台接口限流时可手动降低。"
-        ),
+        help=help_text,
     )
 
 

@@ -14,8 +14,11 @@ from db.inventory.container.workflow.state import (
 from db.inventory.operations.adjustments import apply_adjustment_rows
 
 
+STATUS_ONLY_POSTING_NOTE = "库存已提前录入｜本次仅确认入库，未增加库存"
+
+
 def post_container_inventory(
-    supabase, container_key, operated_by, note=""
+    supabase, container_key, operated_by, note="", *, add_inventory=True,
 ):
     items = _load_container_rows(supabase, container_key)
     today = pd.Timestamp.now(tz="America/New_York").date()
@@ -30,12 +33,13 @@ def post_container_inventory(
     else:
         previous = validate_container_transition(previous, STATE_POSTED)
     _ensure_not_posted(supabase, container_key)
-    batch_id = str(uuid4())
+    batch_id = str(uuid4()) if add_inventory else None
     frame = pd.DataFrame(items)
     try:
-        _apply_inventory_groups(
-            supabase, frame, batch_id, operated_by, today, container_key
-        )
+        if add_inventory:
+            _apply_inventory_groups(
+                supabase, frame, batch_id, operated_by, today, container_key
+            )
         container_values = {"status": STATE_POSTED}
         if auto_arrival:
             container_values.update({
@@ -58,9 +62,14 @@ def post_container_inventory(
             )
             arrival_event["created_at"] = event_time.isoformat()
             events.append(arrival_event)
+        posting_note = (
+            f"{note}｜库存批次：{batch_id}".strip("｜")
+            if add_inventory else
+            "｜".join(filter(None, [str(note or "").strip(), STATUS_ONLY_POSTING_NOTE]))
+        )
         posting_event = build_container_event(
             original, container_key, "入库", previous, STATE_POSTED,
-            today, operated_by, f"{note}｜库存批次：{batch_id}".strip("｜"),
+            today, operated_by, posting_note,
         )
         posting_event["created_at"] = (
             event_time + timedelta(microseconds=1)
@@ -149,21 +158,21 @@ def _ensure_not_posted(supabase, container_key):
 def _rollback_posting(
     supabase, batch_id, container_key, original, operated_by
 ):
-    try:
-        supabase.rpc(
-            "reverse_inventory_movement_batch",
-            {"p_batch_id": batch_id, "p_created_by": operated_by},
-        ).execute()
-    except Exception:
-        pass
-    finally:
-        (
-            supabase.table("inventory_container_imports")
-            .update({
-                "status": original["status"],
-                "actual_arrival_date": original.get("actual_arrival_date"),
-                "actual_arrival_at": original.get("actual_arrival_at"),
-            })
-            .eq("container_key", container_key)
-            .execute()
-        )
+    if batch_id:
+        try:
+            supabase.rpc(
+                "reverse_inventory_movement_batch",
+                {"p_batch_id": batch_id, "p_created_by": operated_by},
+            ).execute()
+        except Exception:
+            pass
+    (
+        supabase.table("inventory_container_imports")
+        .update({
+            "status": original["status"],
+            "actual_arrival_date": original.get("actual_arrival_date"),
+            "actual_arrival_at": original.get("actual_arrival_at"),
+        })
+        .eq("container_key", container_key)
+        .execute()
+    )

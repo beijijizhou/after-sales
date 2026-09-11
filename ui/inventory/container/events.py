@@ -1,8 +1,10 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import streamlit as st
 
+from db.inventory.container.repository import load_inventory_container
 from db.inventory.container.history import (
     build_container_history_display,
     load_container_events,
@@ -14,6 +16,7 @@ from utils.auth import get_current_operator_name
 from ui.inventory.container.reversal import render_container_undo_action
 from ui.inventory.container.posting import (
     post_container_with_feedback,
+    render_container_posting_mode,
     render_container_posting_stock_review,
 )
 from ui.table_layout import fit_table_height
@@ -92,16 +95,35 @@ def render_status_update(
         except Exception as error:
             st.error(f"到柜日期保存失败：{error}")
 
-    total = int(target["quantity"].sum())
-    render_container_posting_stock_review(supabase, target)
+    try:
+        target = load_inventory_container(supabase, container_key)
+    except Exception as error:
+        st.error(f"完整货柜明细加载失败：{error}")
+        return
+    if target.empty:
+        st.error("没有找到这个货柜的完整明细，不能直接入库")
+        return
+    total = int(
+        pd.to_numeric(target["quantity"], errors="coerce").fillna(0).sum()
+    )
+    add_inventory, mode_confirmed = render_container_posting_mode(
+        container_key, key_prefix
+    )
+    if add_inventory:
+        render_container_posting_stock_review(supabase, target)
     if post_col.button(
-        "到柜并直接入库",
+        (
+            "到柜并直接入库"
+            if add_inventory else "到柜并仅确认入库"
+        ),
         type="primary",
         width="stretch",
+        disabled=not mode_confirmed,
         key=f"{key_prefix}_direct_post_{container_key}",
     ):
         post_container_with_feedback(
-            supabase, container_key, note, total
+            supabase, container_key, note, total,
+            add_inventory=add_inventory,
         )
 
 

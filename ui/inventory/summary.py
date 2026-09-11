@@ -22,6 +22,7 @@ from db.inventory.core.queries import clear_inventory_query_cache
 from db.inventory.sku import load_sku_imports
 from ui.inventory.history.workflows.page import (
     clear_inventory_history_cache,
+    has_active_history_filters,
 )
 from ui.inventory.history.core.filters import MOVEMENT_TYPE_ORDER
 from ui.inventory.i18n import get_language, render_language_selector, t
@@ -199,8 +200,8 @@ def render_inventory_summary(supabase):
         if inventory_df.empty:
             st.warning(t("暂无库存数据"))
 
-        history_filter_active = bool(
-            brands or materials or colors or selected_sizes
+        history_filter_active = has_active_history_filters(
+            category, brands, materials, colors, selected_sizes
         )
         render_inventory_tabs(
             supabase, department, category, inventory_df, raw_df,

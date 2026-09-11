@@ -54,6 +54,13 @@ def filter_inventory_history_data(
     return movements, imports, build_movement_batches(movements, imports)
 
 
+def has_active_history_filters(
+    category="", brands=None, materials=None, colors=None, sizes=None,
+):
+    """Treat every visible SKU dimension, including category, as a ledger filter."""
+    return any((category, brands, materials, colors, sizes))
+
+
 def render_inventory_history(
     supabase, department, mode, history_data=None, visible_sizes=None,
     movement_types=None, quantity_search_data=None,

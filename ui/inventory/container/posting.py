@@ -1,7 +1,10 @@
 import pandas as pd
 import streamlit as st
 
-from db.inventory.container.repository import load_inventory_containers
+from db.inventory.container.repository import (
+    load_inventory_container,
+    load_inventory_containers,
+)
 from db.inventory.container.labels import get_container_business_name
 from db.inventory.container.tables import build_container_display
 from db.inventory.container.workflow import post_container_inventory
@@ -132,6 +135,17 @@ def render_container_posting_action(
     if not has_permission("can_edit_container"):
         st.info("当前账号可以查看，但不能确认入库")
         return
+    try:
+        complete_target = load_inventory_container(
+            supabase, container_key
+        )
+    except Exception as error:
+        st.error(f"完整货柜明细加载失败：{error}")
+        return
+    if complete_target.empty:
+        st.error("没有找到这个货柜的完整明细，不能确认入库")
+        return
+    target = complete_target
 
     note = st.text_input(
         "入库备注",
@@ -140,24 +154,57 @@ def render_container_posting_action(
     total = int(
         pd.to_numeric(target["quantity"], errors="coerce").fillna(0).sum()
     )
-    render_container_posting_stock_review(supabase, target)
-    st.warning(f"确认后库存将增加 {total:,} 件")
+    add_inventory, mode_confirmed = render_container_posting_mode(
+        container_key, key_prefix
+    )
+    if add_inventory:
+        render_container_posting_stock_review(supabase, target)
+        st.warning(f"确认后库存将增加 {total:,} 件")
     if not st.button(
-        "确认入库",
+        "确认入库" if add_inventory else "仅确认入库（不增加库存）",
         type="primary",
         width="stretch",
+        disabled=not mode_confirmed,
         key=f"{key_prefix}_post_{container_key}",
     ):
         return
-    post_container_with_feedback(supabase, container_key, note, total)
+    post_container_with_feedback(
+        supabase, container_key, note, total, add_inventory=add_inventory
+    )
 
 
-def post_container_with_feedback(supabase, container_key, note, total):
+def render_container_posting_mode(container_key, key_prefix):
+    mode = st.radio(
+        "入库处理方式",
+        ["正常入库（增加库存）", "库存已提前录入（仅确认入库）"],
+        horizontal=True,
+        key=f"{key_prefix}_posting_mode_{container_key}",
+    )
+    add_inventory = mode == "正常入库（增加库存）"
+    if add_inventory:
+        return True, True
+    st.warning(
+        "本次只把货柜状态改为“已入库”，不会增加库存，也不会生成库存入库流水。"
+    )
+    confirmed = st.checkbox(
+        "我确认这个批次的库存已经通过其他入库流水计入",
+        key=f"{key_prefix}_status_only_confirm_{container_key}",
+    )
+    return False, confirmed
+
+
+def post_container_with_feedback(
+    supabase, container_key, note, total, *, add_inventory=True,
+):
     try:
         post_container_inventory(
-            supabase, container_key, get_current_operator_name(), note
+            supabase, container_key, get_current_operator_name(), note,
+            add_inventory=add_inventory,
         )
-        st.success(f"入库成功：库存增加 {total:,} 件")
+        if add_inventory:
+            st.success(f"入库成功：库存增加 {total:,} 件")
+        else:
+            st.success("入库状态已确认：库存未重复增加")
         st.toast("货柜已完成入库")
         st.rerun()
     except Exception as error:

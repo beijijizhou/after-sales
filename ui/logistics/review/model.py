@@ -119,10 +119,9 @@ def carrier_filter_name(row):
 
 
 def default_logistics_platforms(platforms, connected_platforms):
-    return [
-        platform for platform in platforms
-        if platform in connected_platforms
-    ]
+    if "S2B" in platforms and "S2B" in connected_platforms:
+        return ["S2B"]
+    return []
 
 
 def erp_time_range(start_date, end_date):
