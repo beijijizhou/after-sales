@@ -23,7 +23,8 @@ from ui.inventory.operations.outbound_i18n import (
 from ui.inventory.operations.outbound_entry import (
     SKU_ENTRY_TEXT,
     daily_outbound_entry_state_key,
-    filter_sku_lookup_by_material,
+    filter_sku_lookup_by_dimension,
+    sync_compact_sku_rows,
 )
 
 
@@ -41,13 +42,23 @@ class InventoryPackagingRuleTests(unittest.TestCase):
             },
         }
 
-        filtered = filter_sku_lookup_by_material(lookup, ["铁牌", "挂钟"])
+        category_filtered = filter_sku_lookup_by_dimension(
+            lookup, "category", ["铁板画"]
+        )
+        filtered = filter_sku_lookup_by_dimension(
+            lookup, "material", ["铁牌", "挂钟"]
+        )
 
+        self.assertEqual(list(category_filtered), [
+            "铁板画 / 铁牌 / 2030", "铁板画 / 铝牌 / 2030",
+        ])
         self.assertEqual(
             list(filtered),
             ["铁板画 / 铁牌 / 2030", "木板画 / 挂钟 / 25"],
         )
-        self.assertEqual(filter_sku_lookup_by_material(lookup, []), {})
+        self.assertEqual(
+            filter_sku_lookup_by_dimension(lookup, "material", []), {}
+        )
 
     def test_uv_material_change_uses_a_new_editor_state(self):
         date = pd.Timestamp("2026-09-07").date()
@@ -60,6 +71,26 @@ class InventoryPackagingRuleTests(unittest.TestCase):
         )
 
         self.assertNotEqual(iron_key, aluminum_key)
+
+    def test_uv_multi_selection_builds_one_row_per_sku_and_keeps_values(self):
+        text = SKU_ENTRY_TEXT["zh"]
+        rows = sync_compact_sku_rows(
+            [{
+                "UV SKU": "铁板画 / 铁牌 / 2030",
+                "包装单位": "箱", "每箱 / 包件数": 220,
+                "数量": 3, "总件数": 660,
+            }],
+            ["铁板画 / 铁牌 / 2030", "木板画 / 挂钟 / 25"],
+            text,
+            text["packages"],
+        )
+
+        self.assertEqual([row["UV SKU"] for row in rows], [
+            "铁板画 / 铁牌 / 2030", "木板画 / 挂钟 / 25",
+        ])
+        self.assertEqual(rows[0]["数量"], 3)
+        self.assertEqual(rows[1]["包装单位"], "件")
+        self.assertEqual(rows[1]["数量"], 0)
 
     def test_uv_compact_lookup_hides_brand_and_color_from_label(self):
         sku_df = pd.DataFrame([{
