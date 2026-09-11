@@ -51,6 +51,8 @@ python-multipart==0.0.32
 realtime==2.31.0
 referencing==0.37.0
 requests==2.34.2
+./vendor/opencv_python_headless_alias
+opencv-python-headless==5.0.0.93
 rapidocr==3.9.2
 onnxruntime==1.28.0
 rpds-py==2026.5.1
