@@ -5,8 +5,11 @@ from datetime import date, timedelta
 import pandas as pd
 
 from db.batches import filter_active_batch_records
-from utils.daily_consumption import COLORED_REASON_PREFIX, UV_REASON_PREFIX
-from utils.daily_consumption import MANUAL_INVENTORY_REASONS
+from utils.daily_consumption import (
+    ENTRY_MANUAL,
+    ENTRY_SYSTEM,
+    daily_consumption_source,
+)
 
 
 DAILY_FLOW_LABELS = {
@@ -14,6 +17,10 @@ DAILY_FLOW_LABELS = {
     "colored": "彩色短袖", "uv": "UV 生产库存",
 }
 DAILY_COMPLETION_START_DATE = date(2026, 8, 1)
+LEGACY_SYSTEM_COMPLETION_THROUGH = {
+    "colored": date(2026, 8, 20),
+    "uv": date(2026, 8, 26),
+}
 
 
 def build_daily_completion_dates(movements, consumable_batches):
@@ -24,24 +31,32 @@ def build_daily_completion_dates(movements, consumable_batches):
     department = active.get("department", pd.Series(index=active.index, dtype=str)).fillna("").astype(str)
     category = active.get("category", pd.Series(index=active.index, dtype=str)).fillna("").astype(str)
     outbound = quantities.lt(0) & dates.notna()
-    colored_reason = COLORED_REASON_PREFIX + " " + dates.astype(str)
+    sources = reasons.map(daily_consumption_source)
+    manual_outbound = sources.eq(ENTRY_MANUAL)
+    legacy_system_outbound = sources.eq(ENTRY_SYSTEM)
     return {
         "black_white": set(dates[
             outbound & department.eq("DTF") & category.eq("黑白短袖")
-            & reasons.isin({"仓库每日出货", "每日正常出货", "每日出货", "黑白短袖出库"})
+            & manual_outbound
         ]),
         "colored": set(dates[
             outbound & department.eq("DTF") & category.eq("彩色短袖")
             & (
-                reasons.isin(MANUAL_INVENTORY_REASONS)
-                | reasons.str.split("｜").str[0].eq(colored_reason)
+                manual_outbound
+                | (
+                    legacy_system_outbound
+                    & dates.le(LEGACY_SYSTEM_COMPLETION_THROUGH["colored"])
+                )
             )
         ]),
         "uv": set(dates[
             outbound & department.eq("UV")
             & (
-                reasons.isin(MANUAL_INVENTORY_REASONS)
-                | reasons.str.startswith(UV_REASON_PREFIX)
+                manual_outbound
+                | (
+                    legacy_system_outbound
+                    & dates.le(LEGACY_SYSTEM_COMPLETION_THROUGH["uv"])
+                )
             )
         ]),
         "consumables": active_consumable_issue_dates(consumable_batches),

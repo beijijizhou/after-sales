@@ -34,17 +34,17 @@ def render_incoming_inventory_forecast(
     st.subheader(f"{department_label} 部门库存与最近到货联动")
     if department == "UV":
         st.caption(t(
-            "UV 货柜联动使用消耗模型中的 Google Sheets 日耗，并自动扣减库存，不做仓库申报对比。"
+            "UV 货柜联动使用 Google Sheets 日耗作为预测参考；库存出库与完成状态只认人工登记。"
         ))
     elif department == "DTF" and category == "彩色短袖":
         st.caption(
-            "彩色短袖使用最近30天平台生产消耗模型并自动扣减库存，"
-            "不做仓库申报对比；上方手动调整后的预测日耗、缺口和"
+            "彩色短袖使用最近30天平台生产消耗模型作为预测参考；"
+            "库存出库与完成状态只认人工登记。上方手动调整后的预测日耗、缺口和"
             "建议点货量会同步传递到货柜联动。"
         )
     else:
         st.caption(t(
-            "货柜联动沿用上方点货预测的综合日耗；仓库手工出库只用于核对录入差异。"
+            "货柜联动沿用上方点货预测的综合日耗；库存出库与完成状态只认人工登记。"
         ))
     if inventory_df.empty:
         st.info(t("暂无库存数据"))

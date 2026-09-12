@@ -73,7 +73,7 @@ class InventoryDashboardTests(unittest.TestCase):
         source.append({
             "department": "UV", "category": "铁板画",
             "movement_date": "2026-08-07", "quantity_change": -20,
-            "reason": "Google Sheets UV每日消耗｜2026-08-07｜Tie_2030",
+            "reason": "仓库每日出货",
             "batch_id": "uv-0807", "reversal_of_batch_id": None,
             "created_at": "2026-08-08T00:00:00+00:00",
         })
@@ -114,7 +114,7 @@ class InventoryDashboardTests(unittest.TestCase):
             DAILY_COMPLETION_START_DATE, date(2026, 8, 1)
         )
 
-    def test_daily_completion_separates_four_flows(self):
+    def test_system_sources_after_cutover_do_not_complete_manual_flows(self):
         movements = pd.DataFrame([
             {
                 "department": "DTF", "category": "黑白短袖",
@@ -124,14 +124,14 @@ class InventoryDashboardTests(unittest.TestCase):
             },
             {
                 "department": "DTF", "category": "彩色短袖",
-                "movement_date": "2026-08-04", "quantity_change": -50,
-                "reason": "彩色短袖生产自动扣减 2026-08-04",
+                "movement_date": "2026-08-27", "quantity_change": -50,
+                "reason": "彩色短袖生产自动扣减 2026-08-27",
                 "batch_id": "color", "reversal_of_batch_id": None,
             },
             {
                 "department": "UV", "category": "铁板画",
-                "movement_date": "2026-08-04", "quantity_change": -20,
-                "reason": "Google Sheets UV每日消耗｜2026-08-04｜Tie_2030",
+                "movement_date": "2026-08-27", "quantity_change": -20,
+                "reason": "Google Sheets UV每日消耗｜2026-08-27｜Tie_2030",
                 "batch_id": "uv", "reversal_of_batch_id": None,
             },
         ])
@@ -143,9 +143,30 @@ class InventoryDashboardTests(unittest.TestCase):
         result = build_daily_completion_dates(movements, consumables)
 
         self.assertEqual(result["black_white"], {date(2026, 8, 3)})
-        self.assertEqual(result["colored"], {date(2026, 8, 4)})
-        self.assertEqual(result["uv"], {date(2026, 8, 4)})
+        self.assertEqual(result["colored"], set())
+        self.assertEqual(result["uv"], set())
         self.assertEqual(result["consumables"], {date(2026, 8, 2)})
+
+    def test_legacy_system_sources_complete_only_through_cutover(self):
+        movements = pd.DataFrame([
+            {
+                "department": "DTF", "category": "彩色短袖",
+                "movement_date": "2026-08-20", "quantity_change": -50,
+                "reason": "彩色短袖生产自动扣减 2026-08-20",
+                "batch_id": "color-legacy", "reversal_of_batch_id": None,
+            },
+            {
+                "department": "UV", "category": "铁板画",
+                "movement_date": "2026-08-26", "quantity_change": -20,
+                "reason": "Google Sheets UV每日消耗｜2026-08-26｜Tie_2030",
+                "batch_id": "uv-legacy", "reversal_of_batch_id": None,
+            },
+        ])
+
+        result = build_daily_completion_dates(movements, pd.DataFrame())
+
+        self.assertEqual(result["colored"], {date(2026, 8, 20)})
+        self.assertEqual(result["uv"], {date(2026, 8, 26)})
 
     def test_manual_daily_outbound_completes_colored_and_uv_flows(self):
         movements = pd.DataFrame([
@@ -626,17 +647,17 @@ class InventoryDashboardTests(unittest.TestCase):
             f"映射规则 {COLORED_MAPPING_RULE_VERSION}", reason
         )
 
-    def test_partial_colored_reason_marks_daily_run_complete(self):
+    def test_partial_colored_system_reason_after_cutover_does_not_complete(self):
         movements = pd.DataFrame([{
             "department": "DTF", "category": "彩色短袖",
-            "movement_date": "2026-08-06", "quantity_change": -719,
-            "reason": "彩色短袖生产自动扣减 2026-08-06｜部分扣减",
+            "movement_date": "2026-08-27", "quantity_change": -719,
+            "reason": "彩色短袖生产自动扣减 2026-08-27｜部分扣减",
             "batch_id": "partial", "reversal_of_batch_id": None,
         }])
         result = build_daily_completion_dates(
             movements, pd.DataFrame()
         )
-        self.assertEqual(result["colored"], {date(2026, 8, 6)})
+        self.assertEqual(result["colored"], set())
 
 
 if __name__ == "__main__":

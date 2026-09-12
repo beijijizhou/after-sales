@@ -350,9 +350,14 @@ The inventory module has one manager-facing `库存总结` workbench above the
 individual production inventory, consumable inventory, and container pages.
 It shows the completion count and missing business dates for every registered
 daily-consumption flow. Manual sources link users to enter actual outbound;
-system-readable sources are previewed and confirmed through one consolidated
-operation. New automatic sources are registered in the shared automatic-flow
-registry instead of adding another independent dashboard button.
+all production-inventory flows use manually registered actual outbound as the
+only completion evidence. ERP/API and Google Sheets records remain visible as
+planning and reconciliation references, but their system deduction records do
+not mark a business date complete or reduce the manager-facing missing-date
+count. A human-confirmed zero-outbound acknowledgement remains valid manual
+completion evidence. Existing system deductions remain recognized only for the
+historical migration window: colored T-shirts through 2026-08-20 and UV through
+2026-08-26. After those cutover dates, only manual evidence completes a date.
 
 For colored T-shirts, the system preview must list every configured production
 platform with its read status and raw quantity. It also reconciles the raw
@@ -429,12 +434,12 @@ its own workflow/source filter and must not inherit stock-view date, category,
 brand, material, color, or size filters.
 
 The daily inventory-completion dashboard starts at 2026-08-01; dates before
-that business baseline must not appear as missing work. Automatic flows load
-all currently missing dates in one action, show a date-and-source preview with
-quantities and blocking messages, and require one explicit confirmation before
-applying every ready preview. Manual warehouse and consumable flows continue to
-require actual reported quantities and must not invent a deduction merely to
-fill a missing date.
+that business baseline must not appear as missing work. Every flow requires
+manually registered actual outbound, or a human-confirmed zero-outbound
+acknowledgement, to complete a date. System-readable source data may still show
+date-and-source quantities and reconciliation messages for reference, but it
+must never fill a missing completion date after the documented migration
+cutover or invent a warehouse deduction.
 
 The current New York business day is an in-progress day, not overdue work. Show
 its completed and unfinished flows separately with a clear “today is not over”
