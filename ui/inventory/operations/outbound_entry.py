@@ -5,11 +5,11 @@ from hashlib import sha1
 import pandas as pd
 import streamlit as st
 
-from db.inventory import SIZE_COLUMNS
 from db.inventory.operations.outbound import convert_sku_package_entries
 from utils.sku_sorting import sort_sku_rows
-from utils.option_values import ordered_values
 from ui.inventory.shared.filter_models import reset_invalid_multiselect
+from ui.inventory.shared.linked_sku_table import render_linked_outbound_scope
+from ui.inventory.shared.linked_sku_table import render_linked_outbound_table
 
 SKU_ENTRY_TEXT = {
     "zh": {"title": "按 SKU 和包装单位录入", "help": "只添加实际出库的 SKU；默认按件录入，选择箱或包时再按包装规格换算。", "sku": "UV SKU", "sku_multi": "3. 选择多个 UV SKU", "sku_multi_help": "可一次选择多个 SKU；系统会为每个 SKU 生成一行，统一填写数量并一次提交。", "category_filter": "1. 先选品类", "material_filter": "2. 再选材质", "hierarchy_help": "按品类 → 材质 → SKU 逐层缩小范围；下一级只显示符合上一级的选项。", "brand": "品牌", "material": "材质", "color": "颜色", "size": "尺码", "package": "包装单位", "units": "每箱 / 包件数", "units_help": "按件录入时无需填写；箱或包可留空使用换算规则，同一 SKU 有 70/72 件箱规时请直接填写。", "count": "数量", "total": "总件数", "total_help": "按件录入时等于数量；按箱或包录入时自动换算。", "packages": {"Piece": "件", "Box": "箱", "Bag": "包"}, "import_title": "批量文件导入（可选）"},
@@ -21,61 +21,43 @@ SKU_ENTRY_TEXT = {
 def render_sku_outbound_entry(
     sku_lookup, movement_date, packaging_rules, sku_packaging_rules,
     text, language, version, specs_signature, scope="", compact_sku=False,
+    show_scope_selectors=True,
 ):
-    values = list(sku_lookup.values())
-    brands = sorted({value["brand"] for value in values})
-    materials = sorted({value["material"] for value in values})
-    colors = ordered_values((value["color"] for value in values), ["黑", "白"])
-    sizes = ordered_values((value["size"] for value in values), SIZE_COLUMNS)
     st.markdown(f"**{text['title']}**")
     st.caption(text["help"])
-    if compact_sku:
-        base_scope_token = sha1(str(scope).encode()).hexdigest()[:10]
-        categories = sorted({value["category"] for value in values})
-        category_key = f"daily_outbound_uv_categories_{base_scope_token}"
-        reset_invalid_multiselect(st.session_state, category_key, categories)
-        selected_categories = st.multiselect(
-            text.get("category_filter", "Category"), categories,
-            default=categories[:1], key=category_key,
+    if not show_scope_selectors:
+        token, state_key = daily_outbound_entry_state_key(
+            scope + "|" + "|".join(sorted(sku_lookup)), language, version, movement_date
         )
-        if not selected_categories:
-            st.info(text.get("category_filter", "Category"))
+        if not sku_lookup:
             return pd.DataFrame(), pd.DataFrame()
-        sku_lookup = filter_sku_lookup_by_dimension(
-            sku_lookup, "category", selected_categories
+        entries = render_linked_outbound_table(sku_lookup, state_key, text, compact=compact_sku)
+        adjustments, preview = convert_sku_package_entries(
+            entries, sku_lookup, movement_date, packaging_rules, sku_packaging_rules
         )
-        materials = sorted({
-            value["material"] for value in sku_lookup.values()
-        })
-        filter_key = f"daily_outbound_uv_materials_{base_scope_token}"
-        reset_invalid_multiselect(st.session_state, filter_key, materials)
-        selected_materials = st.multiselect(
-            text.get("material_filter", text["material"]), materials,
-            default=materials[:1], key=filter_key,
+        return adjustments, sort_sku_rows(preview, material="材质", color="颜色", size="尺码")
+    base_scope_token = sha1(str(scope).encode()).hexdigest()[:10]
+    if show_scope_selectors:
+        sku_lookup = render_linked_outbound_scope(
+            sku_lookup, f"outbound_scope_{base_scope_token}_{movement_date}_{version}",
+            text, compact=compact_sku,
         )
-        st.caption(text.get("hierarchy_help", ""))
-        sku_lookup = filter_sku_lookup_by_dimension(
-            sku_lookup, "material", selected_materials
-        )
-        if not selected_materials:
-            st.info(text.get("material_filter", text["material"]))
-            return pd.DataFrame(), pd.DataFrame()
-        scope = (
-            f"{scope}|categories:{'|'.join(selected_categories)}"
-            f"|materials:{'|'.join(selected_materials)}"
-        )
+    if not sku_lookup:
+        return pd.DataFrame(), pd.DataFrame()
+    apparel = not compact_sku
+    text = dict(text)
+    if apparel:
+        text["sku"] = "SKU"
+        text["sku_multi"] = f"5. {text['size']}"
+    # A single selected-SKU quantity table is used for both departments.
+    compact_sku = True
+    scope += "|targets:" + "|".join(sorted(sku_lookup))
     labels = text["packages"]
     scope_token, state_key = daily_outbound_entry_state_key(
         scope, language, version, movement_date
     )
     table_key = f"{state_key}_table_version"
-    identity = (
-        {text["sku"]: None}
-        if compact_sku else {
-            text["brand"]: None, text["material"]: None,
-            text["color"]: None, text["size"]: None,
-        }
-    )
+    identity = {text["sku"]: None}
     default_row = {
         **identity, text["package"]: labels["Piece"],
         text["units"]: None, text["count"]: 0, text["total"]: 0,
@@ -84,36 +66,60 @@ def render_sku_outbound_entry(
     selection_signature = ""
     if compact_sku:
         selected_key = f"{state_key}_selected_skus"
-        sku_options = list(sku_lookup)
+        ordered = sort_sku_rows(
+            [dict(sku, label=label) for label, sku in sku_lookup.items()],
+            material="material", color="color", size="size",
+        )
+        sku_options = ordered["label"].tolist()
         reset_invalid_multiselect(st.session_state, selected_key, sku_options)
         existing_selected = [
             row.get(text["sku"]) for row in existing_rows
             if row.get(text["sku"]) in sku_options
         ]
-        selected_skus = st.multiselect(
-            text.get("sku_multi", text["sku"]),
-            sku_options,
-            default=existing_selected,
-            key=selected_key,
+        if selected_key not in st.session_state:
+            st.session_state[selected_key] = existing_selected
+        selected_skus = (st.multiselect(
+            text.get("sku_multi", text["sku"]), sku_options, key=selected_key,
             help=text.get("sku_multi_help"),
-        )
+            format_func=(lambda label: sku_lookup[label]["size"]),
+        ) if show_scope_selectors else sku_options)
         if not selected_skus:
             st.info(text.get("sku_multi_help", text["help"]))
             return pd.DataFrame(), pd.DataFrame()
         existing_rows = sync_compact_sku_rows(
             existing_rows, selected_skus, text, labels
         )
+        for row in existing_rows:
+            sku = sku_lookup[row[text["sku"]]]
+            row["品类"] = sku.get("category", "")
+            for dimension in (("material", "brand", "color", "size")
+                              if apparel else ("material", "size")):
+                row[text[dimension]] = sku[dimension]
         selection_signature = sha1(
             "|".join(selected_skus).encode()
         ).hexdigest()[:8]
+        if st.session_state.get(f"{state_key}_selection") != selection_signature:
+            st.session_state[f"{state_key}_selection"] = selection_signature
+            st.session_state[table_key] = int(st.session_state.get(table_key, 0)) + 1
     source = pd.DataFrame(existing_rows)
+    baseline_key = f"{state_key}_baseline_{selection_signature}_{st.session_state.get(table_key, 0)}"
+    if baseline_key not in st.session_state:
+        st.session_state[baseline_key] = source.copy()
+    source = st.session_state[baseline_key]
     display = st.data_editor(
         source, hide_index=True, width="stretch",
-        num_rows="fixed" if compact_sku else "dynamic",
-        disabled=[text["total"], *([text["sku"]] if compact_sku else [])],
+        height=max(180, 38 + 35 * len(source)),
+        num_rows="fixed",
+        disabled=["品类", text["material"], text["size"], text["total"], text["sku"], *(
+            [text[key] for key in ("material", "brand", "color", "size")]
+            if apparel else []
+        )],
+        column_order=(
+            ["品类", *[text[key] for key in ("material", "brand", "color", "size", "package", "units", "count", "total")]]
+            if apparel else ["品类", *[text[key] for key in ("material", "size", "package", "units", "count", "total")]]
+        ),
         column_config=_column_config(
-            text, brands, materials, colors, sizes,
-            sku_labels=list(sku_lookup) if compact_sku else None,
+            text,
         ),
         key=(f"daily_outbound_sku_editor_{scope_token}_{language}_{version}_"
              f"{movement_date.isoformat()}_{len(sku_lookup)}_{specs_signature}_"
@@ -193,9 +199,7 @@ def daily_outbound_entry_state_key(scope, language, version, movement_date):
     )
 
 
-def _column_config(
-    text, brands, materials, colors, sizes, sku_labels=None,
-):
+def _column_config(text):
     select, number = st.column_config.SelectboxColumn, st.column_config.NumberColumn
     quantity_config = {
         text["package"]: select(text["package"], options=list(text["packages"].values()), required=True),
@@ -203,18 +207,8 @@ def _column_config(
         text["count"]: number(text["count"], min_value=0, step=1, format="%d", required=True),
         text["total"]: number(text["total"], min_value=0, format="%d", help=text["total_help"]),
     }
-    if sku_labels is not None:
-        return {
-            text["sku"]: select(
-                text["sku"], options=sku_labels, required=True,
-            ),
-            **quantity_config,
-        }
     return {
-        text["brand"]: select(text["brand"], options=brands, required=True),
-        text["material"]: select(text["material"], options=materials, required=True),
-        text["color"]: select(text["color"], options=colors, required=True),
-        text["size"]: select(text["size"], options=sizes, required=True),
+        text["sku"]: st.column_config.TextColumn(text["sku"]),
         **quantity_config,
     }
 

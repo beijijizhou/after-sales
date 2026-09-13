@@ -1,4 +1,6 @@
 import streamlit as st
+import altair as alt
+import pandas as pd
 
 from db.inventory import (
     SIZE_COLUMNS,
@@ -7,6 +9,8 @@ from db.inventory import (
 )
 from ui.inventory.i18n import t
 from utils.option_values import unique_values
+from db.inventory.planning.demand_anomaly import load_daily_outbound_history
+from db.inventory.planning.warehouse_usage import build_stock_outbound_ratio_series
 
 
 def render_black_white_color_summary(
@@ -14,6 +18,8 @@ def render_black_white_color_summary(
     inventory_df,
     visible_sizes=None,
     filter_title=None,
+    *, supabase=None, current_date=None, stock_date=None,
+    brands=None, materials=None,
 ):
     if category not in (None, "", "黑白短袖"):
         return
@@ -91,6 +97,71 @@ def render_black_white_color_summary(
             },
         },
     )
+    if supabase is not None and current_date is not None:
+        render_black_white_ratio_comparison(
+            supabase, black_white_df, current_date, sizes, stock_date,
+            brands=brands, materials=materials,
+        )
+
+
+def render_black_white_ratio_comparison(
+    supabase, inventory_df, current_date, sizes, stock_date=None,
+    *, brands=None, materials=None,
+):
+    st.markdown("#### 颜色尺码结构：当前库存 vs 最近30天出库")
+    if not {"黑", "白"}.issubset(set(inventory_df["颜色"])):
+        st.info("请同时选择黑色和白色，才能比较整体黑白库存与出库比例。")
+        return
+    try:
+        with st.spinner("正在读取最近30天人工出库…"):
+            outbound = load_daily_outbound_history(
+                supabase, "DTF", "黑白短袖", current_date,
+                lookback_days=31,
+                brands=brands, materials=materials,
+            )
+            data = build_stock_outbound_ratio_series(
+                inventory_df, outbound, current_date, sizes=SIZE_COLUMNS,
+            )
+    except Exception as exc:
+        st.error("库存与出库比例加载失败，请重试。")
+        st.caption(str(exc))
+        return
+    metrics = st.columns(2)
+    for column, series in zip(metrics, ("当前库存比例", "最近30天出库比例")):
+        total = data[data["曲线"].eq(series)]["总量"].iloc[0]
+        column.metric(
+            "当前黑白总库存" if series == "当前库存比例" else "最近30天黑白总出库",
+            f"{total:,} 件",
+        )
+    st.caption(
+        f"库存快照：{stock_date or current_date}；出库范围："
+        f"{data['开始日期'].iloc[0]:%m/%d}–{data['结束日期'].iloc[0]:%m/%d}（不含今天）。"
+        "每个点是该颜色＋尺码占全部黑白短袖的百分比，每条曲线合计100%。"
+        "沿用品牌、材质筛选，展示全部尺码。"
+    )
+    recorded = int(data["登记天数"].iloc[0])
+    st.caption(
+        f"有出库登记 {recorded}/30 天。库存线高于出库线表示该颜色尺码库存相对偏多，"
+        "低于则相对偏少；这是结构对比，不代表绝对库存充足。"
+    )
+    order = [f"{color}{size}" for color in ("黑", "白") for size in SIZE_COLUMNS]
+    chart = alt.Chart(data).mark_line(point=True).encode(
+            x=alt.X("颜色尺码:N", title="颜色＋尺码", sort=order, axis=alt.Axis(labelAngle=-35)),
+            y=alt.Y("占比:Q", title="占全部黑白短袖的比例", scale=alt.Scale(zero=True), axis=alt.Axis(format=".0%")),
+            color=alt.Color("曲线:N", title=None, sort=["当前库存比例", "最近30天出库比例"]),
+            strokeDash=alt.StrokeDash("曲线:N", legend=None),
+            tooltip=["颜色尺码:N", "曲线:N",
+                     alt.Tooltip("占比:Q", format=".1%"), "数量:Q", "总量:Q"],
+        ).properties(height=320)
+    stock_labels = alt.Chart(data[data["曲线"].eq("当前库存比例")]).mark_text(dy=-12).encode(
+        x=alt.X("颜色尺码:N", sort=order), y="占比:Q", text=alt.Text("占比:Q", format=".1%"),
+    )
+    usage_labels = alt.Chart(data[data["曲线"].eq("最近30天出库比例")]).mark_text(dy=14).encode(
+        x=alt.X("颜色尺码:N", sort=order), y="占比:Q", text=alt.Text("占比:Q", format=".1%"),
+    )
+    st.altair_chart(chart + stock_labels + usage_labels, width="stretch")
+    if not recorded:
+        st.info("最近30天暂无有效人工出库，暂时无法判断库存结构是否合理。")
 
 
 def render_colored_brand_merged_summary(

@@ -3,7 +3,7 @@
 import re
 
 
-def build_outbound_sku_lookup(sku_df, *, uv_compact=False):
+def build_outbound_sku_lookup(sku_df, *, uv_compact=False, include_category=False):
     from pandas import DataFrame
 
     lookup = {}
@@ -30,6 +30,8 @@ def build_outbound_sku_lookup(sku_df, *, uv_compact=False):
                 identity["brand"], identity["material"],
                 identity["color"], identity["size"],
             ]
+            if include_category:
+                label_values.insert(0, identity["category"])
         lookup[" / ".join(label_values)] = identity
     return dict(sorted(lookup.items()))
 

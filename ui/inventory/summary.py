@@ -130,7 +130,7 @@ def render_inventory_summary(supabase):
                 supabase,
                 department,
                 category,
-                complete_category_raw_df,
+                filter_inventory_rows(complete_category_raw_df, category, brands, materials, colors, selected_sizes),
                 can_edit,
             )
             return

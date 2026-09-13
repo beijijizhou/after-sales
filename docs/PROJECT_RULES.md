@@ -91,6 +91,16 @@
   pasting Excel or Google Sheets columns instead of a multiline text box.
 - Use tabs to separate daily work, analysis, history, undo, and master data.
 - Reuse shared department/category/brand/material/color/size filters.
+- Daily outbound for apparel and UV must compose one entry workflow and the
+  shared linked SKU option contract. Category adapters configure relevant
+  dimensions and labels; they must not copy selectors, draft-state handling,
+  package conversion, preview or commit logic. Extend the existing shared
+  interface and migrate active duplicates together. Independent dropdown
+  columns with unfiltered options do not satisfy linked selection.
+- Selection must work on the first interaction. Keep widget identity stable
+  within an unchanged business scope; do not feed an older editor snapshot
+  back into a newly changed widget. Regression tests must cover cascading
+  options and retained multi-SKU quantities, followed by browser verification.
 - A selected department controls available categories; stale selections must
   reset when the department changes.
 - Use wide tables for size/model comparisons when they reduce rows.

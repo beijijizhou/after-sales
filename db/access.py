@@ -29,6 +29,11 @@ EMPLOYEE_PROFILE_AUDIT_COLUMNS = (
     "id,employee_id,employee_name,old_job_title,new_job_title,"
     "old_departments,new_departments,changed_by,changed_at"
 )
+EMPLOYEE_ACCOUNT_AUDIT_COLUMNS = (
+    "id,employee_id,employee_name,old_username,new_username,password_reset,"
+    "old_role,new_role,old_job_title,new_job_title,old_departments,"
+    "new_departments,changed_by,changed_at"
+)
 
 
 def load_app_users(supabase):
@@ -219,6 +224,33 @@ def load_employee_profile_audit(supabase, limit=200):
     )
     return pd.DataFrame(
         rows or [], columns=EMPLOYEE_PROFILE_AUDIT_COLUMNS.split(",")
+    )
+
+
+def promote_employee_account(
+    supabase, employee_id, username, password, role, job_title,
+    departments, changed_by,
+):
+    response = supabase.rpc("promote_employee_account", {
+        "p_employee_id": str(employee_id).strip(),
+        "p_username": str(username).strip(),
+        "p_password": str(password),
+        "p_role": str(role).strip(),
+        "p_job_title": str(job_title).strip(),
+        "p_departments": normalize_employee_departments(departments),
+        "p_changed_by": str(changed_by).strip(),
+    }).execute()
+    return response.data or []
+
+
+def load_employee_account_audit(supabase, limit=200):
+    rows = (
+        supabase.table("app_employee_account_audit")
+        .select(EMPLOYEE_ACCOUNT_AUDIT_COLUMNS)
+        .order("changed_at", desc=True).limit(limit).execute().data
+    )
+    return pd.DataFrame(
+        rows or [], columns=EMPLOYEE_ACCOUNT_AUDIT_COLUMNS.split(",")
     )
 
 

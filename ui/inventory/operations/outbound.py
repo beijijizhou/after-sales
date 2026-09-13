@@ -28,7 +28,7 @@ from ui.inventory.operations.outbound_i18n import (
 from ui.inventory.category_routing import apply_phone_case_display_scope
 
 
-def render_daily_outbound(supabase, department, category):
+def render_daily_outbound(supabase, department, category, *, sku_scope_df=None):
     language = get_language()
     text = TEXT[language]
     st.subheader(text["title"])
@@ -53,13 +53,18 @@ def render_daily_outbound(supabase, department, category):
     specs_signature = outbound_specs_signature(outbound_specs)
     is_uv = str(department or "").strip().upper() == "UV"
     sku_df = load_sku_catalog(supabase, department, active_only=True)
+    if sku_scope_df is not None:
+        dimensions = ["category", "material", "brand", "color", "size"]
+        sku_df = sku_df.merge(
+            sku_scope_df[dimensions].drop_duplicates(), on=dimensions, how="inner"
+        ) if not sku_scope_df.empty else sku_df.iloc[:0]
     if category and not sku_df.empty:
         sku_df = sku_df[sku_df["category"] == category]
     elif is_uv:
         sku_df = apply_phone_case_display_scope(
             sku_df, department, category
         )
-    sku_lookup = build_outbound_sku_lookup(sku_df, uv_compact=is_uv)
+    sku_lookup = build_outbound_sku_lookup(sku_df, uv_compact=is_uv, include_category=True)
     movement_date = st.date_input(
         text["batch_date"],
         value=st.session_state.get(
@@ -95,6 +100,7 @@ def render_daily_outbound(supabase, department, category):
         entry_text, language, version, specs_signature,
         scope=f"{department}|{category}",
         compact_sku=is_uv,
+        show_scope_selectors=False,
     )
 
     if is_uv:

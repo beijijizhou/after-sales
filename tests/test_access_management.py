@@ -13,6 +13,7 @@ from db.access import (
     load_employee_status_audit,
     load_employees,
     normalize_employee_departments,
+    promote_employee_account,
     save_role_definition,
     update_employee_profile,
     update_user_access,
@@ -51,6 +52,27 @@ from utils.auth.ui import visible_navigation_sections
 
 
 class AccessManagementTests(unittest.TestCase):
+    def test_employee_promotion_uses_atomic_audited_rpc(self):
+        supabase = Mock()
+        supabase.rpc.return_value.execute.return_value.data = [{
+            "employee_id": "anan_id", "user_name": "3d",
+            "role": "supervisor", "job_title": "主管",
+            "departments": ["3D"],
+        }]
+
+        result = promote_employee_account(
+            supabase, "anan_id", "3d", "secret", "supervisor", "主管",
+            ["3d"], "a",
+        )
+
+        self.assertEqual(result[0]["role"], "supervisor")
+        supabase.rpc.assert_called_once_with("promote_employee_account", {
+            "p_employee_id": "anan_id", "p_username": "3d",
+            "p_password": "secret", "p_role": "supervisor",
+            "p_job_title": "主管", "p_departments": ["3D"],
+            "p_changed_by": "a",
+        })
+
     def test_employment_reason_dropdown_has_defaults_and_custom_fallback(self):
         self.assertEqual(DEPARTURE_REASONS[0], "员工主动离职")
         self.assertEqual(REACTIVATION_REASONS[0], "重新入职")
@@ -626,7 +648,7 @@ class AccessManagementTests(unittest.TestCase):
             / "sql" / "access" / "role_management"
         )
         scripts = sorted(sql_directory.glob("[0-9][0-9]_*.sql"))
-        self.assertEqual(len(scripts), 15)
+        self.assertEqual(len(scripts), 16)
         self.assertTrue(all(
             len(script.read_text().splitlines()) < 200 for script in scripts
         ))

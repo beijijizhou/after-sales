@@ -17,6 +17,7 @@
 13. `13_supervisor_people_management.sql`：把人员名单及离职/复职权限授予主管角色，并修正用户角色变更审计的原角色记录。
 14. `14_employee_profile_management.sql`：允许主管审计式调整员工岗位和生产部门。
 15. `15_after_sales_cost_access.sql`：允许售后查看和维护成本，但仍禁止访问财务报表与财务页面。
+16. `16_employee_account_promotion.sql`：原子化处理员工账号改名、密码重置与升职，并记录账号、角色和岗位审计。
 
 这些脚本可重复执行。第二步只在角色尚无权限记录时写入初始组合，
 不会覆盖管理员已经在页面中保存的角色权限。

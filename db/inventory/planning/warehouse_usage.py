@@ -1,6 +1,51 @@
 from datetime import timedelta
 
 import pandas as pd
+from db.inventory.core.constants import SIZE_COLUMNS
+
+
+def build_stock_outbound_ratio_series(
+    inventory_df, outbound_df, current_date, days=30, sizes=None,
+):
+    """Compare color/size shares of total stock and total 30-day manual issues."""
+    sizes = [size for size in SIZE_COLUMNS if not sizes or size in sizes]
+    stock = pd.DataFrame(inventory_df).copy()
+    usage = pd.DataFrame(outbound_df).copy()
+    stock_totals = {}
+    for color in ("黑", "白"):
+        selected = stock[stock["颜色"].eq(color)] if not stock.empty else stock
+        for size in sizes:
+            stock_totals[(color, size)] = pd.to_numeric(
+                selected.get(size, pd.Series(dtype=float)), errors="coerce"
+            ).fillna(0).clip(lower=0).sum()
+    stock_total = sum(stock_totals.values())
+    start = current_date - timedelta(days=days)
+    if not usage.empty:
+        usage["日期"] = pd.to_datetime(usage["日期"], errors="coerce").dt.date
+        usage = usage[
+            usage["日期"].ge(start) & usage["日期"].lt(current_date)
+            & usage["颜色"].isin(("黑", "白")) & usage["尺码"].isin(sizes)
+        ].copy()
+        usage["实际出库"] = pd.to_numeric(usage["实际出库"], errors="coerce").fillna(0).clip(lower=0)
+        usage_totals = usage.groupby(["颜色", "尺码"])["实际出库"].sum().to_dict()
+        recorded_days = usage[usage["实际出库"].gt(0)]["日期"].nunique()
+    else:
+        usage_totals, recorded_days = {}, 0
+    usage_total = sum(usage_totals.values())
+    rows = []
+    for (color, size), quantity in stock_totals.items():
+        for series, value, denominator in (
+            ("当前库存比例", quantity, stock_total),
+            ("最近30天出库比例", usage_totals.get((color, size), 0), usage_total),
+        ):
+            rows.append({
+                "颜色": color, "尺码": size, "颜色尺码": f"{color}{size}",
+                "曲线": series, "占比": value / denominator if denominator > 0 else None,
+                "数量": int(value), "总量": int(denominator),
+                "开始日期": start, "结束日期": current_date - timedelta(days=1),
+                "登记天数": int(recorded_days),
+            })
+    return pd.DataFrame(rows)
 
 
 INTERVAL_COLUMNS = [

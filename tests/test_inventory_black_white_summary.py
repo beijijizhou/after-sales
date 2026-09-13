@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch, MagicMock
 from datetime import date
 
 import pandas as pd
@@ -25,13 +26,74 @@ from db.inventory.planning.consumption import (
 from db.inventory.planning.demand_anomaly import (
     build_demand_anomaly_table,
 )
-from db.inventory.planning.warehouse_usage import build_warehouse_daily_totals
+from db.inventory.planning.warehouse_usage import (
+    build_warehouse_daily_totals,
+    build_stock_outbound_ratio_series,
+)
 from ui.inventory.planning.anomaly import ANOMALY_COLUMNS
 from ui.inventory.planning.forecast_table import FORECAST_COLUMNS
 from ui.inventory.planning.forecast_controls import _stable_usage_fingerprint
 
 
 class InventoryBlackWhiteSummaryTests(unittest.TestCase):
+    def test_ratio_charts_render_two_series_and_forward_existing_scope(self):
+        from ui.inventory.stock import summary as summary_ui
+        stock = pd.DataFrame([
+            {"颜色": "黑", "S": 800}, {"颜色": "白", "S": 200},
+        ])
+        usage = pd.DataFrame([
+            {"日期": date(2026, 9, 10), "颜色": "黑", "尺码": "S", "实际出库": 25},
+            {"日期": date(2026, 9, 10), "颜色": "白", "尺码": "S", "实际出库": 75},
+        ])
+        with patch.object(summary_ui, "st") as ui, patch.object(
+            summary_ui, "load_daily_outbound_history", return_value=usage,
+        ) as load:
+            ui.columns.return_value = [MagicMock(), MagicMock()]
+            summary_ui.render_black_white_ratio_comparison(
+                object(), stock, date(2026, 9, 12), ["S"],
+                brands=["Haloo"], materials=["CVC"],
+            )
+            self.assertEqual(load.call_args.kwargs["brands"], ["Haloo"])
+            self.assertEqual(load.call_args.kwargs["materials"], ["CVC"])
+            self.assertEqual(ui.altair_chart.call_count, 1)
+            for call in ui.altair_chart.call_args_list:
+                spec = call.args[0].to_dict()
+                self.assertEqual(spec["layer"][0]["encoding"]["y"]["axis"]["format"], ".0%")
+                self.assertEqual(spec["layer"][0]["encoding"]["x"]["sort"], [
+                    f"{color}{size}" for color in ("黑", "白") for size in SIZE_COLUMNS
+                ])
+
+    def test_color_size_ratios_use_whole_stock_and_whole_period_denominators(self):
+        stock = pd.DataFrame([
+            {"颜色": "黑", "S": 600, "M": 200}, {"颜色": "白", "S": 200},
+        ])
+        usage = pd.DataFrame([
+            {"日期": date(2026, 9, 10), "颜色": "黑", "尺码": "S", "实际出库": 25},
+            {"日期": date(2026, 9, 10), "颜色": "白", "尺码": "S", "实际出库": 75},
+            {"日期": date(2026, 9, 11), "颜色": "黑", "尺码": "M", "实际出库": 100},
+            {"日期": date(2026, 9, 12), "颜色": "黑", "尺码": "S", "实际出库": 999},
+        ])
+        result = build_stock_outbound_ratio_series(stock, usage, date(2026, 9, 12))
+        self.assertEqual(len(result), 32)
+        self.assertEqual(result["开始日期"].iloc[0], date(2026, 8, 13))
+        self.assertEqual(result["结束日期"].iloc[0], date(2026, 9, 11))
+        stock = result[result["曲线"].eq("当前库存比例")].set_index("颜色尺码")
+        usage = result[result["曲线"].eq("最近30天出库比例")].set_index("颜色尺码")
+        self.assertEqual(stock.loc["黑S", "占比"], .6)
+        self.assertEqual(stock.loc["白S", "占比"], .2)
+        self.assertEqual(usage.loc["黑S", "占比"], .125)
+        self.assertEqual(usage.loc["白S", "占比"], .375)
+        self.assertEqual(usage.loc["黑M", "占比"], .5)
+        self.assertEqual(usage.loc["白M", "占比"], 0)
+        self.assertAlmostEqual(stock["占比"].sum(), 1)
+        self.assertAlmostEqual(usage["占比"].sum(), 1)
+
+    def test_ratio_series_does_not_invent_ratios_for_zero_totals(self):
+        result = build_stock_outbound_ratio_series(
+            pd.DataFrame(), pd.DataFrame(), date(2026, 9, 12),
+        )
+        self.assertTrue(result["占比"].isna().all())
+
     def test_warehouse_daily_totals_use_complete_days_and_recorded_dates(self):
         outbound = pd.DataFrame([
             {"日期": date(2026, 8, 9), "实际出库": 100},

@@ -75,7 +75,10 @@ def render_inventory_tabs(
             if view_mode == "整体黑白统计":
                 st.caption(t("整体黑白统计为只读汇总；修改库存请切换到品牌明细"))
                 render_black_white_color_summary(
-                    category, inventory_df, visible_sizes, filter_title
+                    category, inventory_df, visible_sizes, filter_title,
+                    supabase=supabase, current_date=current_date,
+                    stock_date=selected_date,
+                    brands=history_filters[1], materials=history_filters[2],
                 )
             elif view_mode == "跨品牌合并":
                 render_colored_brand_merged_summary(

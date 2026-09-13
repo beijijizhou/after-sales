@@ -241,8 +241,52 @@ data-entry sources differ:
 | --- | --- | --- |
 | DTF consumables | Warehouse staff enters actual boxes issued | Actual consumable issue ledger |
 | Black/white T-shirts | Warehouse staff enters actual pieces or packaging issued | Actual warehouse daily outbound |
-| Colored T-shirts | System reads synchronized production data | Colored-shirt production data |
-| UV production inventory | System reads the configured Google Sheets source | Latest 14 days of valid Google Sheets data |
+| Colored T-shirts | Warehouse staff confirms actual pieces or packaging issued | Colored-shirt production data |
+| UV production inventory | Warehouse staff confirms actual pieces or packaging issued | Latest 14 days of valid Google Sheets data |
+
+#### Unified manual outbound hierarchy and interaction requirements
+
+Black/white shirts, colored shirts and UV use the same daily-outbound entry,
+not separate category-specific implementations. The outer scope is
+`department -> category`; SKU choices then narrow as
+`material -> brand -> color -> multiple sizes/models`. Reuse the existing
+top-level scope instead of asking for the same department/category twice.
+UV follows `category -> material -> multiple models`, omitting unused
+brand/color controls from routine entry without changing stored SKU identity.
+The inventory page has exactly one dimension-filter group above its tabs.
+Daily outbound consumes that filtered active-SKU scope and renders a dynamic
+entry table: operators select category/material/brand/color/size in its cells,
+then enter packaging and quantity. UV cells use category/material/model only.
+Do not automatically expand every matching SKU into a fixed quantity row.
+Do not repeat category, material, brand, color or SKU selectors
+outside that table inside the outbound tab or backfill view. Zero-quantity rows
+are not issued. Each table row has independent linked cells: category narrows
+material, material narrows brand, brand narrows color, and color narrows size.
+Do not use one union of all brands for every row. Relationships come from
+active SKU master data, not hard-coded brand/material lists. Changing a parent
+resets its children; changing the exact SKU also clears quantity/package input
+so another SKU cannot inherit an unintended issue. Table options reuse the
+shared scoped SKU catalog; incomplete
+or nonexistent combinations with a positive quantity block submission visibly.
+Apparel exposes brand and color as separate linked fields, not a single long
+SKU dropdown. Keep apparel sizes in the shared S-through-5XL business order.
+
+Selected SKUs create quantity rows in one editable table with pieces, boxes
+or bags and the actual package conversion. Adding/removing selections retains
+quantities and package rules for retained exact SKUs within the same business
+scope; never move a previous SKU's quantity onto a newly selected SKU.
+All rows use the shared current/change/result review and audited daily batch
+workflow. ERP/Sheets may supply an explicitly reviewed reference, never an
+automatic authoritative stock issue. This does not change model source policy.
+
+Each selection must take effect on its first interaction. Recompute downstream
+options in the same rerun; clear invalid children, editors and previews before
+rendering a changed parent scope. Ordinary reruns and total recalculation must
+not overwrite a valid newly selected value with an older editor snapshot.
+Acceptance coverage must exercise single-change material/brand/color selection,
+parent switches with stale children, multi-SKU add/remove with retained input,
+date/category isolation, and immediate conversion/preview synchronization.
+Verify the implemented interaction in a browser, not only with mocked widgets.
 
 The colored-shirt 30-day model is database-first. Once synchronized daily
 production has been persisted, local and deployed environments must read the
@@ -318,12 +362,13 @@ auditable batch, operator and source attribution, current-stock result,
 inventory ledger, SKU-level history, reversal/correction workflow, and
 manager-readable daily status. “Manual” versus “system-read” must be visible
 in the ledger and batch selector. System-read deductions must never be
-presented as temporary manual outbound, and a system-read category must not
-show a warehouse manual-outbound entry form.
+presented as temporary manual outbound. Historical system deduction records
+remain distinguishable; every current production category exposes manual entry.
 
 The flows share an operational contract, not one user-facing name. Black/white
-manual issues are `仓库每日出库`, consumables are `每日耗材出库`, and colored-shirt
-or UV automation is `系统库存扣减`. The combined ledger filter is
+manual issues for black/white, colored and UV inventory are `仓库每日出库`,
+consumables are `每日耗材出库`, and historical automation is `系统库存扣减`.
+The combined ledger filter is
 `每日库存扣减`. Querying, history, status, permissions, audit, reversal, and
 correction behavior still follow the shared contract. A source-specific
 adapter may decide how rows are matched to SKUs and how the consumption model
@@ -362,8 +407,9 @@ historical migration window: colored T-shirts through 2026-08-20 and UV through
 For colored T-shirts, the system preview must list every configured production
 platform with its read status and raw quantity. It also reconciles the raw
 production total, the quantity mapped to deductible inventory, and the
-unresolved difference. A missing platform or a nonzero difference blocks the
-daily deduction so an incomplete day cannot be recorded as complete.
+unresolved difference. A missing platform or a nonzero difference is a visible
+source-reference exception, not a blocker for independently confirmed actual
+manual outbound or evidence of manual daily completion.
 
 Colored T-shirt quick backfill requires `汉森`, `S2B`, `SDS1`, `SDS2`,
 `Haloo`, and `隆丰`. Haloo and Longfeng use their configured Humbird Open API
@@ -386,10 +432,10 @@ recorded and direct the user to retry the missing platforms; do not invent a
 cause or require all successful platforms to be fetched again.
 
 The DTF production-inventory page must keep `仓库每日出库` visible when the
-top-level category filter is `全部品类`. It also shows a separate
-`系统库存扣减` entry for colored T-shirts. A required daily operation must not
-disappear merely because a summary filter is broad, and system deductions
-must never be presented as warehouse outbound.
+top-level category filter is `全部品类`. Colored and UV source reading belongs
+to a reference/reconciliation view, not a second authoritative deduction entry.
+A required daily operation must not disappear merely because a summary filter
+is broad, and historical system deductions must never be relabeled as manual.
 
 A warehouse daily-outbound batch has exactly one business date. Users choose
 `本批出库日期` once above the package/SKU table; row editors and downloaded

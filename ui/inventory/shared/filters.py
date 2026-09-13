@@ -74,8 +74,8 @@ def render_inventory_dimension_filters(
     departments = ordered_options(
         dimensions.get("department", []), PREFERRED_DEPARTMENTS
     )
-    department_col, category_col, brand_col = st.columns(3)
-    material_col, color_col, size_col = st.columns(3)
+    department_col, category_col, material_col = st.columns(3)
+    brand_col, color_col, size_col = st.columns(3)
     department_options = ([""] if allow_all_departments else []) + departments
     _reset_invalid_selectbox(f"{key}_department", department_options)
     department = department_col.selectbox(
@@ -113,20 +113,7 @@ def render_inventory_dimension_filters(
         category_rows, department, category
     )
 
-    brands = ordered_options(
-        category_rows.get("brand", []), [], include_missing=False
-    )
-    _reset_invalid_multiselect(f"{key}_brands", brands)
-    selected_brands = brand_col.multiselect(
-        t("筛选品牌"), brands, key=f"{key}_brands",
-        placeholder=t("全部"),
-    )
-
     material_rows = category_rows
-    if selected_brands:
-        material_rows = material_rows[
-            material_rows["brand"].isin(selected_brands)
-        ]
     materials = ordered_options(
         material_rows.get("material", []),
         PREFERRED_MATERIALS if department == "DTF" else [],
@@ -141,6 +128,13 @@ def render_inventory_dimension_filters(
     color_rows = material_rows
     if selected_materials:
         color_rows = color_rows[color_rows["material"].isin(selected_materials)]
+    brands = ordered_options(color_rows.get("brand", []), [], include_missing=False)
+    _reset_invalid_multiselect(f"{key}_brands", brands)
+    selected_brands = brand_col.multiselect(
+        t("筛选品牌"), brands, key=f"{key}_brands", placeholder=t("全部"),
+    )
+    if selected_brands:
+        color_rows = color_rows[color_rows["brand"].isin(selected_brands)]
     colors = ordered_options(
         color_rows.get("color", []),
         PREFERRED_COLORS if department == "DTF" else [],

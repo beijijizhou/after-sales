@@ -4,6 +4,7 @@ import pandas as pd
 
 from db.batches import filter_active_batch_records
 from db.inventory.core.constants import SIZE_COLUMNS
+from db.inventory.core.pagination import fetch_range_pages
 from db.inventory.planning.warehouse_usage import (
     build_warehouse_usage_intervals,
 )
@@ -16,28 +17,34 @@ DAILY_OUTBOUND_PATTERN = "仓库每日出货|每日正常出货|每日出货|黑
 
 
 def load_daily_outbound_history(
-    supabase, department, category, current_date, lookback_days=28
+    supabase, department, category, current_date, lookback_days=28,
+    *, brands=None, materials=None,
 ):
     start_date = current_date - timedelta(days=lookback_days - 1)
     columns = (
-        "color,size,quantity_change,movement_date,reason,"
+        "brand,material,color,size,quantity_change,movement_date,reason,"
         "batch_id,reversal_of_batch_id"
     )
-    response = (
-        supabase.table("inventory_movements")
-        .select(columns)
-        .eq("department", department)
-        .eq("category", category)
-        .gte("movement_date", start_date.isoformat())
-        .lte("movement_date", current_date.isoformat())
-        .order("movement_date")
-        .limit(5000)
-        .execute()
-    )
-    legacy = normalize_daily_outbound_history(pd.DataFrame(response.data))
+    def fetch_page(start, end):
+        return (
+            supabase.table("inventory_movements")
+            .select(columns)
+            .eq("department", department)
+            .eq("category", category)
+            .gte("movement_date", start_date.isoformat())
+            .lte("movement_date", current_date.isoformat())
+            .order("movement_date").order("created_at").order("id")
+            .range(start, end).execute().data or []
+        )
+    source = pd.DataFrame(fetch_range_pages(fetch_page, limit=None))
+    for field, values in (("brand", brands), ("material", materials)):
+        if values and not source.empty:
+            source = source[source[field].isin(values)]
+    legacy = normalize_daily_outbound_history(source)
     try:
         versioned = _versioned_daily_outbound_history(
-            supabase, department, category, start_date, current_date
+            supabase, department, category, start_date, current_date,
+            brands=brands, materials=materials,
         )
     except Exception:
         return legacy
@@ -52,12 +59,15 @@ def load_daily_outbound_history(
 
 def _versioned_daily_outbound_history(
     supabase, department, category, start_date, end_date,
+    *, brands=None, materials=None,
 ):
     batches = load_daily_outbound_revisions(
         supabase, department, category, start_date, end_date
     )
     rows = []
     for batch in batches:
+        if batch.get("status") == "voided":
+            continue
         current_revision = int(batch.get("current_revision") or 0)
         revision = next((
             row for row in batch.get("inventory_daily_outbound_revisions", [])
@@ -66,6 +76,10 @@ def _versioned_daily_outbound_history(
         if revision is None:
             continue
         for line in revision.get("inventory_daily_outbound_lines", []):
+            if brands and line.get("brand") not in brands:
+                continue
+            if materials and line.get("material") not in materials:
+                continue
             rows.append({
                 "日期": pd.to_datetime(batch.get("movement_date")).date(),
                 "颜色": str(line.get("color") or "").strip(),

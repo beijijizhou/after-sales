@@ -59,40 +59,24 @@ def render_linked_sku_sales_table(
     remove_id = None
     for row_id in list(st.session_state[row_ids_key]):
         columns = st.columns(widths, vertical_alignment="bottom")
-        all_options = linked_sku_options(sku_df)
-        material = _linked_selectbox(
-            columns[0], "材质", all_options["materials"],
-            f"{key_prefix}_{row_id}_material",
+        fields = ["material"] + ([] if combine_brands else ["brand"]) + ["color", "size"]
+        values = render_linked_sku_cells(
+            sku_df, columns, f"{key_prefix}_{row_id}", fields,
+            {"material": "材质", "brand": "品牌", "color": "颜色", "size": "尺码"},
         )
-        material_options = linked_sku_options(sku_df, material)
+        material, color, size = values["material"], values["color"], values["size"]
         if combine_brands:
             brand = ""
             color_column, size_column = 1, 2
             quantity_column, price_column, amount_column, remove_column = (
                 3, 4, 5, 6
             )
-            brand_options = material_options
         else:
-            brand = _linked_selectbox(
-                columns[1], "品牌", material_options["brands"],
-                f"{key_prefix}_{row_id}_brand",
-            )
+            brand = values["brand"]
             color_column, size_column = 2, 3
             quantity_column, price_column, amount_column, remove_column = (
                 4, 5, 6, 7
             )
-            brand_options = linked_sku_options(sku_df, material, brand)
-        color = _linked_selectbox(
-            columns[color_column], "颜色", brand_options["colors"],
-            f"{key_prefix}_{row_id}_color",
-        )
-        color_options = linked_sku_options(
-            sku_df, material, None if combine_brands else brand, color
-        )
-        size = _linked_selectbox(
-            columns[size_column], "尺码", color_options["sizes"],
-            f"{key_prefix}_{row_id}_size",
-        )
         quantity = columns[quantity_column].number_input(
             "数量", min_value=0, step=1, label_visibility="collapsed",
             key=f"{key_prefix}_{row_id}_quantity",
@@ -138,7 +122,100 @@ def render_linked_sku_sales_table(
     return pd.DataFrame(records)
 
 
-def _linked_selectbox(container, label, options, key):
+def render_linked_sku_cells(sku_df, columns, key_prefix, fields, labels):
+    """Render one table row's dependent identities from the active catalog."""
+    source = pd.DataFrame(sku_df).copy()
+    if "is_active" in source:
+        source = source[source["is_active"].fillna(True).astype(bool)]
+    values = {}
+    for column, field in zip(columns, fields):
+        options = (_frame_values(source, "category") if field == "category"
+                   else linked_sku_options(source)[field + "s"])
+        value = _linked_selectbox(column, labels[field], options,
+                                  f"{key_prefix}_{field}")
+        values[field] = value
+        source = source[source[field] == value]
+        # Changing any parent resets its child widget scope, even if an option
+        # happens to be valid in both scopes.
+        key_prefix += f"|{field}:{value}"
+    return values
+
+
+def render_linked_outbound_table(sku_lookup, key_prefix, text, compact=False):
+    """Row-level linked SKU selection and package quantities in one table."""
+    fields = ["category", "material"] + ([] if compact else ["brand", "color"]) + ["size"]
+    labels = {"category": "品类", **{key: text[key] for key in fields if key != "category"}}
+    widths = [1.1] * len(fields) + [0.9, 1.1, 0.9, 0.3]
+    for column, label in zip(st.columns(widths),
+                             [labels[key] for key in fields] + [text["package"], text["units"], text["count"], ""]):
+        column.markdown(f"**{label}**")
+    ids_key = f"{key_prefix}_rows"
+    next_key = f"{key_prefix}_next"
+    if ids_key not in st.session_state:
+        st.session_state[ids_key] = [0]
+        st.session_state[next_key] = 1
+    frame = pd.DataFrame(list(sku_lookup.values()))
+    targets = {tuple(sku.get(key, "") for key in fields): label for label, sku in sku_lookup.items()}
+    rows = []
+    remove = None
+    for row_id in st.session_state[ids_key]:
+        columns = st.columns(widths, vertical_alignment="bottom")
+        values = render_linked_sku_cells(frame, columns, f"{key_prefix}_{row_id}", fields, labels)
+        identity = tuple(values[key] for key in fields)
+        input_key = f"{key_prefix}_{row_id}|{identity}"
+        package = _linked_selectbox(columns[-4], text["package"], list(text["packages"].values()), f"{input_key}_package")
+        units = columns[-3].number_input(text["units"], min_value=0, step=1,
+                    key=f"{input_key}|{package}_units", label_visibility="collapsed",
+                    help="0 表示使用该 SKU 的默认包装规格；同款不同箱规请填写实际件数。")
+        count = columns[-2].number_input(text["count"], min_value=0, step=1,
+                    key=f"{input_key}|{package}_count", label_visibility="collapsed")
+        if columns[-1].button("×", key=f"{key_prefix}_{row_id}_remove"):
+            remove = row_id
+        rows.append({"SKU": targets.get(identity, ""), "包装单位": next(key for key, label in text["packages"].items() if label == package),
+                     "箱规": units or None, "包装数量": count})
+    if remove is not None:
+        st.session_state[ids_key] = [value for value in st.session_state[ids_key] if value != remove]
+        st.rerun()
+    if st.button("+ 添加出库行", key=f"{key_prefix}_add"):
+        value = st.session_state[next_key]
+        st.session_state[ids_key].append(value)
+        st.session_state[next_key] = value + 1
+        st.rerun()
+    return pd.DataFrame(rows, columns=["SKU", "包装单位", "箱规", "包装数量"])
+
+
+def render_linked_outbound_scope(sku_lookup, key_prefix, text, compact=False):
+    """One parent-first narrowing path for apparel and UV entry."""
+    source = pd.DataFrame(list(sku_lookup.values()))
+    if source.empty:
+        return {}
+    if "is_active" in source:
+        source = source[source["is_active"].fillna(True).astype(bool)]
+    if source.empty:
+        return {}
+    dimensions = ["category", "material"]
+    if not compact:
+        dimensions += ["brand", "color"]
+    for position, dimension in enumerate(dimensions, 1):
+        if dimension == "category":
+            options = _frame_values(source, dimension)
+            label = text.get("category_filter", "Category")
+        else:
+            options = linked_sku_options(source)[dimension + "s"]
+            label = f"{position}. {text[dimension]}"
+        if len(options) == 1:
+            selected = options[0]
+            st.caption(f"{label}: {selected}")
+        else:
+            selected = _linked_selectbox(st, label, options, f"{key_prefix}_{dimension}", visible=True)
+        source = source[source[dimension] == selected]
+        key_prefix += f"|{dimension}:{selected}"
+    identities = set(source.index)
+    return {label: sku for index, (label, sku) in enumerate(sku_lookup.items())
+            if index in identities}
+
+
+def _linked_selectbox(container, label, options, key, visible=False):
     if not options:
         container.text_input(
             label, value="", disabled=True, label_visibility="collapsed",
@@ -148,7 +225,7 @@ def _linked_selectbox(container, label, options, key):
     if st.session_state.get(key) not in options:
         st.session_state[key] = options[0]
     return container.selectbox(
-        label, options, key=key, label_visibility="collapsed",
+        label, options, key=key, label_visibility="visible" if visible else "collapsed",
     )
 
 
