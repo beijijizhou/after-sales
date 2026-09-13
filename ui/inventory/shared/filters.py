@@ -8,6 +8,7 @@ from db.inventory import SIZE_COLUMNS
 from db.inventory.core.constants import UV_MODEL_ORDER
 from ui.inventory.i18n import t
 from ui.inventory.category_routing import apply_phone_case_display_scope
+from ui.inventory.shared.hierarchy import inventory_hierarchy, render_hierarchy_guide, hydrate_hierarchies
 from ui.inventory.shared.filter_models import (
     build_inventory_filter_title,
     filter_inventory_rows,
@@ -68,14 +69,15 @@ def render_inventory_activity_filters(
 
 
 def render_inventory_dimension_filters(
-    dimensions, key="inventory_dimensions", allow_all_departments=False,
+    dimensions, key="inventory_dimensions", allow_all_departments=False, supabase=None,
 ):
+    if supabase is not None:
+        hydrate_hierarchies(supabase)
     dimensions = normalize_dimensions(dimensions)
     departments = ordered_options(
         dimensions.get("department", []), PREFERRED_DEPARTMENTS
     )
-    department_col, category_col, material_col = st.columns(3)
-    brand_col, color_col, size_col = st.columns(3)
+    department_col, category_col = st.columns(2)
     department_options = ([""] if allow_all_departments else []) + departments
     _reset_invalid_selectbox(f"{key}_department", department_options)
     department = department_col.selectbox(
@@ -105,6 +107,7 @@ def render_inventory_dimension_filters(
         t("库存品类"), category_options, key=category_key,
         format_func=lambda value: t("全部品类") if not value else t(value),
     )
+    hierarchy = inventory_hierarchy(department, category)
 
     category_rows = department_rows
     if category:
@@ -113,64 +116,34 @@ def render_inventory_dimension_filters(
         category_rows, department, category
     )
 
-    material_rows = category_rows
-    materials = ordered_options(
-        material_rows.get("material", []),
-        PREFERRED_MATERIALS if department == "DTF" else [],
-        include_missing=False,
-    )
-    _reset_invalid_multiselect(f"{key}_materials", materials)
-    selected_materials = material_col.multiselect(
-        t("筛选材质"), materials, key=f"{key}_materials",
-        placeholder=t("全部"),
-    )
-
-    color_rows = material_rows
-    if selected_materials:
-        color_rows = color_rows[color_rows["material"].isin(selected_materials)]
-    brands = ordered_options(color_rows.get("brand", []), [], include_missing=False)
-    _reset_invalid_multiselect(f"{key}_brands", brands)
-    selected_brands = brand_col.multiselect(
-        t("筛选品牌"), brands, key=f"{key}_brands", placeholder=t("全部"),
-    )
-    if selected_brands:
-        color_rows = color_rows[color_rows["brand"].isin(selected_brands)]
-    colors = ordered_options(
-        color_rows.get("color", []),
-        PREFERRED_COLORS if department == "DTF" else [],
-        include_missing=False,
-    )
-    _reset_invalid_multiselect(f"{key}_colors", colors)
-    selected_colors = color_col.multiselect(
-        t("筛选颜色"), colors, key=f"{key}_colors",
-        placeholder=t("全部"),
-    )
-
-    size_rows = color_rows
-    if selected_colors:
-        size_rows = size_rows[size_rows["color"].isin(selected_colors)]
-    preferred_sizes = (
-        SIZE_COLUMNS if department == "DTF"
-        else UV_MODEL_ORDER if department == "UV"
-        else []
-    )
-    sizes = ordered_options(
-        size_rows.get("size", []),
-        preferred_sizes,
-        include_missing=False,
-    )
-    _reset_invalid_multiselect(f"{key}_sizes", sizes)
-    size_filter_label = (
-        "筛选尺码" if department == "DTF"
-        else "筛选型号" if department == "UV"
-        else "筛选尺码 / 型号"
-    )
-    selected_sizes = size_col.multiselect(
-        t(size_filter_label), sizes, key=f"{key}_sizes",
-        placeholder=t("全部"),
-        format_func=lambda value: "yuan" if value == "YUAN" else value,
-    )
-    return department, category, selected_brands, selected_materials, selected_colors, selected_sizes
+    fields = hierarchy.fields[2:]
+    selections = {}
+    scope = (department, category, hierarchy.fields, hierarchy.labels)
+    if st.session_state.get(f"{key}_hierarchy_scope") != scope:
+        for field in ("material", "brand", "color", "size"):
+            st.session_state[f"{key}_{field}s"] = []
+        st.session_state[f"{key}_hierarchy_scope"] = scope
+    for field in ("material", "brand", "color", "size"):
+        if field not in fields:
+            st.session_state[f"{key}_{field}s"] = []
+    source = category_rows
+    columns = st.columns(max(1, len(fields)))
+    for column, field, label in zip(columns, fields, hierarchy.labels[2:]):
+        preferred = (SIZE_COLUMNS if department == "DTF" else UV_MODEL_ORDER) if field == "size" else (
+            PREFERRED_MATERIALS if field == "material" and department == "DTF" else
+            PREFERRED_COLORS if field == "color" and department == "DTF" else [])
+        options = ordered_options(source.get(field, []), preferred, include_missing=False)
+        widget_key = f"{key}_{field}s"
+        parent_scope = (scope, tuple((parent, tuple(values)) for parent, values in selections.items()))
+        if st.session_state.get(f"{widget_key}_parent") != parent_scope:
+            st.session_state[widget_key] = []
+            st.session_state[f"{widget_key}_parent"] = parent_scope
+        _reset_invalid_multiselect(widget_key, options)
+        selections[field] = column.multiselect(t("筛选" + label), options, key=widget_key, placeholder=t("全部"))
+        source = hierarchy.narrow(source, {field: selections[field]})
+    render_hierarchy_guide(hierarchy)
+    return (department, category, selections.get("brand", []), selections.get("material", []),
+            selections.get("color", []), selections.get("size", []))
 def _reset_invalid_selectbox(key, options):
     reset_invalid_selectbox(st.session_state, key, options)
 

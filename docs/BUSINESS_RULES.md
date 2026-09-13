@@ -246,6 +246,58 @@ data-entry sources differ:
 
 #### Unified manual outbound hierarchy and interaction requirements
 
+##### User-designed SKU models and local trial boundary
+
+Root names, layer names (including department/category/brand/material), depth,
+branching and parent-option relationships are user-owned metadata. Existing
+apparel ordering is a business template, not a universal model. Display labels
+are separate from stable node, option and SKU IDs. One model generates option
+entry, SKU entry, filters and tree review.
+
+For this trial, authorized local users enter `SKU 管理 -> SKU 工作模式 ->
+本地模型试验`. Empty models support arbitrary-depth/uneven branches,
+parent-scoped options and terminal SKU paths. Trial definitions, options, SKUs
+and complete before/after audit are stored atomically in ignored local
+`.local/sku_models.json`, with a lock, optimistic version, human actor and
+immutable UTC time displayed in New York. No database migration is needed.
+Every design-write adapter rejects deployed calls, including the legacy
+database hierarchy saver; the fixed-attribute design editor is retired.
+
+Trial mode never changes formal SKU/options, stock, cost, permission scopes or
+shared database hierarchy definitions. Existing ERP pages keep their current
+adapters. Applying trial metadata to formal inventory requires a separately
+reviewed mapping/migration and explicit release approval. Never treat changing
+a navigation label as changing ledger or authorization semantics.
+
+Dimension paths are configured separately from SKU business values in the shared
+`DimensionHierarchy`. Inventory filters display a newcomer hierarchy diagram
+from the same configuration consumed by outbound entry. UV global filters omit
+brand/color and clear hidden selections: department -> category -> material ->
+model. Apparel retains department -> category -> material -> brand -> color ->
+size. Adding materials or brands does not require changing the hierarchy code;
+valid child values come from SKU master records.
+
+SKU management owns per-department/per-category navigation design, the real SKU
+prefix tree and versioned design history.
+Routine tree presentation is compact: department/category appear once in the
+page scope, node labels omit repeated field names and counts (counts remain in
+tooltips), and sibling terminal values share one node. Distinct parent branches
+remain separate; visual compression must not merge SKU identities.
+Full standard apparel sizes display as `S–5XL（全尺码）`; incomplete sets remain
+explicit. Sibling colors with identical complete descendant option structures
+share one visual branch, with summed SKU counts in tooltips. Never merge colors
+based only on equal counts, or merge across different parents. Show all root
+nodes by default so equivalent color branches can be compressed together.
+The global newcomer guide is collapsed by default to avoid repeating the SKU tree.
+Navigation is not SKU identity: omitted attributes remain stored and a node with multiple SKU leaves must not
+silently pick one for outbound. Published definitions are persisted separately,
+with optimistic version checks, human operator and timezone-aware timestamp.
+The current adapter designs paths using existing material/brand/color/size
+attributes; the generic prefix-tree engine accepts any ordered record fields
+and has no fixed-depth limit. New business attributes require an explicit SKU
+schema/adapter extension, not invented fields or values. Without the hierarchy
+migration, display the legacy initial tree and visibly disable design saves.
+
 Black/white shirts, colored shirts and UV use the same daily-outbound entry,
 not separate category-specific implementations. The outer scope is
 `department -> category`; SKU choices then narrow as

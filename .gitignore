@@ -6,3 +6,4 @@
 automation/playwright/.auth/
 output/automation/
 .cache/
+.local/

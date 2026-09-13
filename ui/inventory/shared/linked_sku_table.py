@@ -3,6 +3,7 @@ import streamlit as st
 
 from db.inventory import SIZE_COLUMNS
 from utils.option_values import ordered_values, unique_values
+from ui.inventory.shared.hierarchy import inventory_hierarchy
 
 
 def linked_sku_options(
@@ -143,8 +144,11 @@ def render_linked_sku_cells(sku_df, columns, key_prefix, fields, labels):
 
 def render_linked_outbound_table(sku_lookup, key_prefix, text, compact=False):
     """Row-level linked SKU selection and package quantities in one table."""
-    fields = ["category", "material"] + ([] if compact else ["brand", "color"]) + ["size"]
-    labels = {"category": "品类", **{key: text[key] for key in fields if key != "category"}}
+    categories = {sku.get("category", "") for sku in sku_lookup.values()}
+    category = next(iter(categories)) if len(categories) == 1 else ""
+    hierarchy = inventory_hierarchy("UV" if compact else "DTF", category)
+    fields = list(hierarchy.fields[1:])
+    labels = dict(zip(fields, hierarchy.labels[1:]))
     widths = [1.1] * len(fields) + [0.9, 1.1, 0.9, 0.3]
     for column, label in zip(st.columns(widths),
                              [labels[key] for key in fields] + [text["package"], text["units"], text["count"], ""]):
@@ -155,7 +159,9 @@ def render_linked_outbound_table(sku_lookup, key_prefix, text, compact=False):
         st.session_state[ids_key] = [0]
         st.session_state[next_key] = 1
     frame = pd.DataFrame(list(sku_lookup.values()))
-    targets = {tuple(sku.get(key, "") for key in fields): label for label, sku in sku_lookup.items()}
+    targets = {}
+    for label, sku in sku_lookup.items():
+        targets.setdefault(tuple(sku.get(key, "") for key in fields), []).append(label)
     rows = []
     remove = None
     for row_id in st.session_state[ids_key]:
@@ -163,6 +169,11 @@ def render_linked_outbound_table(sku_lookup, key_prefix, text, compact=False):
         values = render_linked_sku_cells(frame, columns, f"{key_prefix}_{row_id}", fields, labels)
         identity = tuple(values[key] for key in fields)
         input_key = f"{key_prefix}_{row_id}|{identity}"
+        candidates = targets.get(identity, [])
+        target = candidates[0] if len(candidates) == 1 else ""
+        if len(candidates) > 1:
+            target = st.selectbox("该导航节点下的具体 SKU", candidates, key=f"{input_key}_leaf")
+        input_key += f"|sku:{target}"
         package = _linked_selectbox(columns[-4], text["package"], list(text["packages"].values()), f"{input_key}_package")
         units = columns[-3].number_input(text["units"], min_value=0, step=1,
                     key=f"{input_key}|{package}_units", label_visibility="collapsed",
@@ -171,7 +182,7 @@ def render_linked_outbound_table(sku_lookup, key_prefix, text, compact=False):
                     key=f"{input_key}|{package}_count", label_visibility="collapsed")
         if columns[-1].button("×", key=f"{key_prefix}_{row_id}_remove"):
             remove = row_id
-        rows.append({"SKU": targets.get(identity, ""), "包装单位": next(key for key, label in text["packages"].items() if label == package),
+        rows.append({"SKU": target, "包装单位": next(key for key, label in text["packages"].items() if label == package),
                      "箱规": units or None, "包装数量": count})
     if remove is not None:
         st.session_state[ids_key] = [value for value in st.session_state[ids_key] if value != remove]
@@ -193,9 +204,9 @@ def render_linked_outbound_scope(sku_lookup, key_prefix, text, compact=False):
         source = source[source["is_active"].fillna(True).astype(bool)]
     if source.empty:
         return {}
-    dimensions = ["category", "material"]
-    if not compact:
-        dimensions += ["brand", "color"]
+    categories = set(source.get("category", []))
+    category = next(iter(categories)) if len(categories) == 1 else ""
+    dimensions = tuple(field for field in inventory_hierarchy("UV" if compact else "DTF", category).fields[1:] if field != "size")
     for position, dimension in enumerate(dimensions, 1):
         if dimension == "category":
             options = _frame_values(source, dimension)

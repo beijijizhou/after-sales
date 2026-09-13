@@ -20,10 +20,19 @@ from ui.inventory.shared import (
 from ui.inventory.sku.initialization import render_inventory_initialization
 from ui.inventory.sku.page import render_sku_management
 from utils.auth import has_permission
+from utils.runtime import is_deployed_runtime
 
 
 def render_sku_management_page(supabase):
     st.title(t("SKU 管理"))
+    # The isolated model has its own designed hierarchy, not inventory filters.
+    if (
+        has_permission("can_manage_sku")
+        and not is_deployed_runtime()
+        and st.session_state.get("sku_management_mode") == "本地模型试验"
+    ):
+        render_sku_management(supabase, "", True)
+        return
     try:
         dimensions = load_inventory_dimensions(supabase, active_only=False)
     except Exception as error:
@@ -34,7 +43,7 @@ def render_sku_management_page(supabase):
     (
         department, category, brands, materials, colors, sizes,
     ) = render_inventory_dimension_filters(
-        dimensions, key="sku_management_filters"
+        dimensions, key="sku_management_filters", supabase=supabase
     )
     sku_filters = {
         "category": category,

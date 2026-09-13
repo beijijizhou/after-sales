@@ -76,7 +76,7 @@ def render_inventory_summary(supabase):
     (
         department, category, brands, materials, colors, selected_sizes,
     ) = render_inventory_dimension_filters(
-        dimensions_df, key="inventory_global"
+        dimensions_df, key="inventory_global", supabase=supabase
     )
     movement_types, selected_date, _use_snapshot_date = (
         render_inventory_activity_filters(

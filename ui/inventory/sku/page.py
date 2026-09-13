@@ -22,12 +22,21 @@ from ui.inventory.sku.editor_models import (
     uses_standard_sku_sizes,
 )
 from utils.auth import get_current_operator_name
+from ui.inventory.sku.hierarchy import render_sku_hierarchy
+from ui.inventory.sku.model_designer import render_local_model_designer
+from utils.runtime import is_deployed_runtime
 
 
 def render_sku_management(
     supabase, selected_department, can_manage, sku_filters=None,
     selected_category="",
 ):
+    if can_manage and not is_deployed_runtime():
+        mode = st.segmented_control("SKU 工作模式", ["现有库存 SKU", "本地模型试验"],
+            default="现有库存 SKU", key="sku_management_mode")
+        if mode == "本地模型试验":
+            render_local_model_designer()
+            return
     try:
         departments, categories, brands = load_master_data(supabase)
         materials = load_materials(supabase)
@@ -56,15 +65,21 @@ def render_sku_management(
     )
 
     if not can_manage:
-        _render_catalog(supabase, department_code, sku_filters)
+        tree_tab, catalog_tab = st.tabs(["SKU 等级树", t("SKU 目录")])
+        with tree_tab:
+            render_sku_hierarchy(supabase, department_code, selected_category, False)
+        with catalog_tab:
+            _render_catalog(supabase, department_code, sku_filters)
         return
 
-    catalog_tab, create_tab, edit_tab, merge_tab, master_tab = st.tabs(
+    tree_tab, catalog_tab, create_tab, edit_tab, merge_tab, master_tab = st.tabs(
         [
-            t("SKU 目录"), t("新增 SKU"), t("修改 SKU"),
+            "SKU 等级树", t("SKU 目录"), t("新增 SKU"), t("修改 SKU"),
             "SKU 并入", t("新增 SKU 选项"),
         ]
     )
+    with tree_tab:
+        render_sku_hierarchy(supabase, department_code, selected_category, True)
     with catalog_tab:
         _render_catalog(supabase, department_code, sku_filters)
     with create_tab:

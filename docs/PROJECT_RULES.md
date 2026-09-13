@@ -2,6 +2,16 @@
 
 ## Product Standard
 
+- User-designed SKU structure is a foundational rule, as important as audit:
+  root/layer names, depth, branching and parent-scoped option relations are
+  metadata, not application constants. Share the rendering/validation engine,
+  not one universal hierarchy across unrelated businesses. Stable SKU IDs and
+  ledger/authorization meanings must survive label/navigation changes.
+- SKU model design is currently local-only and permission-gated, with backend
+  runtime rejection of deployed writes. The local trial uses isolated audited
+  data; do not migrate formal stock/options or release hosted design access
+  without explicit user approval.
+
 - Treat this system as a commercial ERP product intended for sale to multiple
   companies, not as a one-company internal script.
 - New features must be reusable and configurable. Do not hard-code the current

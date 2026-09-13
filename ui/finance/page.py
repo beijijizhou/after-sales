@@ -33,6 +33,8 @@ NY_TIMEZONE = ZoneInfo("America/New_York")
 
 
 def render_finance_page(supabase):
+    from ui.inventory.shared.hierarchy import hydrate_hierarchies
+    hydrate_hierarchies(supabase)
     st.title("财务")
     month = _render_month_selector()
     start_date, end_date = _month_range(month)
