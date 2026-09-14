@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+from ui.table_layout import fit_table_height
 
 from db.consumables import apply_consumable_batch
 from ui.consumables.units import (
@@ -69,6 +70,8 @@ def render_movement_entry(
     ])[columns]
     edited = st.data_editor(
         template,
+        height=fit_table_height(template, minimum_rows=8, row_height=48),
+        row_height=48,
         width="stretch",
         hide_index=True,
         num_rows="dynamic",

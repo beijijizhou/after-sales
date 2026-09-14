@@ -2,6 +2,7 @@
 
 import pandas as pd
 import streamlit as st
+from ui.table_layout import fit_table_height
 
 from db.batches import (
     InboundBatchKind,
@@ -194,6 +195,8 @@ def render_consumable_cost_workspace(
     version = st.session_state.get("consumable_cost_editor_version", 0)
     edited = pd.DataFrame(st.data_editor(
         cost_table,
+        height=fit_table_height(cost_table, row_height=48),
+        row_height=48,
         hide_index=True,
         width="stretch",
         disabled=[

@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from ui.table_layout import fit_table_height
 
 from db.batches import (
     BatchKind,
@@ -175,6 +176,7 @@ def _render_batch_detail(batch_id, movements_df, items_df, show_cost):
         columns.insert(-1, "单位成本")
     st.dataframe(
         display[columns], width="stretch", hide_index=True,
+        height=fit_table_height(display, row_height=48), row_height=48,
         column_config={
             "数量": st.column_config.NumberColumn(format="%.2f"),
             "操作后库存": st.column_config.NumberColumn(format="%.2f"),

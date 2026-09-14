@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+from ui.table_layout import fit_table_height
 
 from db.consumables.planning import (
     CONSUMABLE_LOOKBACK_DAYS,
@@ -120,6 +121,7 @@ def _render_forecast_table(forecast_df):
     display = display.style.apply(_highlight_risk, axis=1)
     st.dataframe(
         display,
+        height=fit_table_height(forecast_df, row_height=48), row_height=48,
         hide_index=True,
         width="stretch",
         column_config={
@@ -147,6 +149,7 @@ def _render_model_table(model_df):
         return
     st.dataframe(
         model_df,
+        height=fit_table_height(model_df, row_height=48), row_height=48,
         hide_index=True,
         width="stretch",
         column_config={

@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+from ui.table_layout import fit_table_height
 
 from db.consumables import apply_consumable_batch
 from ui.consumables.operations.entry import (
@@ -47,6 +48,8 @@ def render_daily_issue_table(supabase, department_code, items_df, can_edit):
     template = build_daily_issue_template(label_to_row)
     edited = st.data_editor(
         template,
+        height=fit_table_height(template, row_height=48),
+        row_height=48,
         width="stretch",
         hide_index=True,
         key=f"daily_consumable_issue_{department_code}_{version}",
@@ -120,6 +123,8 @@ def render_inventory_initialization(
     ])[columns]
     edited = st.data_editor(
         template,
+        height=fit_table_height(template, row_height=48),
+        row_height=48,
         width="stretch",
         hide_index=True,
         key=f"consumable_initialization_{department_code}",

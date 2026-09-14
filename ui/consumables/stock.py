@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from ui.table_layout import fit_table_height
 
 from ui.consumables.units import entry_unit, to_entry_quantity
 
@@ -72,6 +73,8 @@ def render_stock(items_df, latest_costs, show_cost):
 
     st.dataframe(
         display[columns],
+        height=fit_table_height(display, row_height=48),
+        row_height=48,
         width="stretch",
         hide_index=True,
         column_config={

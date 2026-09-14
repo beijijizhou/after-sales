@@ -1,6 +1,7 @@
 """Consumable SKU catalog editor."""
 
 import streamlit as st
+from ui.table_layout import fit_table_height
 
 from db.consumables import update_consumable_item
 from ui.consumables.sku_models import EDIT_COLUMNS, build_editor, build_updates
@@ -11,7 +12,7 @@ def render_catalog(supabase, items, can_manage):
     if items.empty:
         st.info("当前部门还没有耗材 SKU。")
         return
-    edited = st.data_editor(build_editor(items), width="stretch", hide_index=True, disabled=["_id", "包装单位", "当前库存（箱）"] if can_manage else ["_id", *EDIT_COLUMNS], key="consumable_sku_catalog", column_config={
+    edited = st.data_editor(build_editor(items), width="stretch", hide_index=True, height=fit_table_height(items, row_height=48), row_height=48, disabled=["_id", "包装单位", "当前库存（箱）"] if can_manage else ["_id", *EDIT_COLUMNS], key="consumable_sku_catalog", column_config={
         "_id": None,
         "每箱数量": st.column_config.NumberColumn(min_value=0.0001, step=0.1, format="%.4f"),
         "最低库存（箱）": st.column_config.NumberColumn(min_value=0.0, step=1, format="%.2f"),

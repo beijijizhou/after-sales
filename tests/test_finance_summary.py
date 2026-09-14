@@ -105,6 +105,7 @@ class FinanceSummaryTests(unittest.TestCase):
         spinner.__enter__.return_value = None
         spinner.__exit__.return_value = None
         with (
+            patch("ui.inventory.shared.hierarchy.hydrate_hierarchies"),
             patch.object(finance_page, "_render_month_selector", return_value=date(2026, 8, 1)),
             patch.object(finance_page.st, "radio", return_value="入库批次"),
             patch.object(finance_page.st, "spinner", return_value=spinner),
