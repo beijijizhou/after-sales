@@ -6,6 +6,7 @@ import pandas as pd
 from ui.inventory.sku.master_forms import _save
 from ui.inventory.sku.create import (
     build_black_white_sku_rows,
+    expand_full_size_sku_rows,
     materials_for_category,
 )
 
@@ -45,6 +46,28 @@ class SkuMasterFormTests(unittest.TestCase):
         result = materials_for_category(materials, "tshirt")
 
         self.assertEqual(result["name"].tolist(), ["160g"])
+
+    def test_size_category_expands_each_color_to_all_standard_sizes(self):
+        result = expand_full_size_sku_rows(pd.DataFrame([
+            {"品牌": "Haloo", "材质": "180g", "颜色": "蓝", "单位": "件"},
+            {"品牌": "Haloo", "材质": "180g", "颜色": "红", "单位": "件"},
+        ]))
+
+        self.assertEqual(len(result), 16)
+        self.assertEqual(
+            result.groupby("颜色")["规格"].apply(list).to_dict(),
+            {
+                "蓝": ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+                "红": ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+            },
+        )
+
+    def test_blank_size_category_row_does_not_create_phantom_skus(self):
+        result = expand_full_size_sku_rows(pd.DataFrame([
+            {"品牌": "", "材质": "", "颜色": "", "单位": "件"},
+        ]))
+
+        self.assertTrue(result.empty)
 
     @patch("ui.inventory.sku.master_forms.st.rerun")
     @patch("ui.inventory.sku.master_forms.st.session_state", {})

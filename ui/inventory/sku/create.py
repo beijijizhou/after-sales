@@ -56,6 +56,11 @@ def render_create_skus(
         edited = _render_black_white_skus(
             brand_options, material_options, department["id"], version
         )
+    elif category["specification_type"] == "size":
+        edited = _render_full_size_skus(
+            category, brand_options, material_options,
+            department["id"], version,
+        )
     else:
         edited = _render_custom_skus(
             category, specification_label, brand_options, material_options,
@@ -108,6 +113,20 @@ def build_black_white_sku_rows(brand, material):
     ])
 
 
+def expand_full_size_sku_rows(rows):
+    """Expand each apparel identity row into the standard business size run."""
+    expanded = []
+    for row in pd.DataFrame(rows).to_dict("records"):
+        if not str(row.get("材质") or "").strip():
+            continue
+        for size in SIZE_COLUMNS:
+            expanded.append({**row, "规格": size})
+    return pd.DataFrame(
+        expanded,
+        columns=["品牌", "材质", "颜色", "规格", "单位"],
+    )
+
+
 def _render_black_white_skus(
     brand_options, material_options, department_id, version
 ):
@@ -128,6 +147,36 @@ def _render_black_white_skus(
     st.caption(t("将自动新增以下颜色和尺码"))
     st.dataframe(preview, hide_index=True, width="stretch")
     return build_black_white_sku_rows(brand, material)
+
+
+def _render_full_size_skus(
+    category, brand_options, material_options, department_id, version,
+):
+    st.info("每一行品牌、材质和颜色会自动生成 S–5XL 全尺码 SKU。")
+    template = pd.DataFrame([{
+        "品牌": "", "材质": "", "颜色": "", "单位": "件",
+    }])
+    base_rows = pd.DataFrame(st.data_editor(
+        template,
+        hide_index=True,
+        num_rows="dynamic",
+        width="stretch",
+        column_config={
+            "品牌": st.column_config.SelectboxColumn(
+                t("品牌"), options=brand_options
+            ),
+            "材质": st.column_config.SelectboxColumn(
+                t("材质"), options=material_options, required=True
+            ),
+            "颜色": st.column_config.TextColumn(t("颜色"), required=True),
+            "单位": st.column_config.TextColumn(t("单位"), required=True),
+        },
+        key=(
+            f"full_size_skus_{department_id}_{category['id']}_{version}"
+        ),
+    ))
+    st.caption("将为每个有效组合自动新增 S、M、L、XL、2XL、3XL、4XL、5XL。")
+    return expand_full_size_sku_rows(base_rows)
 
 
 def _render_custom_skus(
