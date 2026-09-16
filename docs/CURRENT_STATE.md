@@ -105,6 +105,13 @@ refactors, not after every small feature.
   `dtf_colored_inventory.py`.
 - Production collection: `automation/api/`, `automation/playwright/`, and
   `automation/sync/`
+- Automatic Print S2B batch metadata gateway:
+  `supabase/functions/s2b-batch-info/`, backed by
+  `sql/production/s2b_batch_metadata.sql`; service-role access and encrypted
+  `S2B:DTF`, `S2B:UV`, and `S2B:3D` credentials stay server-side. The same
+  function also owns restricted production-batch listing, personnel labels,
+  production-image export requests, export-record polling and download marks;
+  clients receive download metadata but never the decrypted provider token.
 - ERP provider ownership: `automation/api/<provider>/` contains each
   provider's authentication, production API, logistics API, payloads and
   provider-specific response handling. `automation/logistics/` owns shared
