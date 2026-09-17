@@ -16,9 +16,11 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   try {
-    await requireClientKey(request);
     const input = await request.json();
     const action = String(input.action || "batch_info").trim();
+    // Read-only batch metadata is consumed directly by layout clients.
+    // Mutating production/export actions remain protected by the client key.
+    if (action !== "batch_info") await requireClientKey(request);
     const account = String(input.account || "DTF").trim().toUpperCase();
     if (!ACCOUNTS.has(account)) throw new ClientError("Unsupported S2B account", 400);
 
