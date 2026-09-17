@@ -14,7 +14,6 @@ from db.inventory.core.constants import SIZE_COLUMNS
 from db.inventory.planning.warehouse_usage import build_warehouse_daily_totals
 from ui.inventory.i18n import t
 from ui.table_layout import fit_table_height
-from utils.runtime import is_deployed_runtime
 
 
 def render_forecast_model_controls(order_quantity=15000):
@@ -88,15 +87,7 @@ def render_forecast_calculation(
     platform_end,
 ):
     with st.expander(t("查看预测计算明细")):
-        show_platform_diagnostics = not is_deployed_runtime()
-        if show_platform_diagnostics:
-            if platform_days:
-                st.caption(
-                    f"{t('平台生产数据')}：{platform_start} 至 "
-                    f"{platform_end}｜{platform_days} {t('天')}"
-                )
-            else:
-                st.warning(t("暂无完整平台生产数据，平台数据仅作为核对参考。"))
+        st.caption("默认预测只采用仓库人工登记的实际出库日均。")
         detail = comparison_df.merge(
             forecast_model_df.rename(columns={
                 "color": "颜色",
@@ -108,9 +99,7 @@ def render_forecast_calculation(
         )
         columns = [
             "颜色", "尺码",
-            *(["15,000模型日耗"] if show_platform_diagnostics else []),
             "仓库出库日均",
-            *(["平台生产日均"] if show_platform_diagnostics else []),
             "最终预测日耗",
         ]
         st.dataframe(
@@ -206,58 +195,27 @@ def render_forecast_usage_adjustment(
         warehouse_daily_average = (
             warehouse_total / recorded_days if recorded_days else 0
         )
-        show_platform_diagnostics = (
-            category != "黑白短袖" or not is_deployed_runtime()
+        metrics = st.columns(2)
+        metrics[0].metric("仓库模型日耗", f"{base_daily:,.1f} 件")
+        metrics[1].metric(
+            "仓库登记日均", f"{warehouse_daily_average:,.1f} 件/天",
         )
-        metric_count = (
-            3 if category == "黑白短袖" and show_platform_diagnostics
-            else 2 if category == "黑白短袖"
-            else 2
+        st.caption(
+            f"仓库统计覆盖 {recorded_days}/{int(period_days)} 个完整自然日；"
+            "缺失日期不当作零，平台生产数据不参与这里的预测。"
         )
-        metrics = st.columns(metric_count)
-        metrics[0].metric("原基础综合日耗", f"{base_daily:,.1f} 件")
-        effective_days = max(int(period_effective_days or 0), 0)
-        platform_daily_average = (
-            float(period_total) / effective_days if effective_days else 0
-        )
-        if category == "黑白短袖":
-            warehouse_metric_index = 2 if show_platform_diagnostics else 1
-            if show_platform_diagnostics:
-                metrics[1].metric(
-                    "平台日均生产",
-                    f"{platform_daily_average:,.1f} 件/天",
-                )
-            metrics[warehouse_metric_index].metric(
-                "仓库日均出库",
-                f"{warehouse_daily_average:,.1f} 件/天",
-            )
-            st.caption(
-                f"仓库统计覆盖 {recorded_days}/{int(period_days)} 个完整自然日；"
-                "日平均只按有登记的日期计算，缺失日期不当作零。"
-            )
-        else:
-            metrics[1].metric(
-                "平台日均生产",
-                f"{platform_daily_average:,.1f} 件/天",
-            )
-        if show_platform_diagnostics:
-            st.caption(
-                f"平台累计读取 {period_total:,.0f} 件｜"
-                f"实际覆盖 {effective_days}/{int(period_days)} 个完整自然日；"
-                "平台日均按实际有数据日期计算。"
-            )
     adjusted = scale_forecast_daily_total(source, custom_daily)
     customized = int(custom_daily) != max(int(round(base_daily)), 0)
-    period_source = pd.DataFrame(period_model_df).rename(columns={
+    period_source = pd.DataFrame(warehouse_outbound_df).rename(columns={
         "颜色": "color", "尺码": "size",
-        "平台生产日均": "consumption_quantity",
+        "实际出库": "consumption_quantity",
     })
     if not period_source.empty:
         period_source["consumption_quantity"] = pd.to_numeric(
             period_source["consumption_quantity"], errors="coerce"
-        ).fillna(0) * int(period_days)
+        ).fillna(0)
         with st.expander(
-            f"查看{category}最近{int(period_days)}天颜色尺码生产量",
+            f"查看{category}最近{int(period_days)}天仓库出库量",
             expanded=False,
         ):
             st.dataframe(

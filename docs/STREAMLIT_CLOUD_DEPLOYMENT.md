@@ -91,13 +91,20 @@ role and permission catalog, audited user-role updates, administrator-created
 role configuration, database-backed login permissions, and both append-only
 audit histories.
 
-## S2B limitation
+## Shared S2B batch metadata
 
-USPS and SDS can authenticate directly from the cloud secrets. S2B currently
-uses a captured bearer token. Streamlit Community Cloud cannot open the local
-dedicated Chrome profile to refresh an expired S2B login. When an S2B token
-expires, update that token in Streamlit Cloud Secrets and reboot the app, or
-deploy a separate server-side S2B refresh service.
+Run `sql/production/s2b_batch_metadata.sql`, configure the Edge Function secret
+`AUTOMATIC_PRINT_API_KEY`, and deploy `s2b-batch-info` with JWT verification
+disabled because the function performs its own limited client-key check. Save
+captured account tokens as `S2B:DTF`, `S2B:UV`, or `S2B:3D` through the shared
+token function. Automatic Print clients receive only the limited function key;
+they never receive the Supabase service-role key or raw S2B token.
+
+S2B still uses a captured bearer token. Streamlit Community Cloud cannot open
+the local dedicated Chrome profile to refresh an expired login. One
+administrator refreshes the affected account locally and writes the replacement
+token to the shared encrypted credential row; every production computer then
+reuses it through the gateway.
 
 ## Deployment check
 

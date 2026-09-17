@@ -27,6 +27,7 @@ from db.inventory.planning.demand_anomaly import (
     build_demand_anomaly_table,
 )
 from db.inventory.planning.warehouse_usage import (
+    build_warehouse_consumption_model,
     build_warehouse_daily_totals,
     build_stock_outbound_ratio_series,
 )
@@ -110,6 +111,20 @@ class InventoryBlackWhiteSummaryTests(unittest.TestCase):
             date(2026, 9, 7), date(2026, 8, 9),
         ])
         self.assertEqual(result["仓库出库量"].tolist(), [300, 150])
+
+    def test_warehouse_consumption_model_uses_manual_outbound_intervals(self):
+        outbound = pd.DataFrame([
+            {"日期": date(2026, 9, 1), "颜色": "红", "尺码": "M", "实际出库": 100},
+            {"日期": date(2026, 9, 3), "颜色": "红", "尺码": "M", "实际出库": 240},
+            {"日期": date(2026, 9, 6), "颜色": "红", "尺码": "M", "实际出库": 300},
+        ])
+
+        result = build_warehouse_consumption_model(
+            outbound, date(2026, 9, 7), days=30,
+        )
+
+        self.assertEqual(result[["color", "size"]].values.tolist(), [["红", "M"]])
+        self.assertAlmostEqual(float(result.iloc[0]["consumption_quantity"]), 108)
 
     def test_missing_platform_share_uses_historical_weights(self):
         production = pd.DataFrame([{

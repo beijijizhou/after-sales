@@ -2,20 +2,20 @@ import pandas as pd
 import streamlit as st
 
 from automation.production_period import load_period_production_model
-from db.inventory.planning.consumption import (
-    load_consumption_model,
-    scale_consumption_model,
-)
 from db.inventory.planning.consumption_comparison import (
     build_period_model_comparison,
 )
 from db.inventory.planning.demand_anomaly import load_daily_outbound_history
+from db.inventory.planning.warehouse_usage import (
+    build_warehouse_consumption_model,
+)
 from db.inventory.core.constants import SIZE_COLUMNS
 from ui.inventory.i18n import t
 from ui.inventory.planning.accuracy import (
     render_model_accuracy_summary,
 )
 from ui.inventory.planning.uv_view import render_uv_consumption_model
+from ui.planning import render_consumption_window_input
 from ui.table_layout import fit_table_height
 
 
@@ -135,44 +135,56 @@ def render_consumption_models(
     supabase, department, category, order_quantity, current_date,
     visible_sizes=None, inventory_df=None,
 ):
+    lookback_days = render_consumption_window_input(
+        st,
+        key=f"inventory_consumption_lookback_{department}_{category}",
+    )
     if department == "UV":
         render_uv_consumption_model(
-            supabase, category, current_date, visible_sizes
+            supabase, category, current_date, visible_sizes,
+            lookback_days=lookback_days,
         )
         return
-    if category == "彩色短袖":
-        from ui.inventory.planning.colored_consumption import (
-            render_colored_consumption,
-        )
-        render_colored_consumption(
-            supabase, current_date, inventory_df, visible_sizes
-        )
-        return
-    if category != "黑白短袖":
+    if category not in {"黑白短袖", "彩色短袖"}:
         st.info(t("当前品类暂无消耗模型"))
         return
     try:
-        model_df = scale_consumption_model(
-            load_consumption_model(supabase, category), order_quantity
-        )
         outbound_df = load_daily_outbound_history(
-            supabase, department, category, current_date
+            supabase, department, category, current_date,
+            lookback_days=lookback_days + 1,
         )
         if visible_sizes:
-            model_df = model_df[model_df["size"].isin(visible_sizes)]
             outbound_df = outbound_df[
                 outbound_df["尺码"].isin(visible_sizes)
             ]
+        model_df = build_warehouse_consumption_model(
+            outbound_df, current_date, lookback_days
+        )
     except Exception as error:
         st.error(f"{t('消耗模型加载失败')}：{error}")
         return
-    st.info(
-        "黑白短袖点货预测只对订单模型和仓库每日出库设置权重；"
-        "ERP 平台生产数据长期保存并用于模型准确性核对，不参与预测权重。"
+    st.subheader(f"{category}仓库消耗模型")
+    st.caption(
+        f"以最近 {lookback_days} 天仓库人工登记的实际出库为唯一默认口径；"
+        "平台生产数据只在系统数据参考与生产数据页面独立核对。"
     )
-    render_model_comparison(
-        supabase, model_df, outbound_df, current_date, category
-    )
+    if model_df.empty:
+        st.info(f"最近 {lookback_days} 天暂无足够的仓库人工出库记录")
+        return
+    daily_total = pd.to_numeric(
+        model_df["consumption_quantity"], errors="coerce"
+    ).fillna(0).sum()
+    recorded_days = int(outbound_df["日期"].nunique()) if not outbound_df.empty else 0
+    metrics = st.columns(3)
+    metrics[0].metric("仓库模型日耗", f"{daily_total:,.1f} 件")
+    metrics[1].metric("人工登记天数", f"{recorded_days} 天")
+    metrics[2].metric("统计窗口", f"{lookback_days} 天")
+    st.caption("缺失日期不会被当作零；至少两次登记后才能形成可解释的出库区间日均。")
+    display = model_df.rename(columns={
+        "color": "颜色", "size": "尺码",
+        "consumption_quantity": "仓库出库日均",
+    })
+    render_model_detail(display, "仓库出库日均", "仓库出库模型")
 
 
 def _render_totals(df, order_quantity=15000, baseline_label=None):

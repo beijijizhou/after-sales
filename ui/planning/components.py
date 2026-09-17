@@ -4,6 +4,31 @@ import pandas as pd
 import streamlit as st
 
 
+CONSUMPTION_WINDOW_OPTIONS = (30, 60, 90)
+
+
+def render_consumption_window_input(
+    container,
+    *,
+    key,
+    default_days=30,
+):
+    """Render the shared warehouse-consumption history window selector."""
+    default = (
+        int(default_days)
+        if int(default_days) in CONSUMPTION_WINDOW_OPTIONS
+        else CONSUMPTION_WINDOW_OPTIONS[0]
+    )
+    return int(container.selectbox(
+        "消耗统计范围",
+        options=CONSUMPTION_WINDOW_OPTIONS,
+        index=CONSUMPTION_WINDOW_OPTIONS.index(default),
+        format_func=lambda value: f"最近 {int(value)} 天",
+        key=key,
+        help="消耗模型、点货预测和到货联动统一使用该时间范围。",
+    ))
+
+
 def render_target_days_input(
     container,
     *,

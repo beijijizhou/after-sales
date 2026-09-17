@@ -144,3 +144,24 @@ def build_warehouse_interval_average(
         result["出库数量"] / result["间隔天数"]
     )
     return result[columns], int(len(recent))
+
+
+def build_warehouse_consumption_model(
+    outbound_df, current_date, days=30,
+):
+    """Build the forecast contract from manual warehouse outbound only."""
+    warehouse, _ = build_warehouse_interval_average(
+        outbound_df, current_date, days
+    )
+    columns = ["color", "size", "consumption_quantity"]
+    if warehouse.empty:
+        return pd.DataFrame(columns=columns)
+    result = warehouse.rename(columns={
+        "颜色": "color",
+        "尺码": "size",
+        "仓库出库日均": "consumption_quantity",
+    })
+    result["consumption_quantity"] = pd.to_numeric(
+        result["consumption_quantity"], errors="coerce"
+    ).fillna(0).clip(lower=0)
+    return result[columns].reset_index(drop=True)

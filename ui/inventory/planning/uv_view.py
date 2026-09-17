@@ -30,9 +30,12 @@ from utils.auth.session import get_current_operator_name, has_permission
 
 def render_uv_consumption_model(
     supabase, category, current_date, visible_sizes=None,
+    lookback_days=UV_CONSUMPTION_LOOKBACK_DAYS,
 ):
     try:
-        model = load_uv_consumption_history(supabase, current_date)
+        model = load_uv_consumption_history(
+            supabase, current_date, lookback_days=lookback_days
+        )
         if category:
             model = model[model["品类"] == category]
         if visible_sizes:
@@ -42,21 +45,22 @@ def render_uv_consumption_model(
         return
     st.subheader("UV 每日消耗模型")
     st.caption(
-        f"每日消耗按 Google Sheets 最近 {UV_CONSUMPTION_LOOKBACK_DAYS} 天"
-        "的有效数据日计算。点货、库存覆盖和全部在途货柜统一在“点货预测”计算；"
-        "Google Sheets 当日数据在“系统数据参考”核对，正式库存变动"
-        "在“每日出库”登记。"
+        f"每日消耗按最近 {lookback_days} 天仓库人工登记的"
+        "实际出库计算。点货、库存覆盖和全部在途货柜统一在“点货预测”计算；"
+        "Google Sheets 只在“系统数据参考”核对，不参与消耗模型。"
     )
     if model.empty:
-        st.info("最近 14 天暂无已同步的 UV 每日消耗数据")
+        st.info(f"最近 {lookback_days} 天暂无仓库人工登记的 UV 每日出库数据")
         return
     daily_total = float(model["每日消耗"].sum())
     effective_days = int(model["有效数据天数"].max())
     columns = st.columns(2)
     columns[0].metric("一天消耗", f"{daily_total:,.1f} 件")
     columns[1].metric("计算所用有效天数", f"{effective_days} 天")
-    if effective_days < UV_CONSUMPTION_LOOKBACK_DAYS:
-        st.warning(f"最近 14 天中只有 {effective_days} 天已同步。")
+    if effective_days < lookback_days:
+        st.warning(
+            f"最近 {lookback_days} 天中只有 {effective_days} 天登记了实际出库。"
+        )
     if not category and model["品类"].eq("手机壳").any():
         production_tab, phone_tab = st.tabs(["UV 生产库存", "手机壳"])
         with production_tab:
@@ -76,7 +80,7 @@ def render_uv_daily_deduction(
         if reference_only else "UV 系统库存扣减"
     )
     st.caption(
-        "读取今天的 Google Sheets 数据，供每日出库核对和消耗模型使用；"
+        "读取今天的 Google Sheets 数据，仅供每日出库核对参考；"
         "本页不会扣减库存。"
         if reference_only else
         "先读取今天的 Google Sheets 数据并核对；确认后才会扣减库存。"

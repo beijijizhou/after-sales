@@ -30,7 +30,7 @@ class UVConsumptionModelTests(unittest.TestCase):
         result = filter_uv_model_to_active_skus(model, active)
 
         self.assertEqual(result["型号"].tolist(), ["2030"])
-    def test_builds_effective_daily_average_from_google_sheet_rows(self):
+    def test_builds_effective_daily_average_from_warehouse_outbound_rows(self):
         rows = pd.DataFrame([
             {
                 "material": "铁牌",
@@ -39,7 +39,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "size": "1040",
                 "quantity_change": -100,
                 "movement_date": "2026-07-28",
-                "reason": "Google Sheets UV每日消耗｜2026-07-28",
+                "reason": "仓库每日出货",
                 "batch_id": "a",
                 "reversal_of_batch_id": None,
             },
@@ -50,7 +50,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "size": "1040",
                 "quantity_change": -200,
                 "movement_date": "2026-07-29",
-                "reason": "Google Sheets UV每日消耗｜2026-07-29",
+                "reason": "仓库每日出货",
                 "batch_id": "b",
                 "reversal_of_batch_id": None,
             },
@@ -74,7 +74,7 @@ class UVConsumptionModelTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["每日消耗"], 150.0)
         self.assertEqual(result.iloc[0]["有效数据天数"], 2)
 
-    def test_adapts_google_sheet_model_for_incoming_forecast(self):
+    def test_adapts_warehouse_model_for_incoming_forecast(self):
         model = pd.DataFrame([{
             "品类": "铁板画",
             "材质": "铁牌",
@@ -93,7 +93,7 @@ class UVConsumptionModelTests(unittest.TestCase):
         self.assertEqual(
             result.iloc[0]["daily_usage"], 2302.0
         )
-        self.assertEqual(result.iloc[0]["usage_source_type"], "google_sheets")
+        self.assertEqual(result.iloc[0]["usage_source_type"], "warehouse_outbound")
 
     def test_2030_models_restart_after_substitution_ends(self):
         rows = pd.DataFrame([
@@ -102,7 +102,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "color": "白", "size": "2030",
                 "quantity_change": -2500,
                 "movement_date": "2026-07-28",
-                "reason": "Google Sheets UV每日消耗｜2026-07-28",
+                "reason": "仓库每日出货",
                 "batch_id": "a", "reversal_of_batch_id": None,
             },
             {
@@ -110,7 +110,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "color": "白", "size": "2030",
                 "quantity_change": -136,
                 "movement_date": "2026-07-29",
-                "reason": "Google Sheets UV每日消耗｜2026-07-29",
+                "reason": "仓库每日出货",
                 "batch_id": "b", "reversal_of_batch_id": None,
             },
             {
@@ -118,7 +118,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "color": "白", "size": "2030",
                 "quantity_change": -182,
                 "movement_date": "2026-07-30",
-                "reason": "Google Sheets UV每日消耗｜2026-07-30",
+                "reason": "仓库每日出货",
                 "batch_id": "c", "reversal_of_batch_id": None,
             },
         ])
@@ -137,7 +137,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "color": "白", "size": "2030",
                 "quantity_change": -2378,
                 "movement_date": "2026-07-28",
-                "reason": "Google Sheets UV每日消耗｜2026-07-28｜旧扣减",
+                "reason": "仓库每日出货",
                 "batch_id": "a", "reversal_of_batch_id": None,
             },
             {
@@ -145,7 +145,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "color": "白", "size": "2030",
                 "quantity_change": 2144,
                 "movement_date": "2026-07-28",
-                "reason": "Google Sheets UV每日消耗｜2026-07-28｜材质更正",
+                "reason": "仓库每日出货",
                 "batch_id": "b", "reversal_of_batch_id": None,
             },
             {
@@ -153,7 +153,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "color": "白", "size": "2030",
                 "quantity_change": -2144,
                 "movement_date": "2026-07-28",
-                "reason": "Google Sheets UV每日消耗｜2026-07-28｜材质更正",
+                "reason": "仓库每日出货",
                 "batch_id": "b", "reversal_of_batch_id": None,
             },
         ])
@@ -172,7 +172,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "color": "白", "size": "1040",
                 "quantity_change": -100,
                 "movement_date": "2026-07-28",
-                "reason": "Google Sheets UV每日消耗｜2026-07-28",
+                "reason": "仓库每日出货",
                 "batch_id": "a", "reversal_of_batch_id": None,
             },
             {
@@ -180,7 +180,7 @@ class UVConsumptionModelTests(unittest.TestCase):
                 "color": "白", "size": "2030",
                 "quantity_change": -200,
                 "movement_date": "2026-07-29",
-                "reason": "Google Sheets UV每日消耗｜2026-07-29",
+                "reason": "仓库每日出货",
                 "batch_id": "b", "reversal_of_batch_id": None,
             },
         ])

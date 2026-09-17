@@ -2,12 +2,14 @@
 
 from ui.planning.components import (
     planning_summary_values,
+    render_consumption_window_input,
     render_planning_summary,
     render_target_days_input,
 )
 
 __all__ = [
     "planning_summary_values",
+    "render_consumption_window_input",
     "render_planning_summary",
     "render_target_days_input",
 ]

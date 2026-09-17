@@ -90,10 +90,29 @@ class ClientError extends Error {
 }
 
 async function requireClientKey(request: Request) {
-  const expected = requiredEnv("AUTOMATIC_PRINT_API_KEY");
-  const supplied = request.headers.get("x-automatic-print-key") || "";
-  const [left, right] = await Promise.all([digest(expected), digest(supplied)]);
-  if (left !== right) throw new ClientError("Unauthorized", 401);
+  const expectedClient = requiredEnv("AUTOMATIC_PRINT_API_KEY");
+  const suppliedClient = request.headers.get("x-automatic-print-key") || "";
+  const suppliedAdmin = (request.headers.get("authorization") || "")
+    .replace(/^Bearer\s+/i, "");
+  const [client, suppliedClientDigest] = await Promise.all([
+    digest(expectedClient), digest(suppliedClient),
+  ]);
+  if (client === suppliedClientDigest) return;
+  if (suppliedAdmin && await isSupabaseAdminCredential(suppliedAdmin)) return;
+  throw new ClientError("Unauthorized", 401);
+}
+
+async function isSupabaseAdminCredential(credential: string) {
+  const response = await fetch(
+    `${requiredEnv("SUPABASE_URL")}/auth/v1/admin/users?page=1&per_page=1`,
+    {
+      headers: {
+        "apikey": credential,
+        "Authorization": `Bearer ${credential}`,
+      },
+    },
+  );
+  return response.ok;
 }
 
 async function loadCache(db: ReturnType<typeof createClient>, account: string, batch: string) {

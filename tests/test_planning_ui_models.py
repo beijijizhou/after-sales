@@ -1,12 +1,30 @@
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pandas as pd
 
-from ui.planning import planning_summary_values
+from ui.planning import (
+    planning_summary_values,
+    render_consumption_window_input,
+)
 
 
 class PlanningUIModelTests(unittest.TestCase):
+    def test_shared_consumption_window_offers_30_60_90_days(self):
+        container = MagicMock()
+        container.selectbox.return_value = 60
+
+        result = render_consumption_window_input(
+            container, key="usage_window", default_days=30,
+        )
+
+        self.assertEqual(result, 60)
+        self.assertEqual(
+            container.selectbox.call_args.kwargs["options"],
+            (30, 60, 90),
+        )
+
     def test_summary_uses_one_contract_for_inventory_and_consumables(self):
         inventory = planning_summary_values(
             pd.DataFrame([
@@ -40,6 +58,8 @@ class PlanningUIModelTests(unittest.TestCase):
         consumables = (root / "ui/consumables/planning.py").read_text()
         self.assertIn("render_target_days_input", inventory)
         self.assertIn("render_target_days_input", consumables)
+        self.assertIn("render_consumption_window_input", inventory)
+        self.assertIn("render_consumption_window_input", consumables)
         self.assertIn("render_planning_summary", consumables)
 
 

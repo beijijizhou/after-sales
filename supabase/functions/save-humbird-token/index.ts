@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-automatic-print-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -11,6 +12,9 @@ const ALLOWED_PLATFORMS = new Set([
   "莆田",
   "隆丰",
   "赛博",
+  "S2B:DTF",
+  "S2B:UV",
+  "S2B:3D",
 ]);
 
 Deno.serve(async (request) => {
@@ -23,6 +27,9 @@ Deno.serve(async (request) => {
   }
 
   try {
+    if (!(await hasValidClientKey(request))) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
     const body = await request.json();
     const platform = String(body.platform || "").trim();
     const token = String(body.token || "").trim();
@@ -78,6 +85,17 @@ Deno.serve(async (request) => {
     );
   }
 });
+
+async function hasValidClientKey(request: Request) {
+  const expected = requiredEnv("AUTOMATIC_PRINT_API_KEY");
+  const supplied = request.headers.get("x-automatic-print-key") || "";
+  if (!supplied) return false;
+  const [expectedHash, suppliedHash] = await Promise.all([
+    sha256Bytes(expected),
+    sha256Bytes(supplied),
+  ]);
+  return expectedHash.every((byte, index) => byte === suppliedHash[index]);
+}
 
 async function encryptToken(token: string, secret: string) {
   const keyBytes = await sha256Bytes(`after-sales:erp-api-token:${secret}`);

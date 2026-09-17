@@ -10,7 +10,7 @@ from utils.daily_usage_model import (
 )
 
 
-CONSUMABLE_LOOKBACK_DAYS = 14
+CONSUMABLE_LOOKBACK_DAYS = 30
 DEFAULT_COVERAGE_DAYS = 14
 
 

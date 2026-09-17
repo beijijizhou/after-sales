@@ -27,13 +27,20 @@ def render_daily_record(supabase, owner, actor, today):
     )
     try:
         tasks = load_tasks(supabase, owner)
-        day, records = load_daily_work(supabase, owner, selected_date)
+        day, records = load_daily_work(
+            supabase, owner, selected_date, inherit_previous=True
+        )
     except Exception as error:
         st.error(f"每日工作加载失败：{error}")
         return
     if tasks.empty:
         st.info("当前还没有工作事项，请先到“任务设置”添加。")
         return
+    if day and str(day.get("work_date")) != selected_date.isoformat():
+        st.info(
+            f"已带入 {day['work_date']} 的状态、备注和文字记录作为当天草稿。"
+            "请按今天的实际情况调整，再点击“保存当天记录”；旧记录不会改变。"
+        )
     editor = build_daily_editor(tasks, records)
     edited = st.data_editor(
         editor,
@@ -59,16 +66,16 @@ def render_daily_record(supabase, owner, actor, today):
     _render_metrics(completion_summary(pd.DataFrame(edited)))
     summary = st.text_area(
         "当日总结", value=str(day.get("summary") or ""),
-        key=f"daily_work_summary_{selected_date}",
+        key=f"daily_work_summary_{owner}_{selected_date}",
     )
     blockers, next_plan = st.columns(2)
     blocker_text = blockers.text_area(
         "问题 / 阻塞", value=str(day.get("blockers") or ""),
-        key=f"daily_work_blockers_{selected_date}",
+        key=f"daily_work_blockers_{owner}_{selected_date}",
     )
     next_text = next_plan.text_area(
         "明日计划", value=str(day.get("next_plan") or ""),
-        key=f"daily_work_next_{selected_date}",
+        key=f"daily_work_next_{owner}_{selected_date}",
     )
     if st.button("保存当天记录", type="primary", width="stretch"):
         try:

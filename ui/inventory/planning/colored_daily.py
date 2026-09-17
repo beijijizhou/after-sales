@@ -21,7 +21,7 @@ def render_colored_daily_deduction_form(
         if reference_only else "彩色短袖系统库存扣减"
     )
     st.caption(
-        "从全部衣服平台读取当天生产数据，供每日出库核对和消耗模型使用；"
+        "从全部衣服平台读取当天生产数据，仅供每日出库核对参考；"
         "本页不会扣减库存。"
         if reference_only else
         "从全部衣服平台读取当天生产数据；按纽约日期生成批次，"

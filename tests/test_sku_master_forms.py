@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from ui.inventory.sku.master_forms import _save
+from db.inventory.master_data.sku_service import _source_active
 from ui.inventory.sku.create import (
     build_black_white_sku_rows,
     expand_full_size_sku_rows,
@@ -12,6 +13,11 @@ from ui.inventory.sku.create import (
 
 
 class SkuMasterFormTests(unittest.TestCase):
+    def test_imported_sku_status_preserves_disabled_source_rows(self):
+        self.assertTrue(_source_active({"is_active": "启用"}))
+        self.assertFalse(_source_active({"is_active": "不启用"}))
+        self.assertTrue(_source_active({}))
+
     def test_black_white_category_generates_fixed_colors_and_sizes(self):
         result = build_black_white_sku_rows("Caribbean", "180g")
 

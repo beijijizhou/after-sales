@@ -11,7 +11,11 @@ from db.consumables.planning import (
     build_consumable_consumption_model,
     build_consumable_reorder_forecast,
 )
-from ui.planning import render_planning_summary, render_target_days_input
+from ui.planning import (
+    render_consumption_window_input,
+    render_planning_summary,
+    render_target_days_input,
+)
 
 
 NY_TIMEZONE = ZoneInfo("America/New_York")
@@ -53,13 +57,10 @@ def render_consumable_consumption_model(
 
 def _render_planning_controls():
     col1, col2 = st.columns(2)
-    lookback_days = col1.number_input(
-        "消耗回看天数",
-        min_value=7,
-        max_value=60,
-        value=CONSUMABLE_LOOKBACK_DAYS,
-        step=1,
+    lookback_days = render_consumption_window_input(
+        col1,
         key="consumable_planning_lookback_days",
+        default_days=CONSUMABLE_LOOKBACK_DAYS,
     )
     coverage_days = render_target_days_input(
         col2,

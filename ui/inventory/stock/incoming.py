@@ -34,29 +34,37 @@ def render_incoming_inventory_forecast(
     st.subheader(f"{department_label} 部门库存与最近到货联动")
     if department == "UV":
         st.caption(t(
-            "UV 货柜联动使用 Google Sheets 日耗作为预测参考；库存出库与完成状态只认人工登记。"
+            "UV 货柜联动使用仓库人工每日出库日耗；Google Sheets 只作核对参考。"
         ))
     elif department == "DTF" and category == "彩色短袖":
         st.caption(
-            "彩色短袖使用最近30天平台生产消耗模型作为预测参考；"
-            "库存出库与完成状态只认人工登记。上方手动调整后的预测日耗、缺口和"
+            "彩色短袖使用最近30天仓库人工每日出库作为预测基准；"
+            "平台生产只作核对参考。上方手动调整后的预测日耗、缺口和"
             "建议点货量会同步传递到货柜联动。"
         )
     else:
         st.caption(t(
-            "货柜联动沿用上方点货预测的综合日耗；库存出库与完成状态只认人工登记。"
+            "货柜联动沿用上方仓库人工出库日耗；平台数据只作核对参考。"
         ))
     if inventory_df.empty:
         st.info(t("暂无库存数据"))
         return
     try:
         if department == "UV":
-            uv_model = load_uv_consumption_history(supabase, today)
+            lookback_days = int(st.session_state.get(
+                f"inventory_consumption_lookback_{department}_{category}",
+                30,
+            ))
+            uv_model = load_uv_consumption_history(
+                supabase, today, lookback_days=lookback_days
+            )
             if category:
                 uv_model = uv_model[uv_model["品类"] == category]
             system_usage = build_uv_forecast_usage(uv_model)
             if system_usage.empty:
-                st.info(t("最近 14 天暂无已同步的 UV 每日消耗数据"))
+                st.info(t(
+                    f"最近 {lookback_days} 天暂无仓库人工登记的 UV 每日出库数据"
+                ))
                 return
         elif department == "DTF" and category == "彩色短袖":
             system_usage = normalize_forecast_usage(
@@ -74,6 +82,9 @@ def render_incoming_inventory_forecast(
             and department != "UV"
             and category != "彩色短袖"
         ):
+            if department == "DTF" and category == "黑白短袖":
+                st.info("请先补录仓库每日出库，再生成库存与到货联动。")
+                return
             reference = load_production_reference(department, category)
             if not _render_reference_status(reference, today):
                 return

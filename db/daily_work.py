@@ -62,7 +62,7 @@ def set_task_active(supabase, task_ids, is_active, updated_by):
     )
 
 
-def load_daily_work(supabase, owner_username, work_date):
+def load_daily_work(supabase, owner_username, work_date, inherit_previous=False):
     days = (
         supabase.table("personal_daily_work_days")
         .select(DAY_COLUMNS)
@@ -70,6 +70,15 @@ def load_daily_work(supabase, owner_username, work_date):
         .eq("work_date", work_date.isoformat())
         .limit(1).execute().data
     ) or []
+    if not days and inherit_previous:
+        days = (
+            supabase.table("personal_daily_work_days")
+            .select(DAY_COLUMNS)
+            .eq("owner_username", _text(owner_username))
+            .lt("work_date", work_date.isoformat())
+            .order("work_date", desc=True)
+            .limit(1).execute().data
+        ) or []
     if not days:
         return {}, pd.DataFrame(columns=RECORD_COLUMNS.split(","))
     day = days[0]

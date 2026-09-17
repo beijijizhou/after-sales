@@ -2,6 +2,14 @@
 
 ## Organization
 
+- Personal daily work for an unsaved business date defaults to the same user's
+  latest earlier saved record: task statuses, notes, summary, blockers and next
+  plan. Active task templates remain authoritative; new tasks use their normal
+  defaults and inactive tasks are not copied into operational entry. Show the
+  source date and require explicit saving to create an independent daily record.
+  Never overwrite an already saved target date or generate missing history merely
+  by viewing a date.
+
 - Departments are extensible. Current departments include `DTF`, `UV`, and
   `3D`; do not encode them as the only possible departments.
 - Category is optional and represents a business grouping, not a permanent
@@ -241,8 +249,13 @@ data-entry sources differ:
 | --- | --- | --- |
 | DTF consumables | Warehouse staff enters actual boxes issued | Actual consumable issue ledger |
 | Black/white T-shirts | Warehouse staff enters actual pieces or packaging issued | Actual warehouse daily outbound |
-| Colored T-shirts | Warehouse staff confirms actual pieces or packaging issued | Colored-shirt production data |
-| UV production inventory | Warehouse staff confirms actual pieces or packaging issued | Latest 14 days of valid Google Sheets data |
+| Colored T-shirts | Warehouse staff confirms actual pieces or packaging issued | Actual warehouse daily outbound |
+| UV production inventory | Warehouse staff confirms actual pieces or packaging issued | Actual warehouse daily outbound |
+
+The warehouse-consumption history window is user-selectable as 30, 60, or 90
+days. One selection must drive the visible consumption model, reorder forecast,
+and incoming-stock linkage together; a page must never display one range while
+calculating another.
 
 #### Unified manual outbound hierarchy and interaction requirements
 
@@ -476,6 +489,13 @@ page, verifies the returned row count, and then passes the rows through the
 shared production catalog normalization. Browser export is only a manual
 fallback for recovering an expired login; it is not the normal data path.
 
+Automatic Print batch metadata uses the S2B factory order-list API through one
+server-side gateway. Clients submit only the S2B account and twelve-character
+batch number. The gateway returns normalized order-item, color, size, material,
+and product-name facts, excludes logistics labels and addresses, and caches the
+result for 24 hours by account and batch. Client folder counts, local image
+counts, and provider totals remain separate facts when they disagree.
+
 An aggregate production result must never present partial data as a generic
 success. Show every configured platform as read or unread and preserve the
 per-platform failure message in cache metadata. When an older partial cache
@@ -563,26 +583,23 @@ forecast as an estimate.
   substitute an available size or SKU when the requested size is out of stock.
   Production data records the requested SKU and cannot reliably reveal that
   physical substitution, while warehouse outbound records what was actually
-  issued. Production data may be used as a comparison or supporting model, but
-  it must not silently replace warehouse outbound as the inventory truth.
-- Colored T-shirt inventory consumption is based on production data and is
-  deducted as a dated daily production batch. Its volume and SKU range are
-  smaller, and different colored SKUs are not interchangeable. Warehouse daily
-  outbound is therefore not required as the primary consumption source.
-- UV inventory consumption is based on its Google Sheets production data and
-  is deducted as a dated daily batch. Different UV SKUs are not interchangeable,
-  so warehouse daily outbound is not required as the primary consumption
-  source.
-- A production-driven daily deduction never creates negative inventory. It
-  deducts available stock down to zero and records the remaining demand as a
-  counting/reconciliation difference. The full production quantity still
-  participates in the consumption model, even when part of it could not be
-  deducted because recorded stock was already zero.
-- Container forecasting must use the consumption source appropriate to the
-  category: warehouse-led consumption for black/white T-shirts, production-led
-  consumption for colored T-shirts, and Google-Sheets-led consumption for UV.
-  Missing production platforms may be shown as a data-quality warning for a
-  production-led category, but available effective production days should still
+  issued. Production data may be used as an independent comparison, but it does
+  not feed or replace the default warehouse-outbound model.
+- Colored T-shirt inventory consumption is based on manually registered actual
+  warehouse daily outbound. ERP production remains a separate mapping and
+  reconciliation reference and never enters the default forecast model.
+- UV inventory consumption is based on manually registered actual warehouse
+  daily outbound. Google Sheets remains a separate entry and reconciliation
+  reference and never enters the default forecast model.
+- Historical production-driven deductions remain visible in inventory and
+  audit history. Their unresolved demand stays visible as reconciliation
+  evidence, but neither the deduction nor unresolved production quantity feeds
+  the current default consumption model.
+- Container forecasting uses warehouse-led consumption for black/white shirts,
+  colored shirts and UV. Missing production platforms may be shown as an
+  independent data-quality warning, but platform coverage must never change the
+  default warehouse demand model. Available effective warehouse-outbound days
+  should still
   produce a forecast instead of stopping the entire calculation.
 
 ## Logistics Tracking

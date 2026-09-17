@@ -69,6 +69,7 @@ def create_skus(
             ),
             "unit": _clean(source.get("单位")) or "件",
             "quantity": 0,
+            "is_active": _source_active(source),
             "unit_cost": 0,
             "品牌": brand,
             "材质": material,
@@ -79,6 +80,18 @@ def create_skus(
     if payload:
         supabase.table("inventory_items").insert(payload).execute()
     return len(payload), skipped
+
+
+def _source_active(source):
+    """Preserve an explicit import state while keeping UI-created SKUs active."""
+    value = source.get("is_active", True)
+    if pd.isna(value):
+        return True
+    if isinstance(value, str):
+        return value.strip().casefold() not in {
+            "false", "0", "no", "inactive", "不启用", "停用",
+        }
+    return bool(value)
 
 
 def update_skus(

@@ -9,6 +9,7 @@ from utils.daily_usage_model import (
     EFFECTIVE_DAYS_GLOBAL_SINCE_FIRST,
     build_daily_usage_summary,
 )
+from utils.daily_consumption import ENTRY_MANUAL, daily_consumption_source
 
 
 UV_DAILY_ORDERS_SPREADSHEET_ID = (
@@ -23,7 +24,7 @@ UV_GOOGLE_DRIVE_FOLDER_URL = (
     "https://drive.google.com/drive/folders/"
     f"{UV_GOOGLE_DRIVE_FOLDER_ID}"
 )
-UV_CONSUMPTION_LOOKBACK_DAYS = 14
+UV_CONSUMPTION_LOOKBACK_DAYS = 30
 UV_GOOGLE_SHEETS_REASON_PREFIX = "Google Sheets UV每日消耗"
 UV_CURRENT_MODEL_START_DATES = {
     ("铁板画", "铁牌", "2030"): date(2026, 7, 28),
@@ -96,7 +97,7 @@ def build_uv_consumption_model(
     result = movement_df.copy()
     result["reason"] = result["reason"].fillna("").astype(str)
     result = result[
-        result["reason"].str.startswith(UV_GOOGLE_SHEETS_REASON_PREFIX)
+        result["reason"].map(daily_consumption_source).eq(ENTRY_MANUAL)
     ]
     result = filter_active_batch_records(result, id_column="batch_id")
     result["日期"] = pd.to_datetime(
@@ -179,6 +180,6 @@ def build_uv_forecast_usage(model_df):
         effective_days_column="有效数据天数",
         window_days_column="窗口天数",
         total_usage_column="窗口总消耗",
-        source_type="google_sheets",
-        source_label="Google Sheets UV每日消耗",
+        source_type="warehouse_outbound",
+        source_label="仓库每日出货",
     )
