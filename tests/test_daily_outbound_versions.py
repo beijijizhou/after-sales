@@ -163,3 +163,39 @@ class DailyOutboundVersionTests(unittest.TestCase):
             )
 
         self.assertEqual(result.iloc[0]["实际出库"], 2520)
+
+    def test_consumption_model_respects_full_inventory_filter_scope(self):
+        database = Mock()
+        lines = [
+            {
+                "brand": "Haloo", "material": "180g",
+                "color": "黑", "size": "M",
+                "requested_quantity": 120,
+            },
+            {
+                "brand": "杂牌", "material": "160g",
+                "color": "白", "size": "L",
+                "requested_quantity": 300,
+            },
+        ]
+        with unittest.mock.patch(
+            "db.inventory.planning.demand_anomaly.load_daily_outbound_revisions",
+            return_value=[{
+                "movement_date": "2026-08-10",
+                "current_revision": 1,
+                "inventory_daily_outbound_revisions": [{
+                    "revision_number": 1,
+                    "inventory_daily_outbound_lines": lines,
+                }],
+            }],
+        ):
+            result = _versioned_daily_outbound_history(
+                database, "DTF", "黑白短袖",
+                date(2026, 8, 10), date(2026, 8, 10),
+                brands=["Haloo"], materials=["180g"],
+                colors=["黑"], sizes=["M"],
+            )
+
+        self.assertEqual(result[["颜色", "尺码", "实际出库"]].values.tolist(), [
+            ["黑", "M", 120],
+        ])

@@ -137,7 +137,7 @@ class BatchLifecycleTests(unittest.TestCase):
             "Andy",
         )
 
-        update.assert_called_once_with(client, "lot-1", 1.25)
+        update.assert_called_once_with(client, "lot-1", 1.25, "Andy")
 
 
 if __name__ == "__main__":

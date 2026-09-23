@@ -252,10 +252,10 @@ data-entry sources differ:
 | Colored T-shirts | Warehouse staff confirms actual pieces or packaging issued | Actual warehouse daily outbound |
 | UV production inventory | Warehouse staff confirms actual pieces or packaging issued | Actual warehouse daily outbound |
 
-The warehouse-consumption history window is user-selectable as 30, 60, or 90
-days. One selection must drive the visible consumption model, reorder forecast,
-and incoming-stock linkage together; a page must never display one range while
-calculating another.
+The warehouse-consumption history window offers 30, 60, and 90-day shortcuts
+plus a user-entered custom day count. One selection must drive the visible
+consumption model, reorder forecast, and incoming-stock linkage together; a
+page must never display one range while calculating another.
 
 #### Unified manual outbound hierarchy and interaction requirements
 

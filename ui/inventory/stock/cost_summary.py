@@ -153,7 +153,7 @@ def render_inventory_cost_summary(
 
 
 def _render_cost_table(cost_df, department):
-    hidden = routine_hidden_columns(department)
+    hidden = routine_hidden_columns(department, cost_df)
     st.dataframe(
         cost_df, hide_index=True, width="stretch",
         column_config={
@@ -256,7 +256,7 @@ def _render_missing_model_costs(
     )
     sku_df["成本"] = None
     version = st.session_state.get("inventory_model_cost_version", 0)
-    hidden = routine_hidden_columns(department)
+    hidden = routine_hidden_columns(department, sku_df)
     edited = pd.DataFrame(st.data_editor(
         sku_df, hide_index=True, width="stretch",
         disabled=["品类", "品牌", "材质", "颜色", "型号"],

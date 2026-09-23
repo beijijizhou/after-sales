@@ -229,6 +229,7 @@ from db.finance.consumable_repository import (  # noqa: E402
 from db.finance.cost_maintenance import (  # noqa: E402
     exclude_stocktake_batches as _exclude_stocktake_batches,
     load_inbound_cost_history,
+    load_inventory_batch_cost_lots,
     load_missing_consumable_cost_movements,
     load_missing_inventory_cost_lots,
     update_consumable_movement_cost,

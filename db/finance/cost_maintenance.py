@@ -119,31 +119,129 @@ def load_missing_consumable_cost_movements(supabase):
     ].reset_index(drop=True)
 
 
-def update_inbound_lot_cost(supabase, cost_lot_id, unit_cost):
+def load_inventory_batch_cost_lots(supabase, batch_id):
+    """Load active cost lots belonging to one inventory movement batch."""
+    rows = (
+        supabase.table("inventory_cost_lots")
+        .select(
+            "id,inbound_movement_id,batch_id,received_quantity,unit_cost,"
+            "inventory_items!inventory_cost_lots_inventory_item_id_fkey!inner"
+            "(department,category,brand,material,color,size)"
+        )
+        .eq("batch_id", str(batch_id))
+        .is_("reversed_at", "null")
+        .order("id")
+        .execute().data or []
+    )
+    normalized = pd.json_normalize(rows, sep=".")
+    columns = [
+        "record_id", "movement_id", "batch_id", "quantity", "unit_cost",
+        "department", "category", "brand", "material", "color", "size",
+    ]
+    if normalized.empty:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame({
+        "record_id": normalized["id"],
+        "movement_id": normalized["inbound_movement_id"],
+        "batch_id": normalized["batch_id"],
+        "quantity": pd.to_numeric(
+            normalized["received_quantity"], errors="coerce"
+        ).fillna(0),
+        "unit_cost": pd.to_numeric(
+            normalized["unit_cost"], errors="coerce"
+        ),
+        "department": normalized["inventory_items.department"],
+        "category": normalized["inventory_items.category"],
+        "brand": normalized["inventory_items.brand"],
+        "material": normalized["inventory_items.material"],
+        "color": normalized["inventory_items.color"],
+        "size": normalized["inventory_items.size"],
+    })[columns]
+
+
+def update_inbound_lot_cost(
+    supabase, cost_lot_id, unit_cost, operated_by="system",
+):
     unit_cost = float(unit_cost)
     if unit_cost <= 0:
         raise ValueError("批次成本必须大于 0")
     lot = (
         supabase.table("inventory_cost_lots")
-        .select("id,inbound_movement_id,reversed_at")
+        .select(
+            "id,inbound_movement_id,batch_id,received_quantity,unit_cost,"
+            "reversed_at,inventory_items!"
+            "inventory_cost_lots_inventory_item_id_fkey!inner"
+            "(department,category,brand,material,color,size)"
+        )
         .eq("id", cost_lot_id).single().execute().data
     )
     if not lot or lot.get("reversed_at"):
         raise ValueError("找不到有效的入库成本批次")
-    supabase.table("inventory_cost_lots").update(
-        {"unit_cost": unit_cost}
-    ).eq("id", cost_lot_id).execute()
-    (
+    previous_cost = float(lot.get("unit_cost") or 0)
+    allocations = (
         supabase.table("inventory_cost_allocations")
-        .update({"unit_cost": unit_cost}).eq("cost_lot_id", cost_lot_id)
+        .select("id,unit_cost").eq("cost_lot_id", cost_lot_id)
         .is_("reversed_at", "null").execute()
-    )
+    ).data or []
+    previous_movement = None
     if lot.get("inbound_movement_id"):
-        (
+        previous_movement = (
             supabase.table("inventory_movements")
-            .update({"unit_cost": unit_cost, "成本": unit_cost})
-            .eq("id", lot["inbound_movement_id"]).execute()
+            .select("id,unit_cost,成本")
+            .eq("id", lot["inbound_movement_id"]).single().execute().data
         )
+    item = lot.get("inventory_items") or {}
+    old_snapshot = {
+        **item,
+        "event_type": "批次成本更正",
+        "cost_lot_id": str(lot["id"]),
+        "batch_id": str(lot.get("batch_id") or ""),
+        "unit_cost": previous_cost,
+    }
+    new_snapshot = {**old_snapshot, "unit_cost": unit_cost}
+    try:
+        supabase.table("inventory_cost_lots").update(
+            {"unit_cost": unit_cost}
+        ).eq("id", cost_lot_id).execute()
+        (
+            supabase.table("inventory_cost_allocations")
+            .update({"unit_cost": unit_cost}).eq("cost_lot_id", cost_lot_id)
+            .is_("reversed_at", "null").execute()
+        )
+        if lot.get("inbound_movement_id"):
+            (
+                supabase.table("inventory_movements")
+                .update({"unit_cost": unit_cost, "成本": unit_cost})
+                .eq("id", lot["inbound_movement_id"]).execute()
+            )
+        supabase.table("inventory_sku_change_log").insert({
+            "department": str(item.get("department") or ""),
+            "old_identity": old_snapshot,
+            "new_identity": new_snapshot,
+            "affected_items": 1,
+            "affected_quantity": int(lot.get("received_quantity") or 0),
+            "changed_by": str(operated_by or "system").strip() or "system",
+        }).execute()
+    except Exception:
+        supabase.table("inventory_cost_lots").update(
+            {"unit_cost": previous_cost}
+        ).eq("id", cost_lot_id).execute()
+        for allocation in allocations:
+            (
+                supabase.table("inventory_cost_allocations")
+                .update({"unit_cost": allocation.get("unit_cost")})
+                .eq("id", allocation["id"]).execute()
+            )
+        if previous_movement:
+            (
+                supabase.table("inventory_movements")
+                .update({
+                    "unit_cost": previous_movement.get("unit_cost"),
+                    "成本": previous_movement.get("成本"),
+                })
+                .eq("id", previous_movement["id"]).execute()
+            )
+        raise
     return True
 
 

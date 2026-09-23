@@ -5,6 +5,7 @@ import streamlit as st
 
 
 CONSUMPTION_WINDOW_OPTIONS = (30, 60, 90)
+CUSTOM_CONSUMPTION_WINDOW = "自定义"
 
 
 def render_consumption_window_input(
@@ -14,19 +15,38 @@ def render_consumption_window_input(
     default_days=30,
 ):
     """Render the shared warehouse-consumption history window selector."""
-    default = (
-        int(default_days)
-        if int(default_days) in CONSUMPTION_WINDOW_OPTIONS
-        else CONSUMPTION_WINDOW_OPTIONS[0]
+    current = max(int(st.session_state.get(key, default_days)), 1)
+    preset = (
+        current
+        if current in CONSUMPTION_WINDOW_OPTIONS
+        else CUSTOM_CONSUMPTION_WINDOW
     )
-    return int(container.selectbox(
+    options = (*CONSUMPTION_WINDOW_OPTIONS, CUSTOM_CONSUMPTION_WINDOW)
+    selected = container.selectbox(
         "消耗统计范围",
-        options=CONSUMPTION_WINDOW_OPTIONS,
-        index=CONSUMPTION_WINDOW_OPTIONS.index(default),
-        format_func=lambda value: f"最近 {int(value)} 天",
-        key=key,
+        options=options,
+        index=options.index(preset),
+        format_func=lambda value: (
+            f"最近 {int(value)} 天"
+            if value != CUSTOM_CONSUMPTION_WINDOW else value
+        ),
+        key=f"{key}_preset",
         help="消耗模型、点货预测和到货联动统一使用该时间范围。",
-    ))
+    )
+    if selected == CUSTOM_CONSUMPTION_WINDOW:
+        days = int(container.number_input(
+            "自定义回看天数",
+            min_value=1,
+            max_value=3650,
+            value=current,
+            step=1,
+            key=f"{key}_custom",
+            help="按完整自然日回看；缺失登记日期不会自动视为零消耗。",
+        ))
+    else:
+        days = int(selected)
+    st.session_state[key] = days
+    return days
 
 
 def render_target_days_input(

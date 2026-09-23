@@ -3,8 +3,10 @@ import unittest
 import pandas as pd
 
 from db.inventory.operations.batch_corrections import (
+    attach_batch_cost_lots,
     build_batch_correction_adjustments,
     build_batch_correction_editor,
+    find_batch_cost_changes,
 )
 
 
@@ -41,6 +43,32 @@ class InventoryBatchCorrectionTests(unittest.TestCase):
         )
         self.assertEqual(result.iloc[0]["操作"], "扣减")
         self.assertEqual(result.iloc[0]["数量"], 1330)
+
+    def test_inbound_editor_uses_current_cost_lot_and_detects_price_change(self):
+        editor = build_batch_correction_editor(self.movements)
+        lots = pd.DataFrame([{
+            "record_id": "lot-1", "brand": "杂牌", "material": "160g",
+            "color": "白", "size": "S", "unit_cost": 1.4375,
+        }])
+        original = attach_batch_cost_lots(editor, lots)
+        self.assertEqual(original.iloc[0]["成本批次ID"], "lot-1")
+        self.assertEqual(original.iloc[0]["原单位成本"], 1.4375)
+        self.assertEqual(original.iloc[0]["校准后成本"], 1.4375)
+
+        edited = original.copy()
+        edited.loc[0, "校准后成本"] = 1.5
+        self.assertEqual(
+            find_batch_cost_changes(original, edited), [("lot-1", 1.5)]
+        )
+
+    def test_quantity_correction_uses_revised_batch_cost(self):
+        editor = build_batch_correction_editor(self.movements)
+        editor["校准后成本"] = 1.5
+        editor.loc[0, "校准后数量"] = 3000
+        result = build_batch_correction_adjustments(
+            self.movements, editor, "source-batch"
+        )
+        self.assertEqual(result.iloc[0]["成本"], 1.5)
 
 
 if __name__ == "__main__":

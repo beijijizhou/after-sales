@@ -11,7 +11,7 @@ from ui.planning import (
 
 
 class PlanningUIModelTests(unittest.TestCase):
-    def test_shared_consumption_window_offers_30_60_90_days(self):
+    def test_shared_consumption_window_offers_presets_and_custom_days(self):
         container = MagicMock()
         container.selectbox.return_value = 60
 
@@ -22,7 +22,19 @@ class PlanningUIModelTests(unittest.TestCase):
         self.assertEqual(result, 60)
         self.assertEqual(
             container.selectbox.call_args.kwargs["options"],
-            (30, 60, 90),
+            (30, 60, 90, "自定义"),
+        )
+
+        custom = MagicMock()
+        custom.selectbox.return_value = "自定义"
+        custom.number_input.return_value = 120
+        result = render_consumption_window_input(
+            custom, key="custom_usage_window", default_days=30,
+        )
+        self.assertEqual(result, 120)
+        self.assertEqual(
+            custom.number_input.call_args.kwargs["key"],
+            "custom_usage_window_custom",
         )
 
     def test_summary_uses_one_contract_for_inventory_and_consumables(self):

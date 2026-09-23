@@ -91,7 +91,7 @@ def render_inventory_table(
             for size in SIZE_COLUMNS
         },
     }
-    for column in routine_hidden_columns(department):
+    for column in routine_hidden_columns(department, display_df):
         column_config[column] = None
     table_height = min(max((len(display_df) + 1) * 35 + 8, 220), 900)
     if editable:

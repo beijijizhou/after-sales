@@ -67,6 +67,9 @@ def render_inventory_tabs(
     history_data, complete_history_data = _load_open_history_tab(
         tabs, supabase, department, history_filters
     )
+    _, scoped_brands, scoped_materials, scoped_colors, scoped_sizes = (
+        history_filters
+    )
 
     if tabs["库存明细"].open:
         with tabs["库存明细"]:
@@ -128,6 +131,10 @@ def render_inventory_tabs(
                         source_weights=source_weights,
                         calculation_container=parameters_tab,
                         anomaly_container=anomaly_tab,
+                        brands=scoped_brands,
+                        materials=scoped_materials,
+                        colors=scoped_colors,
+                        sizes=scoped_sizes,
                     )
                 with incoming_tab:
                     if selected_date == current_date:
@@ -135,6 +142,10 @@ def render_inventory_tabs(
                             supabase, department, category, raw_df,
                             current_date, forecast_usage_df,
                             target_days=target_days,
+                            brands=scoped_brands,
+                            materials=scoped_materials,
+                            colors=scoped_colors,
+                            sizes=scoped_sizes,
                         )
                     else:
                         st.info("到货联动只使用当前库存；请切换到今天查看。")
@@ -146,11 +157,19 @@ def render_inventory_tabs(
                     supabase, department, category, inventory_df,
                     order_quantity, arrival_date, buffer_days, inventory_date,
                     visible_sizes, target_days=target_days,
+                    brands=scoped_brands,
+                    materials=scoped_materials,
+                    colors=scoped_colors,
+                    sizes=scoped_sizes,
                 )
                 if selected_date == current_date:
                     render_incoming_inventory_forecast(
                         supabase, department, category, raw_df, current_date,
                         forecast_usage_df, target_days=target_days,
+                        brands=scoped_brands,
+                        materials=scoped_materials,
+                        colors=scoped_colors,
+                        sizes=scoped_sizes,
                     )
     if tabs["消耗模型"].open:
         with tabs["消耗模型"]:
@@ -160,6 +179,10 @@ def render_inventory_tabs(
             render_consumption_models(
                 supabase, department, category, order_quantity,
                 current_date, visible_sizes, raw_df,
+                brands=scoped_brands,
+                materials=scoped_materials,
+                colors=scoped_colors,
+                sizes=scoped_sizes,
             )
 
     if "每日出库" in tabs and tabs["每日出库"].open:

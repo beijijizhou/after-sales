@@ -121,7 +121,7 @@ def replace_inbound_batch(
         from db.finance.cost_maintenance import update_inbound_lot_cost
 
         return update_inbound_lot_cost(
-            supabase, reference.batch_id, correction.unit_cost
+            supabase, reference.batch_id, correction.unit_cost, operator
         )
     if reference.kind == InboundBatchKind.CONSUMABLE_MOVEMENT:
         from db.finance.cost_maintenance import update_consumable_movement_cost

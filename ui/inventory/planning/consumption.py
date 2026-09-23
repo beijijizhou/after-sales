@@ -8,7 +8,9 @@ from db.inventory import (
     SIZE_COLUMNS,
     build_color_inventory_table,
 )
-from db.inventory.planning.consumption import DEFAULT_ORDER_QUANTITY
+from db.inventory.planning.consumption import (
+    DEFAULT_ORDER_QUANTITY,
+)
 from db.inventory.planning.consumption_alerts import build_inventory_consumption_alerts
 from db.inventory.planning.consumption_comparison import (
     build_period_model_comparison,
@@ -90,6 +92,10 @@ def render_reorder_forecast(
     source_weights=None,
     calculation_container=None,
     anomaly_container=None,
+    brands=None,
+    materials=None,
+    colors=None,
+    sizes=None,
 ):
     if category not in {"黑白短袖", "彩色短袖"}:
         return pd.DataFrame()
@@ -114,6 +120,10 @@ def render_reorder_forecast(
         outbound_df = load_daily_outbound_history(
             supabase, department, category, today,
             lookback_days=lookback_days + 1,
+            brands=brands,
+            materials=materials,
+            colors=colors,
+            sizes=sizes,
         )
         if visible_sizes:
             outbound_df = outbound_df[
@@ -197,7 +207,11 @@ def render_reorder_forecast(
         return pd.DataFrame()
 
     st.subheader(t("点货预测表"))
-    st.caption(t("库存按当前筛选材质合计，并合并同材质下的全部所选品牌。"))
+    st.caption(
+        "当前计算严格沿用页面顶部的品牌、材质、颜色和尺码筛选；"
+        f"材质范围：{'、'.join(materials) or t('未填写')}。"
+        "订单源数据没有材质字段，因此不把订单数强行归到 CVC、160g 或 180g。"
+    )
     st.caption(
         f"本页只计算{category}：仓库人工登记的每日实际出库是正式消耗基准；"
         "平台生产和旧订单模型只作独立参考，不参与默认预测。"

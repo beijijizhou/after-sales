@@ -133,7 +133,8 @@ def render_model_comparison_result(
     )
 def render_consumption_models(
     supabase, department, category, order_quantity, current_date,
-    visible_sizes=None, inventory_df=None,
+    visible_sizes=None, inventory_df=None, *, brands=None,
+    materials=None, colors=None, sizes=None,
 ):
     lookback_days = render_consumption_window_input(
         st,
@@ -152,6 +153,10 @@ def render_consumption_models(
         outbound_df = load_daily_outbound_history(
             supabase, department, category, current_date,
             lookback_days=lookback_days + 1,
+            brands=brands,
+            materials=materials,
+            colors=colors,
+            sizes=sizes,
         )
         if visible_sizes:
             outbound_df = outbound_df[
@@ -179,6 +184,14 @@ def render_consumption_models(
     metrics[0].metric("仓库模型日耗", f"{daily_total:,.1f} 件")
     metrics[1].metric("人工登记天数", f"{recorded_days} 天")
     metrics[2].metric("统计窗口", f"{lookback_days} 天")
+    effective_materials = sorted({
+        str(value).strip() for value in (materials or []) if str(value).strip()
+    })
+    st.caption(
+        "当前模型严格沿用页面顶部筛选；材质范围："
+        f"{'、'.join(effective_materials) or '全部当前材质'}。"
+        "订单源数据没有材质字段，不按材质虚构订单量。"
+    )
     st.caption("缺失日期不会被当作零；至少两次登记后才能形成可解释的出库区间日均。")
     display = model_df.rename(columns={
         "color": "颜色", "size": "尺码",

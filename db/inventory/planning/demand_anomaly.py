@@ -18,7 +18,7 @@ DAILY_OUTBOUND_PATTERN = "仓库每日出货|每日正常出货|每日出货|黑
 
 def load_daily_outbound_history(
     supabase, department, category, current_date, lookback_days=28,
-    *, brands=None, materials=None,
+    *, brands=None, materials=None, colors=None, sizes=None,
 ):
     start_date = current_date - timedelta(days=lookback_days - 1)
     columns = (
@@ -37,14 +37,26 @@ def load_daily_outbound_history(
             .range(start, end).execute().data or []
         )
     source = pd.DataFrame(fetch_range_pages(fetch_page, limit=None))
-    for field, values in (("brand", brands), ("material", materials)):
+    for field, values in (
+        ("brand", brands), ("material", materials),
+        ("color", colors), ("size", sizes),
+    ):
         if values and not source.empty:
-            source = source[source[field].isin(values)]
+            normalized = {
+                str(value).strip().upper() if field == "size"
+                else str(value).strip()
+                for value in values
+            }
+            candidates = source[field].fillna("").astype(str).str.strip()
+            if field == "size":
+                candidates = candidates.str.upper()
+            source = source[candidates.isin(normalized)]
     legacy = normalize_daily_outbound_history(source)
     try:
         versioned = _versioned_daily_outbound_history(
             supabase, department, category, start_date, current_date,
             brands=brands, materials=materials,
+            colors=colors, sizes=sizes,
         )
     except Exception:
         return legacy
@@ -59,11 +71,14 @@ def load_daily_outbound_history(
 
 def _versioned_daily_outbound_history(
     supabase, department, category, start_date, end_date,
-    *, brands=None, materials=None,
+    *, brands=None, materials=None, colors=None, sizes=None,
 ):
     batches = load_daily_outbound_revisions(
         supabase, department, category, start_date, end_date
     )
+    normalized_sizes = {
+        str(value).strip().upper() for value in (sizes or [])
+    }
     rows = []
     for batch in batches:
         if batch.get("status") == "voided":
@@ -79,6 +94,13 @@ def _versioned_daily_outbound_history(
             if brands and line.get("brand") not in brands:
                 continue
             if materials and line.get("material") not in materials:
+                continue
+            if colors and line.get("color") not in colors:
+                continue
+            if normalized_sizes and (
+                str(line.get("size") or "").strip().upper()
+                not in normalized_sizes
+            ):
                 continue
             rows.append({
                 "日期": pd.to_datetime(batch.get("movement_date")).date(),

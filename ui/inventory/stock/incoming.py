@@ -28,7 +28,8 @@ from ui.planning import render_planning_summary
 
 def render_incoming_inventory_forecast(
     supabase, department, category, inventory_df, today,
-    forecast_usage_df=None, target_days=55,
+    forecast_usage_df=None, target_days=55, *, brands=None,
+    materials=None, colors=None, sizes=None,
 ):
     department_label = str(department or "").strip()
     st.subheader(f"{department_label} 部门库存与最近到货联动")
@@ -38,7 +39,7 @@ def render_incoming_inventory_forecast(
         ))
     elif department == "DTF" and category == "彩色短袖":
         st.caption(
-            "彩色短袖使用最近30天仓库人工每日出库作为预测基准；"
+            "彩色短袖使用所选时间范围内的仓库人工每日出库作为预测基准；"
             "平台生产只作核对参考。上方手动调整后的预测日耗、缺口和"
             "建议点货量会同步传递到货柜联动。"
         )
@@ -60,6 +61,15 @@ def render_incoming_inventory_forecast(
             )
             if category:
                 uv_model = uv_model[uv_model["品类"] == category]
+            for column, values in (
+                ("材质", materials), ("颜色", colors), ("型号", sizes),
+            ):
+                if values:
+                    normalized = {str(value).strip().upper() for value in values}
+                    uv_model = uv_model[
+                        uv_model[column].fillna("").astype(str)
+                        .str.strip().str.upper().isin(normalized)
+                    ]
             system_usage = build_uv_forecast_usage(uv_model)
             if system_usage.empty:
                 st.info(t(
