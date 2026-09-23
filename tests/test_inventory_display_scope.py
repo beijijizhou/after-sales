@@ -55,6 +55,19 @@ class InventoryDisplayScopeTests(unittest.TestCase):
 
         self.assertNotIn("颜色", apply_routine_display_scope(source, "UV"))
 
+    def test_configured_color_level_stays_visible_after_single_color_filter(self):
+        source = pd.DataFrame([{
+            "品类": "马克杯", "品牌": "", "材质": "11oz双彩杯",
+            "颜色": "黑", "型号": "", "总库存": 7952,
+        }])
+
+        hidden = routine_hidden_columns(
+            "UV", source,
+            ("department", "category", "material", "color", "size"),
+        )
+
+        self.assertEqual(hidden, {"品牌"})
+
     def test_mug_inventory_table_keeps_each_color_identifiable(self):
         source = pd.DataFrame([
             {"category": "马克杯", "brand": "", "material": "11oz双彩杯",

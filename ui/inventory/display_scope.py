@@ -6,10 +6,12 @@ import pandas as pd
 UV_ROUTINE_HIDDEN_COLUMNS = frozenset({"品牌", "颜色"})
 
 
-def routine_hidden_columns(department, rows=None):
+def routine_hidden_columns(department, rows=None, hierarchy_fields=None):
     """Hide UV color only when it does not distinguish visible SKUs."""
     if str(department or "").strip().upper() != "UV":
         return frozenset()
+    if "color" in tuple(hierarchy_fields or ()):
+        return frozenset({"品牌"})
     data = pd.DataFrame(rows) if rows is not None else pd.DataFrame()
     color_column = next(
         (column for column in ("颜色", "color") if column in data), None

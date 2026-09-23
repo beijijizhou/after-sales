@@ -12,6 +12,7 @@ from ui.inventory.operations.adjustment_costs import (
     ROW_COLUMN,
     render_size_cost_editor,
 )
+from ui.inventory.shared.hierarchy import inventory_hierarchy
 from utils.auth import has_permission
 
 
@@ -141,7 +142,7 @@ def render_inventory_cost_summary(
     else:
         total_cost = float(cost_df["库存金额"].sum())
         st.metric(t("当前库存总成本"), f"${total_cost:,.2f}")
-        _render_cost_table(cost_df, department)
+        _render_cost_table(cost_df, department, category)
 
     _render_missing_costs(
         supabase,
@@ -152,8 +153,11 @@ def render_inventory_cost_summary(
     )
 
 
-def _render_cost_table(cost_df, department):
-    hidden = routine_hidden_columns(department, cost_df)
+def _render_cost_table(cost_df, department, category=""):
+    hierarchy_fields = inventory_hierarchy(department, category).fields
+    hidden = routine_hidden_columns(
+        department, cost_df, hierarchy_fields
+    )
     st.dataframe(
         cost_df, hide_index=True, width="stretch",
         column_config={
@@ -256,7 +260,10 @@ def _render_missing_model_costs(
     )
     sku_df["成本"] = None
     version = st.session_state.get("inventory_model_cost_version", 0)
-    hidden = routine_hidden_columns(department, sku_df)
+    hierarchy_fields = inventory_hierarchy(department, category).fields
+    hidden = routine_hidden_columns(
+        department, sku_df, hierarchy_fields
+    )
     edited = pd.DataFrame(st.data_editor(
         sku_df, hide_index=True, width="stretch",
         disabled=["品类", "品牌", "材质", "颜色", "型号"],

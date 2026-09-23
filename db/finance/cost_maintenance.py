@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from db.finance.consumable_repository import update_consumable_movement_cost
 from db.finance.repository import _fetch_pages, _normalize_cost_rows
 
 
@@ -242,23 +243,4 @@ def update_inbound_lot_cost(
                 .eq("id", previous_movement["id"]).execute()
             )
         raise
-    return True
-
-
-def update_consumable_movement_cost(supabase, movement_id, unit_cost):
-    unit_cost = float(unit_cost)
-    if unit_cost <= 0:
-        raise ValueError("耗材单位成本必须大于 0")
-    movement = (
-        supabase.table("consumable_movements")
-        .select("id,quantity_change,reversal_of_movement_id")
-        .eq("id", movement_id).single().execute().data
-    )
-    if not movement or movement.get("reversal_of_movement_id"):
-        raise ValueError("找不到有效的耗材入库记录")
-    if float(movement.get("quantity_change") or 0) <= 0:
-        raise ValueError("只有耗材入库记录可以填写单位成本")
-    supabase.table("consumable_movements").update(
-        {"unit_cost": unit_cost}
-    ).eq("id", movement_id).execute()
     return True

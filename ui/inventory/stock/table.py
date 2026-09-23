@@ -10,6 +10,7 @@ from ui.inventory.display_scope import (
     routine_hidden_columns,
 )
 from ui.inventory.i18n import t
+from ui.inventory.shared.hierarchy import inventory_hierarchy
 from ui.inventory.stock.table_editor import render_inventory_table_editor
 from ui.inventory.stock.table_filters import render_inventory_table_filters
 
@@ -91,7 +92,10 @@ def render_inventory_table(
             for size in SIZE_COLUMNS
         },
     }
-    for column in routine_hidden_columns(department, display_df):
+    hierarchy_fields = inventory_hierarchy(department, category).fields
+    for column in routine_hidden_columns(
+        department, display_df, hierarchy_fields
+    ):
         column_config[column] = None
     table_height = min(max((len(display_df) + 1) * 35 + 8, 220), 900)
     if editable:
