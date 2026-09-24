@@ -17,10 +17,10 @@ from db.inventory.planning.consumption_comparison import (
 )
 from db.inventory.planning.demand_anomaly import (
     build_demand_anomaly_table,
-    load_daily_outbound_history,
 )
-from db.inventory.planning.warehouse_usage import (
-    build_warehouse_consumption_model,
+from db.inventory.planning.outbound_consumption import (
+    apparel_forecast_model,
+    load_outbound_consumption,
 )
 from ui.inventory.planning.anomaly import render_demand_anomaly_monitor
 from ui.inventory.planning.forecast_controls import (
@@ -117,21 +117,20 @@ def render_reorder_forecast(
             from datetime import datetime
 
             today = datetime.now(ZoneInfo("America/New_York")).date()
-        outbound_df = load_daily_outbound_history(
+        consumption = load_outbound_consumption(
             supabase, department, category, today,
-            lookback_days=lookback_days + 1,
+            window_days=lookback_days,
             brands=brands,
             materials=materials,
             colors=colors,
             sizes=sizes,
         )
+        outbound_df = consumption.history
         if visible_sizes:
             outbound_df = outbound_df[
                 outbound_df["尺码"].isin(visible_sizes)
             ]
-        model_df = build_warehouse_consumption_model(
-            outbound_df, today, lookback_days
-        )
+        model_df = apparel_forecast_model(consumption.usage)
         if visible_sizes:
             model_df = model_df[model_df["size"].isin(visible_sizes)]
         if category == "黑白短袖":

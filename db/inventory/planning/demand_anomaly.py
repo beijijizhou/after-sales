@@ -14,6 +14,9 @@ from db.inventory.operations.daily_outbound_versions import (
 
 
 DAILY_OUTBOUND_PATTERN = "仓库每日出货|每日正常出货|每日出货|黑白短袖出库"
+OUTBOUND_HISTORY_COLUMNS = [
+    "日期", "品牌", "材质", "颜色", "尺码", "实际出库",
+]
 
 
 def load_daily_outbound_history(
@@ -104,22 +107,27 @@ def _versioned_daily_outbound_history(
                 continue
             rows.append({
                 "日期": pd.to_datetime(batch.get("movement_date")).date(),
+                "品牌": str(line.get("brand") or "").strip(),
+                "材质": str(line.get("material") or "").strip(),
                 "颜色": str(line.get("color") or "").strip(),
                 "尺码": str(line.get("size") or "").strip().upper(),
                 "实际出库": int(line.get("requested_quantity") or 0),
             })
     if not rows:
-        return pd.DataFrame(columns=["日期", "颜色", "尺码", "实际出库"])
+        return pd.DataFrame(columns=OUTBOUND_HISTORY_COLUMNS)
     return (
         pd.DataFrame(rows)
-        .groupby(["日期", "颜色", "尺码"], as_index=False)["实际出库"]
+        .groupby(
+            ["日期", "品牌", "材质", "颜色", "尺码"],
+            as_index=False, dropna=False,
+        )["实际出库"]
         .sum()
     )
 
 
 def normalize_daily_outbound_history(movement_df):
     if movement_df.empty:
-        return pd.DataFrame(columns=["日期", "颜色", "尺码", "实际出库"])
+        return pd.DataFrame(columns=OUTBOUND_HISTORY_COLUMNS)
 
     result = movement_df.copy()
     result["reason"] = result["reason"].fillna("").astype(str)
@@ -131,12 +139,20 @@ def normalize_daily_outbound_history(movement_df):
     ).fillna(0)
     result = result[result["quantity_change"] < 0]
     result["日期"] = pd.to_datetime(result["movement_date"], errors="coerce").dt.date
+    for column in ("brand", "material", "color", "size"):
+        if column not in result:
+            result[column] = ""
+    result["品牌"] = result["brand"].fillna("").astype(str).str.strip()
+    result["材质"] = result["material"].fillna("").astype(str).str.strip()
     result["颜色"] = result["color"].fillna("").astype(str).str.strip()
     result["尺码"] = result["size"].fillna("").astype(str).str.strip().str.upper()
     result["实际出库"] = result["quantity_change"].abs().astype(int)
     return (
         result.dropna(subset=["日期"])
-        .groupby(["日期", "颜色", "尺码"], as_index=False)["实际出库"]
+        .groupby(
+            ["日期", "品牌", "材质", "颜色", "尺码"],
+            as_index=False, dropna=False,
+        )["实际出库"]
         .sum()
     )
 

@@ -74,6 +74,8 @@ class ModularityContractTests(unittest.TestCase):
             "ui/inventory/operations/adjustment_editor.py",
             "ui/inventory/planning/colored_review.py",
             "ui/inventory/planning/uv_view.py",
+            "ui/inventory/planning/outbound_model.py",
+            "db/inventory/planning/outbound_consumption.py",
             "automation/sync/daily_flow_preview.py",
             "db/inventory/dashboard_overview.py",
             "db/inventory/dashboard_completion.py",

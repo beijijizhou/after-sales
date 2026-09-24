@@ -6,16 +6,11 @@ from db.inventory.planning.consumption_comparison import (
     build_period_model_comparison,
 )
 from db.inventory.planning.demand_anomaly import load_daily_outbound_history
-from db.inventory.planning.warehouse_usage import (
-    build_warehouse_consumption_model,
-)
 from db.inventory.core.constants import SIZE_COLUMNS
 from ui.inventory.i18n import t
 from ui.inventory.planning.accuracy import (
     render_model_accuracy_summary,
 )
-from ui.inventory.planning.uv_view import render_uv_consumption_model
-from ui.planning import render_consumption_window_input
 from ui.table_layout import fit_table_height
 
 
@@ -131,75 +126,6 @@ def render_model_comparison_result(
             "平台有效天数": st.column_config.NumberColumn(format="%d"),
         },
     )
-def render_consumption_models(
-    supabase, department, category, order_quantity, current_date,
-    visible_sizes=None, inventory_df=None, *, brands=None,
-    materials=None, colors=None, sizes=None,
-):
-    lookback_days = render_consumption_window_input(
-        st,
-        key=f"inventory_consumption_lookback_{department}_{category}",
-    )
-    if department == "UV":
-        render_uv_consumption_model(
-            supabase, category, current_date, visible_sizes,
-            lookback_days=lookback_days,
-        )
-        return
-    if category not in {"黑白短袖", "彩色短袖"}:
-        st.info(t("当前品类暂无消耗模型"))
-        return
-    try:
-        outbound_df = load_daily_outbound_history(
-            supabase, department, category, current_date,
-            lookback_days=lookback_days + 1,
-            brands=brands,
-            materials=materials,
-            colors=colors,
-            sizes=sizes,
-        )
-        if visible_sizes:
-            outbound_df = outbound_df[
-                outbound_df["尺码"].isin(visible_sizes)
-            ]
-        model_df = build_warehouse_consumption_model(
-            outbound_df, current_date, lookback_days
-        )
-    except Exception as error:
-        st.error(f"{t('消耗模型加载失败')}：{error}")
-        return
-    st.subheader(f"{category}仓库消耗模型")
-    st.caption(
-        f"以最近 {lookback_days} 天仓库人工登记的实际出库为唯一默认口径；"
-        "平台生产数据只在系统数据参考与生产数据页面独立核对。"
-    )
-    if model_df.empty:
-        st.info(f"最近 {lookback_days} 天暂无足够的仓库人工出库记录")
-        return
-    daily_total = pd.to_numeric(
-        model_df["consumption_quantity"], errors="coerce"
-    ).fillna(0).sum()
-    recorded_days = int(outbound_df["日期"].nunique()) if not outbound_df.empty else 0
-    metrics = st.columns(3)
-    metrics[0].metric("仓库模型日耗", f"{daily_total:,.1f} 件")
-    metrics[1].metric("人工登记天数", f"{recorded_days} 天")
-    metrics[2].metric("统计窗口", f"{lookback_days} 天")
-    effective_materials = sorted({
-        str(value).strip() for value in (materials or []) if str(value).strip()
-    })
-    st.caption(
-        "当前模型严格沿用页面顶部筛选；材质范围："
-        f"{'、'.join(effective_materials) or '全部当前材质'}。"
-        "订单源数据没有材质字段，不按材质虚构订单量。"
-    )
-    st.caption("缺失日期不会被当作零；至少两次登记后才能形成可解释的出库区间日均。")
-    display = model_df.rename(columns={
-        "color": "颜色", "size": "尺码",
-        "consumption_quantity": "仓库出库日均",
-    })
-    render_model_detail(display, "仓库出库日均", "仓库出库模型")
-
-
 def _render_totals(df, order_quantity=15000, baseline_label=None):
     columns = st.columns(4)
     values = [

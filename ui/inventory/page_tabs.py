@@ -17,13 +17,14 @@ from ui.inventory.operations.pages import (
     render_daily_outbound_operation,
     render_temporary_movement_operation,
 )
-from ui.inventory.planning.comparison import render_consumption_models
+from ui.inventory.planning.outbound_model import (
+    render_outbound_consumption_model,
+)
 from ui.inventory.planning.uv_view import render_uv_daily_deduction
 from ui.inventory.planning.colored_consumption import (
     render_colored_daily_deduction,
 )
 from ui.inventory.planning.consumption import (
-    DEFAULT_ORDER_QUANTITY,
     render_consumption_planning_inputs,
     render_reorder_forecast,
 )
@@ -173,12 +174,8 @@ def render_inventory_tabs(
                     )
     if tabs["消耗模型"].open:
         with tabs["消耗模型"]:
-            order_quantity = st.session_state.get(
-                "haloo_consumption_order_quantity", DEFAULT_ORDER_QUANTITY
-            )
-            render_consumption_models(
-                supabase, department, category, order_quantity,
-                current_date, visible_sizes, raw_df,
+            render_outbound_consumption_model(
+                supabase, department, category, current_date, visible_sizes,
                 brands=scoped_brands,
                 materials=scoped_materials,
                 colors=scoped_colors,

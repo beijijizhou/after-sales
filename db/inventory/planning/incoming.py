@@ -42,8 +42,8 @@ def normalize_forecast_usage(model_df, department, category):
         result,
         key_columns=KEY_COLUMNS,
         daily_usage_column="system_daily_usage",
-        source_type="production_model",
-        source_label=f"{category}消耗模型",
+        source_type="warehouse_outbound",
+        source_label=f"{category}仓库每日出库",
     )
 
 
