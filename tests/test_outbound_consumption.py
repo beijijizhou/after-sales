@@ -45,6 +45,30 @@ class OutboundConsumptionTests(unittest.TestCase):
         self.assertEqual(red["有效数据天数"], 2)
         self.assertEqual(red["每日消耗"], 150)
 
+    def test_late_brand_material_row_does_not_inflate_combined_usage(self):
+        history = pd.DataFrame([
+            {
+                "日期": date(2026, 9, 20), "品牌": "Haloo", "材质": "CVC",
+                "颜色": "黑", "尺码": "5XL", "实际出库": 200,
+            },
+            {
+                "日期": date(2026, 9, 22), "品牌": "杂牌", "材质": "CVC",
+                "颜色": "黑", "尺码": "5XL", "实际出库": 1800,
+            },
+        ])
+
+        model = build_outbound_consumption_model(
+            history, date(2026, 9, 23), 30
+        )
+        usage = build_outbound_forecast_usage(
+            model, "DTF", "黑白短袖"
+        )
+        forecast = apparel_forecast_model(usage)
+
+        self.assertEqual(model["有效数据天数"].tolist(), [2, 2])
+        self.assertEqual(model["每日消耗"].sum(), 1000)
+        self.assertEqual(forecast.iloc[0]["consumption_quantity"], 1000)
+
     def test_colored_apparel_and_planning_share_one_outbound_result(self):
         model = pd.DataFrame([
             {

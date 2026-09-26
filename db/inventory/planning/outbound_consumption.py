@@ -7,7 +7,7 @@ import pandas as pd
 from db.inventory.planning.demand_anomaly import load_daily_outbound_history
 from db.planning import build_daily_usage_contract
 from utils.daily_usage_model import (
-    EFFECTIVE_DAYS_GLOBAL_SINCE_FIRST,
+    EFFECTIVE_DAYS_GLOBAL_WINDOW,
     build_daily_usage_summary,
 )
 from utils.erp.inventory_mapping import KEY_COLUMNS
@@ -49,7 +49,13 @@ def load_outbound_consumption(
 
 
 def build_outbound_consumption_model(history, current_date, window_days=30):
-    """Calculate SKU daily usage from every recorded manual-outbound date."""
+    """Calculate SKU usage against the category's recorded outbound dates.
+
+    Every detailed SKU row uses the same denominator.  This keeps the
+    row-level evidence reviewable without turning a brand/material that first
+    appears on a later date into a new daily demand stream when the rows are
+    combined for planning.
+    """
     columns = [
         *SKU_DIMENSIONS, "每日消耗", "有效数据天数", "自然日均消耗",
         "窗口总消耗", "窗口天数",
@@ -68,7 +74,7 @@ def build_outbound_consumption_model(history, current_date, window_days=30):
     return build_daily_usage_summary(
         source, SKU_DIMENSIONS, "实际出库", current_date, window_days,
         date_column="日期",
-        effective_day_mode=EFFECTIVE_DAYS_GLOBAL_SINCE_FIRST,
+        effective_day_mode=EFFECTIVE_DAYS_GLOBAL_WINDOW,
         observation_dates=observation_dates,
         usage_column="每日消耗",
         effective_days_column="有效数据天数",
