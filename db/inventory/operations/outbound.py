@@ -200,6 +200,7 @@ def convert_sku_package_entries(
             "品类": sku.get("category", ""),
             "品牌": sku["brand"],
             "材质": sku["material"],
+            "款式": sku.get("style", ""),
             "颜色": sku["color"],
             "尺码": sku["size"],
             "包装单位": package_type,
@@ -213,6 +214,7 @@ def convert_sku_package_entries(
             "品类": sku.get("category", ""),
             "品牌": sku["brand"],
             "材质": sku["material"],
+            "款式": sku.get("style", ""),
             "颜色": sku["color"],
             "尺码": sku["size"],
             "数量": total,
@@ -223,7 +225,7 @@ def convert_sku_package_entries(
     if not adjustments.empty:
         adjustments = adjustments.groupby(
             [
-                "日期", "操作", "品类", "品牌", "材质", "颜色",
+                "日期", "操作", "品类", "品牌", "材质", "款式", "颜色",
                 "尺码", "备注",
             ],
             as_index=False,

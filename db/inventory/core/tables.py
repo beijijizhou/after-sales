@@ -24,7 +24,17 @@ def get_inventory_last_updated(df):
 
 
 def sort_inventory_table(df, category):
-    if category != "黑白短袖" or df.empty:
+    if df.empty:
+        return df
+    if category == "卫衣":
+        # Lazy import avoids the inventory package initialization cycle:
+        # the shared sorter itself reads the canonical apparel size order.
+        from utils.sku_sorting import sort_sku_rows
+        return sort_sku_rows(
+            df, material="材质", style="款式", color="颜色",
+            size="__no_size_column__",
+        )
+    if category != "黑白短袖":
         return df.sort_values("总库存", ascending=False)
 
     sorted_df = df.copy()
@@ -45,14 +55,14 @@ def build_inventory_table(
         cost_columns = ["成本"] if include_cost else []
         details = [*SIZE_COLUMNS] if department == DEFAULT_DEPARTMENT else ["型号"]
         return pd.DataFrame(columns=[
-            "品类", "品牌", "材质", "颜色", *cost_columns,
+            "品类", "品牌", "材质", "款式", "颜色", *cost_columns,
             *details, "总库存",
         ])
 
     inventory_df = df.copy()
     if include_cost and "unit_cost" not in inventory_df.columns:
         inventory_df["unit_cost"] = 0
-    for column in ["category", "brand", "material"]:
+    for column in ["category", "brand", "material", "style"]:
         if column not in inventory_df.columns:
             inventory_df[column] = ""
         inventory_df[column] = inventory_df[column].fillna("").astype(str)
@@ -62,7 +72,9 @@ def build_inventory_table(
     if department != DEFAULT_DEPARTMENT:
         return _build_model_inventory_table(inventory_df, include_cost)
 
-    index_columns = ["category", "brand", "material", "color"]
+    index_columns = [
+        "category", "brand", "material", "style", "color",
+    ]
     if include_cost:
         index_columns.append("unit_cost")
     pivot_df = (
@@ -76,6 +88,7 @@ def build_inventory_table(
             "category": "品类",
             "brand": "品牌",
             "material": "材质",
+            "style": "款式",
             "color": "颜色",
             "unit_cost": "成本",
         })
@@ -87,7 +100,10 @@ def build_inventory_table(
 
     pivot_df["总库存"] = pivot_df[SIZE_COLUMNS].sum(axis=1)
     cost_columns = ["成本"] if include_cost else []
-    display_df = pivot_df[["品类", "品牌", "材质", "颜色", *cost_columns, *SIZE_COLUMNS, "总库存"]]
+    display_df = pivot_df[
+        ["品类", "品牌", "材质", "款式", "颜色", *cost_columns,
+         *SIZE_COLUMNS, "总库存"]
+    ]
     return sort_inventory_table(display_df, category).reset_index(drop=True)
 
 
@@ -99,7 +115,9 @@ def _build_model_inventory_table(inventory_df, include_cost=False):
         )
     else:
         inventory_df["_last_changed_at"] = pd.NaT
-    index_columns = ["category", "brand", "material", "color", "size"]
+    index_columns = [
+        "category", "brand", "material", "style", "color", "size",
+    ]
     if include_cost:
         index_columns.append("unit_cost")
     result = (
@@ -110,6 +128,7 @@ def _build_model_inventory_table(inventory_df, include_cost=False):
         )
         .rename(columns={
             "category": "品类", "brand": "品牌", "material": "材质",
+            "style": "款式",
             "color": "颜色", "size": "型号", "unit_cost": "成本",
             "quantity": "总库存",
         })

@@ -9,14 +9,22 @@ from db.inventory.core.query_filters import apply_inventory_dimension_filters
 @st.cache_data(ttl=120, show_spinner=False)
 def load_inventory_dimensions(_supabase, active_only=True):
     supabase = _supabase
-    query = (
-        supabase.table("inventory_items")
-        .select("department,category,brand,material,color,size")
-    )
-    if active_only:
-        query = query.eq("is_active", True)
-    response = query.execute()
-    inventory = pd.DataFrame(response.data)
+    def execute(selected_columns):
+        query = supabase.table("inventory_items").select(selected_columns)
+        if active_only:
+            query = query.eq("is_active", True)
+        return query.execute()
+    try:
+        inventory = pd.DataFrame(execute(
+            "department,category,brand,material,style,color,size"
+        ).data)
+    except Exception as error:
+        if "style" not in str(error):
+            raise
+        inventory = pd.DataFrame(execute(
+            "department,category,brand,material,color,size"
+        ).data)
+        inventory["style"] = ""
     try:
         departments = pd.DataFrame(
             supabase.table("inventory_departments")
@@ -44,10 +52,10 @@ def load_inventory_dimensions(_supabase, active_only=True):
         right_on="department_id",
         how="left",
     ).rename(columns={"name": "category"})
-    for column in ["brand", "material", "color", "size"]:
+    for column in ["brand", "material", "style", "color", "size"]:
         master[column] = ""
     columns = [
-        "department", "category", "brand", "material", "color", "size"
+        "department", "category", "brand", "material", "style", "color", "size"
     ]
     return pd.concat(
         [inventory, master[columns]], ignore_index=True
@@ -79,26 +87,33 @@ def load_inventory_items(
     active_only=True,
 ):
     supabase = _supabase
-    query = (
-        supabase
-        .table("inventory_items")
-        .select(
-            "department,category,brand,material,color,size,unit_cost,"
-            "quantity,is_active,updated_at"
+    def execute(selected_columns):
+        query = (
+            supabase.table("inventory_items")
+            .select(selected_columns).eq("department", department)
         )
-        .eq("department", department)
+        if category:
+            query = query.eq("category", category)
+        if active_only:
+            query = query.eq("is_active", True)
+        return query.execute()
+    columns = (
+        "department,category,brand,material,style,color,size,unit_cost,"
+        "quantity,is_active,updated_at"
     )
-    if category:
-        query = query.eq("category", category)
-    if active_only:
-        query = query.eq("is_active", True)
-    response = query.execute()
-    return pd.DataFrame(response.data)
+    try:
+        return pd.DataFrame(execute(columns).data)
+    except Exception as error:
+        if "style" not in str(error):
+            raise
+        frame = pd.DataFrame(execute(columns.replace("style,", "")).data)
+        frame["style"] = ""
+        return frame
 
 
 def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=DEFAULT_CATEGORY, limit=20):
     columns = (
-        "department,category,brand,material,color,size,quantity_change,"
+        "department,category,brand,material,style,color,size,quantity_change,"
         "quantity_after,movement_date,reason,created_at,created_by,"
         "batch_id,reversal_of_batch_id,source_type"
     )
@@ -122,17 +137,21 @@ def load_inventory_movements(supabase, department=DEFAULT_DEPARTMENT, category=D
         rows = fetch_range_pages(
             lambda start, end: fetch_page(columns, start, end), limit
         )
-    except Exception:
-        fallback_columns = columns.replace(
-            ",created_by,batch_id,reversal_of_batch_id,source_type", ""
-        )
+    except Exception as error:
+        fallback_columns = columns
+        if "style" in str(error):
+            fallback_columns = fallback_columns.replace("style,", "")
+        else:
+            fallback_columns = fallback_columns.replace(
+                ",created_by,batch_id,reversal_of_batch_id,source_type", ""
+            )
         rows = fetch_range_pages(
-            lambda start, end: fetch_page(
-                fallback_columns, start, end
-            ),
-            limit,
+            lambda start, end: fetch_page(fallback_columns, start, end), limit
         )
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    if "style" not in frame:
+        frame["style"] = ""
+    return frame
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -174,17 +193,26 @@ def clear_inventory_query_cache():
 def load_recent_inventory_outbound(
     supabase, department, start_date, category=None, limit=5000
 ):
-    query = (
-        supabase.table("inventory_movements")
-        .select(
-            "department,category,brand,material,color,size,"
-            "quantity_change,movement_date"
+    def execute(selected_columns):
+        query = (
+            supabase.table("inventory_movements")
+            .select(selected_columns)
+            .eq("department", department)
+            .lt("quantity_change", 0)
+            .gte("movement_date", start_date.isoformat())
         )
-        .eq("department", department)
-        .lt("quantity_change", 0)
-        .gte("movement_date", start_date.isoformat())
+        if category:
+            query = query.eq("category", category)
+        return query.limit(limit).execute()
+    columns = (
+        "department,category,brand,material,style,color,size,"
+        "quantity_change,movement_date"
     )
-    if category:
-        query = query.eq("category", category)
-    response = query.limit(limit).execute()
-    return pd.DataFrame(response.data)
+    try:
+        frame = pd.DataFrame(execute(columns).data)
+    except Exception as error:
+        if "style" not in str(error):
+            raise
+        frame = pd.DataFrame(execute(columns.replace("style,", "")).data)
+        frame["style"] = ""
+    return frame

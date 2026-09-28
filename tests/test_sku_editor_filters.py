@@ -9,9 +9,31 @@ from ui.inventory.sku.page import (
     filter_sku_editor_source,
     uses_standard_sku_sizes,
 )
+from ui.inventory.sku.create import expand_full_size_sku_rows
 
 
 class SkuEditorFilterTests(unittest.TestCase):
+    def test_hoodie_rows_keep_style_and_expand_full_size_run(self):
+        result = expand_full_size_sku_rows(pd.DataFrame([{
+            "品牌": "Haloo", "材质": "连帽", "款式": "女款-厚",
+            "颜色": "黑", "单位": "件",
+        }]), include_style=True)
+
+        self.assertEqual(len(result), 8)
+        self.assertEqual(set(result["款式"]), {"女款-厚"})
+        self.assertEqual(
+            result["规格"].tolist(),
+            ["S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"],
+        )
+
+    def test_non_hoodie_rows_do_not_gain_a_style_column(self):
+        result = expand_full_size_sku_rows(pd.DataFrame([{
+            "品牌": "Haloo", "材质": "180g", "颜色": "灰", "单位": "件",
+        }]))
+
+        self.assertNotIn("款式", result.columns)
+        self.assertEqual(len(result), 8)
+
     def test_apparel_editor_applies_one_wide_row_change_to_its_sizes(self):
         source = pd.DataFrame([
             {

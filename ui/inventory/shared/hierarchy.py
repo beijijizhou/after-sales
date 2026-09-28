@@ -34,6 +34,13 @@ APPAREL_HIERARCHY = DimensionHierarchy(
     ("department", "category", "material", "brand", "color", "size"),
     ("部门", "品类", "材质", "品牌", "颜色", "尺码"),
 )
+HOODIE_HIERARCHY = DimensionHierarchy(
+    (
+        "department", "category", "material", "brand",
+        "style", "color", "size",
+    ),
+    ("部门", "品类", "材质", "品牌", "款式", "颜色", "尺码"),
+)
 UV_HIERARCHY = DimensionHierarchy(
     ("department", "category", "material", "size"),
     ("部门", "品类", "材质", "型号"),
@@ -46,12 +53,19 @@ def inventory_hierarchy(department, category="", definitions=None):
         definitions = st.session_state.get("sku_hierarchy_definitions", {})
     configured = definitions.get((department, category)) if category else None
     if configured:
-        levels = configured["levels"]
+        levels = [
+            level for level in configured["levels"]
+            if category == "卫衣" or level["field"] != "style"
+        ]
         return DimensionHierarchy(
             ("department", "category", *(level["field"] for level in levels)),
             ("部门", "品类", *(level["label"] for level in levels)),
         )
-    return UV_HIERARCHY if department == "UV" else APPAREL_HIERARCHY
+    if department == "UV":
+        return UV_HIERARCHY
+    if category == "卫衣":
+        return HOODIE_HIERARCHY
+    return APPAREL_HIERARCHY
 
 
 def hydrate_hierarchies(supabase):

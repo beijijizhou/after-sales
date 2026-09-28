@@ -95,6 +95,38 @@ view.render_sku_hierarchy(None,"DTF","短袖",True)
         self.assertEqual(hierarchy.narrow(rows, {"family": ["配件"]})["variant"].tolist(), ["B"])
         self.assertNotIn("brand", inventory_hierarchy("UV").fields)
 
+    def test_style_dimension_is_scoped_to_hoodies(self):
+        hoodie = inventory_hierarchy("DTF", "卫衣", definitions={})
+        tshirt = inventory_hierarchy("DTF", "彩色短袖", definitions={})
+
+        self.assertEqual(
+            hoodie.fields,
+            (
+                "department", "category", "material", "brand",
+                "style", "color", "size",
+            ),
+        )
+        self.assertIn("款式", hoodie.labels)
+        self.assertNotIn("style", tshirt.fields)
+
+    def test_saved_style_level_is_ignored_outside_hoodies(self):
+        definitions = {
+            ("DTF", "彩色短袖"): {
+                "levels": [
+                    {"field": "material", "label": "材质"},
+                    {"field": "style", "label": "款式"},
+                    {"field": "color", "label": "颜色"},
+                ]
+            }
+        }
+
+        hierarchy = inventory_hierarchy(
+            "DTF", "彩色短袖", definitions=definitions
+        )
+
+        self.assertNotIn("style", hierarchy.fields)
+        self.assertNotIn("款式", hierarchy.labels)
+
     def test_uv_hides_controls_and_clears_old_filters(self):
         app = AppTest.from_string('''
 import pandas as pd

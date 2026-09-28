@@ -10,13 +10,13 @@ from ui.consumables.operations.entry import (
     _build_sku_labels,
     _normalize_entry_rows,
 )
-from ui.consumables.units import to_boxes
-from ui.consumables.operations.validation import validate_package_sizes
+from ui.consumables.units import entry_unit, to_entry_quantity
 from ui.consumables.operations.stock_models import (
     build_stock_review_comparison,
     build_daily_issue_template,
     normalize_initialization,
 )
+from ui.consumables.operations.validation import validate_package_sizes
 from ui.operations import render_stock_change_review
 from utils.auth import get_current_operator_name
 
@@ -32,15 +32,7 @@ def render_daily_issue_table(supabase, department_code, items_df, can_edit):
     active = _active_items(items_df, can_edit)
     if active is None:
         return
-    missing_package = active[
-        active["package_unit"].fillna("").astype(str).str.strip().ne("箱")
-        | pd.to_numeric(
-            active["units_per_package"], errors="coerce"
-        ).fillna(0).le(0)
-    ]
-    if not missing_package.empty:
-        names = "、".join(missing_package["name"].astype(str))
-        st.error(f"以下耗材尚未设置每箱数量：{names}")
+    if not validate_package_sizes(active):
         st.info("请先在“SKU 管理 → 现有 SKU”中设置包装单位为箱。")
         return
     labels, label_to_row = _build_sku_labels(active)
@@ -98,24 +90,25 @@ def render_daily_issue_table(supabase, department_code, items_df, can_edit):
 def render_inventory_initialization(
     supabase, department_code, items_df, can_edit, show_cost
 ):
-    st.subheader("耗材库存设置")
+    st.subheader("直接修改耗材库存")
     st.caption(
-        "按盘点结果填写目标库存；系统保留设置前库存、目标库存和实际差额。"
+        "直接在“目标库存”列填写盘点后的实际数量；有箱规按箱填写，"
+        "无箱规按件、米等基础单位填写。系统保留修改前库存、实际差额、"
+        "操作人和时间。"
     )
     active = _active_items(items_df, can_edit)
     if active is None:
         return
     labels, label_to_row = _build_sku_labels(active)
-    if not validate_package_sizes(active):
-        return
-    columns = ["耗材 SKU", "当前库存（箱）", "目标库存（箱）", "备注"]
+    columns = ["耗材 SKU", "当前库存", "计数单位", "目标库存", "备注"]
     if show_cost:
-        columns.insert(3, "单位成本")
+        columns.insert(4, "单位成本")
     template = pd.DataFrame([
         {
             "耗材 SKU": label,
-            "当前库存（箱）": to_boxes(item["current_quantity"], item),
-            "目标库存（箱）": to_boxes(item["current_quantity"], item),
+            "当前库存": to_entry_quantity(item["current_quantity"], item),
+            "计数单位": entry_unit(item),
+            "目标库存": to_entry_quantity(item["current_quantity"], item),
             "单位成本": None,
             "备注": "",
         }
@@ -128,10 +121,10 @@ def render_inventory_initialization(
         width="stretch",
         hide_index=True,
         key=f"consumable_initialization_{department_code}",
-        disabled=["耗材 SKU", "当前库存（箱）"],
+        disabled=["耗材 SKU", "当前库存", "计数单位"],
         column_config={
-            "当前库存（箱）": st.column_config.NumberColumn(format="%.2f"),
-            "目标库存（箱）": st.column_config.NumberColumn(
+            "当前库存": st.column_config.NumberColumn(format="%.2f"),
+            "目标库存": st.column_config.NumberColumn(
                 min_value=0.0, step=1, format="%.2f"
             ),
             "单位成本": st.column_config.NumberColumn(

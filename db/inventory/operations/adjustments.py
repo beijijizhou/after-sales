@@ -9,7 +9,10 @@ from db.inventory.core.snapshots import create_inventory_snapshot
 
 
 def build_adjustment_template():
-    return pd.DataFrame(columns=["日期", "操作", "品牌", "材质", "颜色", "尺码", "数量", "备注"])
+    return pd.DataFrame(columns=[
+        "日期", "操作", "品牌", "材质", "款式", "颜色", "尺码",
+        "数量", "备注",
+    ])
 
 
 def build_wide_adjustment_template():
@@ -28,6 +31,9 @@ def normalize_wide_adjustment_rows(df):
     if "品牌" not in df.columns:
         df["品牌"] = ""
     df["品牌"] = df["品牌"].fillna("").astype(str).str.strip()
+    if "款式" not in df.columns:
+        df["款式"] = ""
+    df["款式"] = df["款式"].fillna("").astype(str).str.strip()
     df["材质"] = df["材质"].fillna("180g").astype(str).str.strip()
     df["颜色"] = df["颜色"].astype(str).str.strip()
     if "备注" not in df.columns:
@@ -50,7 +56,7 @@ def normalize_wide_adjustment_rows(df):
     df = df[(df["材质"] != "") & (df["颜色"] != "") & (df["操作"].isin(["增加", "扣减", "设置"]))]
     adjustment_df = df.melt(
         id_vars=[
-            "日期", "操作", "品牌", "材质", "颜色", "成本", "备注",
+            "日期", "操作", "品牌", "材质", "款式", "颜色", "成本", "备注",
             *row_columns, "_设置行",
         ],
         value_vars=SIZE_COLUMNS,
@@ -60,7 +66,7 @@ def normalize_wide_adjustment_rows(df):
     setting_rows = adjustment_df["操作"].eq("设置") & adjustment_df["_设置行"]
     adjustment_df = adjustment_df[setting_rows | (adjustment_df["数量"] > 0)]
     columns = [
-        "日期", "操作", "品牌", "材质", "颜色", "尺码", "数量",
+        "日期", "操作", "品牌", "材质", "款式", "颜色", "尺码", "数量",
         "成本", "备注", *row_columns,
     ]
     return adjustment_df[columns].reset_index(drop=True)
@@ -81,6 +87,9 @@ def normalize_adjustment_rows(df):
     if "品牌" not in df.columns:
         df["品牌"] = ""
     df["品牌"] = df["品牌"].fillna("").astype(str).str.strip()
+    if "款式" not in df.columns:
+        df["款式"] = ""
+    df["款式"] = df["款式"].fillna("").astype(str).str.strip()
     df["材质"] = df["材质"].fillna("180g").astype(str).str.strip()
     df["颜色"] = df["颜色"].astype(str).str.strip()
     df["尺码"] = df["尺码"].astype(str).str.strip().str.upper()
@@ -102,7 +111,7 @@ def normalize_adjustment_rows(df):
         column for column in ["部门", "品类"] if column in df.columns
     ]
     columns = [
-        *scope_columns, "日期", "操作", "品牌", "材质", "颜色",
+        *scope_columns, "日期", "操作", "品牌", "材质", "款式", "颜色",
         "尺码", "数量", "成本", "备注",
     ]
     return df[columns].reset_index(drop=True)
@@ -128,6 +137,7 @@ def apply_adjustment_rows(
         record = {
             "brand": row["品牌"],
             "material": row["材质"],
+            "style": row.get("款式", ""),
             "color": row["颜色"],
             "size": row["尺码"],
             "quantity_change": quantity_change,
@@ -147,9 +157,14 @@ def apply_adjustment_rows(
         "p_created_by": created_by,
         "p_source_type": source_type,
     }
+    uses_style = any(str(record.get("style") or "").strip() for record in records)
+    rpc_name = (
+        "apply_inventory_adjustment_batch_with_style"
+        if uses_style else "apply_inventory_adjustment_batch"
+    )
     try:
         supabase.rpc(
-            "apply_inventory_adjustment_batch", parameters
+            rpc_name, parameters
         ).execute()
     except Exception as error:
         if "PGRST202" not in str(error):
@@ -163,9 +178,9 @@ def apply_adjustment_rows(
             }
             for record in records
         ]
-        supabase.rpc(
-            "apply_inventory_adjustment_batch", legacy_parameters
-        ).execute()
+        if uses_style:
+            raise
+        supabase.rpc("apply_inventory_adjustment_batch", legacy_parameters).execute()
     for movement_date in sorted(df["日期"].dropna().unique()):
         create_inventory_snapshot(supabase, department, category, movement_date)
     return batch_id

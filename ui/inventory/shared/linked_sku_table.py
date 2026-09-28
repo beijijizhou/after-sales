@@ -7,18 +7,24 @@ from ui.inventory.shared.hierarchy import inventory_hierarchy
 
 
 def linked_sku_options(
-    sku_df, material=None, brand=None, color=None,
+    sku_df, material=None, brand=None, style=None, color=None,
 ):
     source = pd.DataFrame(sku_df).copy()
     if "is_active" in source.columns:
         source = source[source["is_active"].fillna(True).astype(bool)]
     if source.empty:
-        return {"materials": [], "brands": [], "colors": [], "sizes": []}
+        return {
+            "materials": [], "brands": [], "styles": [],
+            "colors": [], "sizes": [],
+        }
     if material:
         source = source[source["material"] == material]
     brands = _frame_values(source, "brand")
     if brand:
         source = source[source["brand"] == brand]
+    styles = _frame_values(source, "style")
+    if style:
+        source = source[source["style"] == style]
     colors = ordered_values(_frame_values(source, "color"), ["黑", "白"])
     if color:
         source = source[source["color"] == color]
@@ -26,6 +32,7 @@ def linked_sku_options(
     return {
         "materials": _frame_values(source, "material"),
         "brands": brands,
+        "styles": styles,
         "colors": colors,
         "sizes": sizes,
     }

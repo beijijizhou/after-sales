@@ -297,7 +297,35 @@ class ConsumableInventoryTests(unittest.TestCase):
         )
 
         self.assertEqual(rows[0]["quantity"], 8)
-        self.assertEqual(preview.iloc[0]["库存差额（箱）"], 2)
+        self.assertEqual(preview.iloc[0]["本次变动"], 2)
+        self.assertEqual(preview.iloc[0]["录入单位"], "箱")
+
+    def test_stock_setting_accepts_unpacked_sku_in_base_unit(self):
+        edited = pd.DataFrame([{
+            "耗材 SKU": "气柱｜35cm",
+            "当前库存": 1200,
+            "计数单位": "米",
+            "目标库存": 1500,
+            "备注": "盘点修正",
+        }])
+        labels = {
+            "气柱｜35cm": {
+                "id": "air-column",
+                "current_quantity": 1200,
+                "base_unit": "米",
+                "package_unit": None,
+                "units_per_package": None,
+            }
+        }
+
+        rows, preview = _normalize_initialization(
+            edited, labels, include_cost=False
+        )
+
+        self.assertEqual(rows[0]["quantity"], 300)
+        self.assertEqual(preview.iloc[0]["当前库存"], 1200)
+        self.assertEqual(preview.iloc[0]["调整后库存"], 1500)
+        self.assertEqual(preview.iloc[0]["录入单位"], "米")
 
     def test_initialization_can_reduce_incorrect_opening_stock(self):
         edited = pd.DataFrame([{

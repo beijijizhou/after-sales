@@ -54,7 +54,9 @@ def render_daily_outbound(supabase, department, category, *, sku_scope_df=None):
     is_uv = str(department or "").strip().upper() == "UV"
     sku_df = load_sku_catalog(supabase, department, active_only=True)
     if sku_scope_df is not None:
-        dimensions = ["category", "material", "brand", "color", "size"]
+        dimensions = [
+            "category", "material", "brand", "style", "color", "size",
+        ]
         sku_df = sku_df.merge(
             sku_scope_df[dimensions].drop_duplicates(), on=dimensions, how="inner"
         ) if not sku_scope_df.empty else sku_df.iloc[:0]

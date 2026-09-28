@@ -113,7 +113,7 @@ def build_black_white_sku_rows(brand, material):
     ])
 
 
-def expand_full_size_sku_rows(rows):
+def expand_full_size_sku_rows(rows, include_style=False):
     """Expand each apparel identity row into the standard business size run."""
     expanded = []
     for row in pd.DataFrame(rows).to_dict("records"):
@@ -121,9 +121,13 @@ def expand_full_size_sku_rows(rows):
             continue
         for size in SIZE_COLUMNS:
             expanded.append({**row, "规格": size})
+    columns = ["品牌", "材质"]
+    if include_style:
+        columns.append("款式")
+    columns.extend(["颜色", "规格", "单位"])
     return pd.DataFrame(
         expanded,
-        columns=["品牌", "材质", "颜色", "规格", "单位"],
+        columns=columns,
     )
 
 
@@ -153,30 +157,45 @@ def _render_full_size_skus(
     category, brand_options, material_options, department_id, version,
 ):
     st.info("每一行品牌、材质和颜色会自动生成 S–5XL 全尺码 SKU。")
-    template = pd.DataFrame([{
+    is_hoodie = category["name"] == "卫衣"
+    template_row = {
         "品牌": "", "材质": "", "颜色": "", "单位": "件",
-    }])
+    }
+    if is_hoodie:
+        template_row = {
+            "品牌": "Haloo", "材质": "", "款式": "常规",
+            "颜色": "", "单位": "件",
+        }
+        st.caption(
+            "卫衣专用层级：材质（连帽 / 圆领）→ 品牌 → 款式 → 颜色 → 尺码。"
+        )
+    template = pd.DataFrame([template_row])
+    column_config = {
+        "品牌": st.column_config.SelectboxColumn(
+            t("品牌"), options=brand_options
+        ),
+        "材质": st.column_config.SelectboxColumn(
+            t("材质"), options=material_options, required=True
+        ),
+        "颜色": st.column_config.TextColumn(t("颜色"), required=True),
+        "单位": st.column_config.TextColumn(t("单位"), required=True),
+    }
+    if is_hoodie:
+        column_config["款式"] = st.column_config.TextColumn(
+            "款式", required=True
+        )
     base_rows = pd.DataFrame(st.data_editor(
         template,
         hide_index=True,
         num_rows="dynamic",
         width="stretch",
-        column_config={
-            "品牌": st.column_config.SelectboxColumn(
-                t("品牌"), options=brand_options
-            ),
-            "材质": st.column_config.SelectboxColumn(
-                t("材质"), options=material_options, required=True
-            ),
-            "颜色": st.column_config.TextColumn(t("颜色"), required=True),
-            "单位": st.column_config.TextColumn(t("单位"), required=True),
-        },
+        column_config=column_config,
         key=(
             f"full_size_skus_{department_id}_{category['id']}_{version}"
         ),
     ))
     st.caption("将为每个有效组合自动新增 S、M、L、XL、2XL、3XL、4XL、5XL。")
-    return expand_full_size_sku_rows(base_rows)
+    return expand_full_size_sku_rows(base_rows, include_style=is_hoodie)
 
 
 def _render_custom_skus(

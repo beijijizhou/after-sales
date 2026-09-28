@@ -25,7 +25,7 @@ def render_inventory_global_filters(
     dimensions, key="inventory_global", movement_type_options=None,
 ):
     (
-        department, category, selected_brands, selected_materials,
+        department, category, selected_brands, selected_materials, selected_styles,
         selected_colors, selected_sizes,
     ) = render_inventory_dimension_filters(dimensions, key)
     movement_types, selected_date, use_snapshot_date = (
@@ -34,7 +34,7 @@ def render_inventory_global_filters(
         )
     )
     return (
-        department, category, selected_brands, selected_materials,
+        department, category, selected_brands, selected_materials, selected_styles,
         selected_colors, selected_sizes, movement_types, selected_date, use_snapshot_date,
     )
 
@@ -120,10 +120,10 @@ def render_inventory_dimension_filters(
     selections = {}
     scope = (department, category, hierarchy.fields, hierarchy.labels)
     if st.session_state.get(f"{key}_hierarchy_scope") != scope:
-        for field in ("material", "brand", "color", "size"):
+        for field in ("material", "brand", "style", "color", "size"):
             st.session_state[f"{key}_{field}s"] = []
         st.session_state[f"{key}_hierarchy_scope"] = scope
-    for field in ("material", "brand", "color", "size"):
+    for field in ("material", "brand", "style", "color", "size"):
         if field not in fields:
             st.session_state[f"{key}_{field}s"] = []
     source = category_rows
@@ -142,8 +142,11 @@ def render_inventory_dimension_filters(
         selections[field] = column.multiselect(t("筛选" + label), options, key=widget_key, placeholder=t("全部"))
         source = hierarchy.narrow(source, {field: selections[field]})
     render_hierarchy_guide(hierarchy)
-    return (department, category, selections.get("brand", []), selections.get("material", []),
-            selections.get("color", []), selections.get("size", []))
+    return (
+        department, category, selections.get("brand", []),
+        selections.get("material", []), selections.get("style", []),
+        selections.get("color", []), selections.get("size", []),
+    )
 def _reset_invalid_selectbox(key, options):
     reset_invalid_selectbox(st.session_state, key, options)
 

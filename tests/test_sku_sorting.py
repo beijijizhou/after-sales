@@ -6,6 +6,24 @@ from utils.sku_sorting import sort_sku_rows
 
 
 class SkuSortingTests(unittest.TestCase):
+    def test_hoodie_regular_hooded_then_regular_crewneck_are_first(self):
+        source = pd.DataFrame([
+            {"品类": "卫衣", "材质": "圆领", "款式": "旧款-厚", "颜色": "黑"},
+            {"品类": "卫衣", "材质": "连帽", "款式": "女款", "颜色": "黑"},
+            {"品类": "卫衣", "材质": "圆领", "款式": "常规", "颜色": "白"},
+            {"品类": "卫衣", "材质": "连帽", "款式": "常规", "颜色": "黑"},
+        ])
+
+        result = sort_sku_rows(
+            source, material="材质", style="款式", color="颜色",
+            size="__no_size_column__",
+        )
+
+        self.assertEqual(
+            result[["材质", "款式"]].head(2).values.tolist(),
+            [["连帽", "常规"], ["圆领", "常规"]],
+        )
+
     def test_material_color_and_apparel_size_use_business_order(self):
         source = pd.DataFrame([
             {"材质": "180g", "颜色": "粉色", "尺码/型号": "XL"},

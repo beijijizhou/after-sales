@@ -13,7 +13,9 @@ from db.inventory.master_data.sku_identity import (
 )
 
 
-IDENTITY_COLUMNS = ["category", "brand", "material", "color", "size"]
+IDENTITY_COLUMNS = [
+    "category", "brand", "material", "style", "color", "size",
+]
 
 
 def create_skus(
@@ -30,24 +32,29 @@ def create_skus(
     for source in pd.DataFrame(rows).to_dict("records"):
         if not any(
             _clean(source.get(column))
-            for column in ["SKU 名称", "品牌", "材质", "颜色", "规格"]
+            for column in [
+                "SKU 名称", "品牌", "材质", "款式", "颜色", "规格",
+            ]
         ):
             continue
         brand = _clean(source.get("品牌"))
         material = _clean(source.get("材质"))
+        style = _clean(source.get("款式"))
+        if category["name"] != "卫衣" and style:
+            raise ValueError("款式目前只用于卫衣 SKU")
         if material_names is not None and material.casefold() not in material_names:
             raise ValueError("请选择有效材质")
         color = _clean(source.get("颜色"))
         specification = _specification(source, category)
         key = _normalized_key((
-            category["name"], brand, material, color, specification
+            category["name"], brand, material, style, color, specification
         ))
         if key in existing_keys:
             skipped += 1
             continue
         item_id = uuid4()
         sku_name = _clean(source.get("SKU 名称")) or _build_sku_name(
-            category["name"], brand, material, color, specification
+            category["name"], brand, material, style, color, specification
         )
         payload.append({
             "id": str(item_id),
@@ -60,6 +67,7 @@ def create_skus(
             "brand": brand,
             "brand_id": brand_ids.get(brand),
             "material": material,
+            "style": style,
             "color": color,
             "size": specification,
             "model": (
@@ -142,16 +150,20 @@ def update_skus(
             continue
         brand = _clean(row.get("brand"))
         material = _clean(row.get("material"))
+        style = _clean(row.get("style"))
+        if category["name"] != "卫衣" and style:
+            raise ValueError("款式目前只用于卫衣 SKU")
         color = _clean(row.get("color"))
         values = {
             "sku_name": _build_sku_name(
-                category["name"], brand, material, color, specification
+                category["name"], brand, material, style, color, specification
             ),
             "category": category["name"],
             "category_id": category["id"],
             "brand": brand,
             "brand_id": brand_map.get(brand),
             "material": material,
+            "style": style,
             "color": color,
             "size": specification,
             "model": (
@@ -192,10 +204,13 @@ def _validate_updates(
         specification = _specification(row, category)
         key = _normalized_key((
             category["name"], row.get("brand"), row.get("material"),
+            row.get("style"),
             row.get("color"), specification,
         ))
         if key in seen_keys and not allow_duplicates:
-            raise ValueError("修改后存在重复 SKU，请检查品类、品牌、材质、颜色和规格")
+            raise ValueError(
+                "修改后存在重复 SKU，请检查品类、品牌、材质、款式、颜色和规格"
+            )
         seen_keys.add(key)
         prepared.append((row, category, specification))
     return prepared
@@ -215,7 +230,7 @@ def _has_changes(row, original):
     return any(
         _clean(row.get(column)) != _clean(original.get(column))
         for column in [
-            "sku_name", "category", "brand", "material",
+            "sku_name", "category", "brand", "material", "style",
             "color", "规格", "unit", "is_active",
         ]
     )
@@ -227,10 +242,14 @@ def _sku_key(row):
     )
 
 
-def _build_sku_name(category, brand, material, color, specification):
+def _build_sku_name(
+    category, brand, material, style, color, specification,
+):
     parts = []
     seen = set()
-    for value in [category, brand, material, color, specification]:
+    for value in [
+        category, brand, material, style, color, specification,
+    ]:
         cleaned = _clean(value)
         normalized = cleaned.casefold()
         if cleaned and normalized not in seen:
@@ -250,6 +269,7 @@ def _record_item_change(
         "category": values["category"],
         "brand": values["brand"],
         "material": values["material"],
+        "style": values["style"],
         "color": values["color"],
         "size": values["size"],
         "unit": values["unit"],
@@ -274,6 +294,7 @@ def _sku_snapshot(row):
         "category": _clean(row.get("category")),
         "brand": _clean(row.get("brand")),
         "material": _clean(row.get("material")),
+        "style": _clean(row.get("style")),
         "color": _clean(row.get("color")),
         "size": _clean(row.get("规格") or row.get("size")).upper(),
         "unit": _clean(row.get("unit")) or "件",

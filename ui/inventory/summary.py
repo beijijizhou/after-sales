@@ -74,7 +74,7 @@ def render_inventory_summary(supabase):
         return
     dimensions_df = exclude_consumable_dimensions(dimensions_df)
     (
-        department, category, brands, materials, colors, selected_sizes,
+        department, category, brands, materials, styles, colors, selected_sizes,
     ) = render_inventory_dimension_filters(
         dimensions_df, key="inventory_global", supabase=supabase
     )
@@ -88,7 +88,7 @@ def render_inventory_summary(supabase):
         SIZE_COLUMNS if department == "DTF" else None
     )
     filter_title = build_inventory_filter_title(
-        category, brands, materials, colors, selected_sizes
+        category, brands, materials, colors, selected_sizes, styles=styles
     )
     if department == "UV" and not category:
         filter_title = "UV 生产库存（不含手机壳）"
@@ -130,13 +130,16 @@ def render_inventory_summary(supabase):
                 supabase,
                 department,
                 category,
-                filter_inventory_rows(complete_category_raw_df, category, brands, materials, colors, selected_sizes),
+                filter_inventory_rows(
+                    complete_category_raw_df, category, brands, materials,
+                    colors, selected_sizes, styles=styles,
+                ),
                 can_edit,
             )
             return
         raw_df = filter_inventory_rows(
             complete_category_raw_df,
-            category, brands, materials, colors, selected_sizes,
+            category, brands, materials, colors, selected_sizes, styles=styles,
         )
         current_date = st.session_state["inventory_today"]
         if should_use_saved_snapshot(selected_date, current_date):
@@ -149,7 +152,7 @@ def render_inventory_summary(supabase):
                 )
                 snapshot_df = filter_inventory_rows(
                     snapshot_df, category, brands, materials, colors,
-                    selected_sizes,
+                    selected_sizes, styles=styles,
                 )
             except Exception:
                 snapshot_df = raw_df.iloc[0:0]
@@ -162,11 +165,11 @@ def render_inventory_summary(supabase):
             sku_import_df = load_sku_imports(supabase, department, category, limit=10000)
             movement_df = filter_inventory_rows(
                 movement_df, category, brands, materials, colors,
-                selected_sizes,
+                selected_sizes, styles=styles,
             )
             sku_import_df = filter_inventory_rows(
                 sku_import_df, category, brands, materials, colors,
-                selected_sizes,
+                selected_sizes, styles=styles,
             )
             snapshot_df = build_inventory_snapshot(raw_df, movement_df, sku_import_df, selected_date)
             snapshot_df = filter_snapshot_to_active_skus(

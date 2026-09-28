@@ -29,7 +29,7 @@ def render_inventory_table_filters(
 
     fixed_columns = [
         column
-        for column in ["品类", "品牌", "材质", "颜色", "型号"]
+        for column in ["品类", "品牌", "材质", "款式", "颜色", "型号"]
         if column in display_df.columns
     ]
     total_columns = ["总库存"] if "总库存" in display_df.columns else []

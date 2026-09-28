@@ -151,18 +151,30 @@ def create_material(supabase, category_id, name, created_by):
 
 def load_sku_catalog(supabase, department_code, active_only=False):
     columns = (
-        "id,sku_code,sku_name,department,category,brand,material,color,"
+        "id,sku_code,sku_name,department,category,brand,material,style,color,"
         "size,model,unit,quantity,is_active,category_id,brand_id"
     )
-    query = (
-        supabase.table("inventory_items")
-        .select(columns)
-        .eq("department", department_code)
-    )
-    if active_only:
-        query = query.eq("is_active", True)
-    response = query.order("category").order("sku_name").execute()
-    return pd.DataFrame(response.data)
+    def execute(selected_columns):
+        query = (
+            supabase.table("inventory_items")
+            .select(selected_columns)
+            .eq("department", department_code)
+        )
+        if active_only:
+            query = query.eq("is_active", True)
+        return query.order("category").order("sku_name").execute()
+    try:
+        response = execute(columns)
+        return pd.DataFrame(response.data)
+    except Exception as error:
+        # Keep older deployments readable while the additive style migration
+        # is being applied. Writes still require the formal database column.
+        if "style" not in str(error):
+            raise
+        legacy = columns.replace("style,", "")
+        frame = pd.DataFrame(execute(legacy).data)
+        frame["style"] = ""
+        return frame
 
 
 def load_sku_change_log(supabase, department_code, limit=None):

@@ -85,6 +85,7 @@ def render_inventory_table(
         "品类": st.column_config.TextColumn(t("品类")),
         "品牌": st.column_config.TextColumn(t("品牌")),
         "材质": st.column_config.TextColumn(t("材质")),
+        "款式": st.column_config.TextColumn("款式"),
         "颜色": st.column_config.TextColumn(t("颜色")),
         "型号": st.column_config.TextColumn(t("型号")),
         **{
@@ -92,6 +93,8 @@ def render_inventory_table(
             for size in SIZE_COLUMNS
         },
     }
+    if category != "卫衣":
+        column_config["款式"] = None
     hierarchy_fields = inventory_hierarchy(department, category).fields
     for column in routine_hidden_columns(
         department, display_df, hierarchy_fields
@@ -127,7 +130,14 @@ def render_sku_update_times(raw_df, department, visible_sizes=None):
 
 def build_sku_update_time_table(raw_df, department, visible_sizes=None):
     source = pd.DataFrame(raw_df).copy()
-    identity = ["category", "brand", "material", "color"]
+    has_style = (
+        "style" in source
+        and source["style"].fillna("").astype(str).str.strip().ne("").any()
+    )
+    identity = ["category", "brand", "material"]
+    if has_style:
+        identity.append("style")
+    identity.append("color")
     required = {*identity, "size", "updated_at"}
     if source.empty or not required.issubset(source.columns):
         return pd.DataFrame()
@@ -142,6 +152,7 @@ def build_sku_update_time_table(raw_df, department, visible_sizes=None):
             .agg(更新时间=("更新时间", "max"))
             .rename(columns={
                 "category": "品类", "brand": "品牌", "material": "材质",
+                **({"style": "款式"} if has_style else {}),
                 "color": "颜色", "size": "型号",
             })
         )
@@ -150,6 +161,7 @@ def build_sku_update_time_table(raw_df, department, visible_sizes=None):
         aggfunc="max", fill_value="—",
     ).reset_index().rename(columns={
         "category": "品类", "brand": "品牌", "material": "材质",
+        **({"style": "款式"} if has_style else {}),
         "color": "颜色",
     })
     sizes = [
@@ -166,7 +178,12 @@ def build_sku_update_time_table(raw_df, department, visible_sizes=None):
         ["_material_order", "材质", "品牌", "_color_order", "颜色"],
         kind="stable",
     )
-    return table[["品类", "品牌", "材质", "颜色", *sizes]].reset_index(
+    front = ["品类", "品牌", "材质"]
+    if has_style:
+        front.append("款式")
+    return table[
+        [*front, "颜色", *sizes]
+    ].reset_index(
         drop=True
     )
 

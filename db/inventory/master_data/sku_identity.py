@@ -3,12 +3,16 @@
 import pandas as pd
 
 
-GROUP_COLUMNS = ["category", "brand", "material", "color"]
+GROUP_COLUMNS = ["category", "brand", "material", "style", "color"]
 
 
 def propagate_sku_identity_changes(original_df, edited_df):
     originals = pd.DataFrame(original_df).copy()
-    result = pd.DataFrame(edited_df).copy().set_index("id")
+    result = pd.DataFrame(edited_df).copy()
+    for frame in (originals, result):
+        if "style" not in frame:
+            frame["style"] = ""
+    result = result.set_index("id")
     for old_values, group in originals.groupby(
         GROUP_COLUMNS, dropna=False, sort=False
     ):
@@ -30,7 +34,11 @@ def propagate_sku_identity_changes(original_df, edited_df):
 
 def build_sku_identity_changes(original_df, edited_df):
     originals = pd.DataFrame(original_df).copy()
-    edited = pd.DataFrame(edited_df).set_index("id")
+    edited = pd.DataFrame(edited_df).copy()
+    for frame in (originals, edited):
+        if "style" not in frame:
+            frame["style"] = ""
+    edited = edited.set_index("id")
     changes, changed_ids = [], set()
     for old_values, group in originals.groupby(
         GROUP_COLUMNS, dropna=False, sort=False
@@ -46,28 +54,37 @@ def build_sku_identity_changes(original_df, edited_df):
         new_group = next(iter(final_groups))
         if normalized_key(old_group) == normalized_key(new_group):
             continue
-        changes.append({
+        change = {
             **{
                 f"old_{column}": value
                 for column, value in zip(GROUP_COLUMNS, old_group)
+                if column != "style" or value
             },
             **{
                 f"new_{column}": value
                 for column, value in zip(GROUP_COLUMNS, new_group)
+                if column != "style" or value
             },
-        })
+        }
+        changes.append(change)
         changed_ids.update(group_ids)
     return changes, changed_ids
 
 
 def build_sku_merge_preview(original_df, edited_df):
     source = pd.DataFrame(original_df).copy()
+    if "style" not in source:
+        source["style"] = ""
     normalized = propagate_sku_identity_changes(original_df, edited_df)
     changes, _ = build_sku_identity_changes(source, normalized)
     previews = []
     for change in changes:
-        old_values = tuple(change[f"old_{column}"] for column in GROUP_COLUMNS)
-        new_values = tuple(change[f"new_{column}"] for column in GROUP_COLUMNS)
+        old_values = tuple(
+            change.get(f"old_{column}", "") for column in GROUP_COLUMNS
+        )
+        new_values = tuple(
+            change.get(f"new_{column}", "") for column in GROUP_COLUMNS
+        )
         old_rows = rows_matching_group(source, old_values)
         target_rows = rows_matching_group(source, new_values)
         if target_rows.empty:
@@ -95,21 +112,23 @@ def refresh_changed_group_metadata(
 ):
     for change in changes:
         category_name = change["new_category"]
-        brand, material, color = (
-            change["new_brand"], change["new_material"], change["new_color"]
+        brand, material, style, color = (
+            change["new_brand"], change["new_material"],
+            change.get("new_style", ""), change["new_color"]
         )
         category = category_map[category_name]
         rows = (
             supabase.table("inventory_items").select("id,size")
             .eq("department", department_code).eq("category", category_name)
-            .eq("brand", brand).eq("material", material).eq("color", color)
+            .eq("brand", brand).eq("material", material).eq("style", style)
+            .eq("color", color)
             .execute().data
         )
         for item in rows:
             specification = clean(item.get("size")).upper()
             supabase.table("inventory_items").update({
                 "sku_name": build_sku_name(
-                    category_name, brand, material, color, specification
+                    category_name, brand, material, style, color, specification
                 ),
                 "category_id": category["id"], "brand_id": brand_map.get(brand),
                 "model": specification

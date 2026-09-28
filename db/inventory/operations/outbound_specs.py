@@ -12,7 +12,9 @@ def build_outbound_sku_lookup(sku_df, *, uv_compact=False, include_category=Fals
             continue
         identity = {
             key: str(row.get(key) or "").strip()
-            for key in ["category", "brand", "material", "color", "size"]
+            for key in [
+                "category", "brand", "material", "style", "color", "size",
+            ]
         }
         if uv_compact:
             label_values = [
@@ -28,6 +30,7 @@ def build_outbound_sku_lookup(sku_df, *, uv_compact=False, include_category=Fals
                 continue
             label_values = [
                 identity["brand"], identity["material"],
+                *([identity["style"]] if identity["style"] else []),
                 identity["color"], identity["size"],
             ]
             if include_category:

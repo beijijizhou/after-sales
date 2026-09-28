@@ -145,7 +145,8 @@ def _render_editor(
     )
     columns = [
         "id", "sku_code", "sku_name", "category", "brand",
-        "material", "color", "规格", "unit", "quantity", "is_active",
+        "material", "style", "color", "规格", "unit", "quantity",
+        "is_active",
     ]
     source = source[columns]
     material_names = sorted({
@@ -165,9 +166,20 @@ def _render_editor(
     editor_source = (
         build_sku_editor_wide_source(filtered) if wide_mode else filtered
     )
+    style_is_editable = (
+        set(filtered["category"].fillna("").astype(str).str.strip())
+        == {"卫衣"}
+    )
     disabled_columns = (
         ["_group_key", *[size for size in SIZE_COLUMNS if size in editor_source]]
         if wide_mode else ["id", "sku_code", "sku_name", "quantity"]
+    )
+    style_config = (
+        st.column_config.TextColumn(
+            "款式",
+            help="卫衣专用属性。",
+        )
+        if style_is_editable else None
     )
     edited = pd.DataFrame(st.data_editor(
         editor_source,
@@ -188,6 +200,7 @@ def _render_editor(
             "material": st.column_config.SelectboxColumn(
                 t("材质"), options=["", *material_names]
             ),
+            "style": style_config,
             "color": st.column_config.TextColumn(t("颜色")),
             "规格": st.column_config.TextColumn(t("尺码 / 型号")),
             "unit": st.column_config.TextColumn(t("单位"), required=True),

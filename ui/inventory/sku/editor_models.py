@@ -6,6 +6,7 @@ import pandas as pd
 
 from db.inventory import SIZE_COLUMNS
 from ui.inventory.i18n import t
+from utils.sku_sorting import sort_sku_rows
 
 
 def uses_standard_sku_sizes(source):
@@ -17,8 +18,13 @@ def uses_standard_sku_sizes(source):
 
 
 def build_sku_editor_wide_source(source):
-    dimensions = ["category", "brand", "material", "color", "unit", "is_active"]
+    dimensions = [
+        "category", "brand", "material", "style", "color", "unit",
+        "is_active",
+    ]
     prepared = pd.DataFrame(source).copy()
+    if "style" not in prepared:
+        prepared["style"] = ""
     prepared[dimensions[:-1]] = prepared[dimensions[:-1]].fillna("")
     prepared["is_active"] = prepared["is_active"].fillna(True).astype(bool)
     sizes = [
@@ -32,12 +38,21 @@ def build_sku_editor_wide_source(source):
         quantities = group.groupby("规格")["quantity"].sum().to_dict()
         row.update({size: quantities.get(size, pd.NA) for size in sizes})
         rows.append(row)
-    return pd.DataFrame(rows, columns=["_group_key", *dimensions, *sizes])
+    return sort_sku_rows(
+        pd.DataFrame(rows, columns=["_group_key", *dimensions, *sizes]),
+        material="material", style="style", color="color",
+        size="__no_size_column__",
+    )
 
 
 def expand_sku_editor_wide_rows(source, edited):
-    dimensions = ["category", "brand", "material", "color", "unit", "is_active"]
+    dimensions = [
+        "category", "brand", "material", "style", "color", "unit",
+        "is_active",
+    ]
     prepared = pd.DataFrame(source).copy()
+    if "style" not in prepared:
+        prepared["style"] = ""
     prepared[dimensions[:-1]] = prepared[dimensions[:-1]].fillna("")
     prepared["is_active"] = prepared["is_active"].fillna(True).astype(bool)
     group_keys = {}
@@ -71,9 +86,15 @@ def filter_sku_editor_source(source, selections=None):
 
 def display_catalog(catalog):
     source = catalog.assign(规格=catalog["model"].fillna(catalog["size"]))
+    if "style" not in source:
+        source["style"] = ""
+    show_style = source["style"].fillna("").astype(str).str.strip().ne("").any()
     specifications = set(source["规格"].dropna().astype(str))
     if specifications and specifications.issubset(set(SIZE_COLUMNS)):
-        index = ["category", "brand", "material", "color", "unit", "is_active"]
+        index = [
+            "category", "brand", "material", "style", "color", "unit",
+            "is_active",
+        ]
         source[index] = source[index].fillna("")
         result = source.groupby(
             [*index, "规格"], dropna=False, sort=False
@@ -83,16 +104,35 @@ def display_catalog(catalog):
                 result[size] = 0
         result = result.rename(columns={
             "category": t("品类"), "brand": t("品牌"), "material": t("材质"),
+            "style": "款式",
             "color": t("颜色"), "unit": t("单位"), "is_active": t("状态"),
         })
         result[t("状态")] = result[t("状态")].map({True: t("启用"), False: t("停用")})
-        return result[[t(value) for value in ["品类", "品牌", "材质", "颜色", "单位", "状态"]] + SIZE_COLUMNS]
+        return sort_sku_rows(
+            result[
+            [t(value) for value in ["品类", "品牌", "材质"]]
+            + (["款式"] if show_style else [])
+            + [t(value) for value in ["颜色", "单位", "状态"]]
+            + SIZE_COLUMNS
+            ],
+            material=t("材质"), style="款式", color=t("颜色"),
+            size="__no_size_column__",
+        )
     result = source.rename(columns={
         "category": t("品类"), "brand": t("品牌"), "material": t("材质"),
+        "style": "款式",
         "color": t("颜色"), "规格": t("规格"), "unit": t("单位"),
         "quantity": t("当前库存"), "is_active": t("状态"),
     })
     result[t("状态")] = result[t("状态")].map({True: t("启用"), False: t("停用")})
-    return result[[t(value) for value in [
-        "品类", "品牌", "材质", "颜色", "规格", "单位", "当前库存", "状态",
-    ]]]
+    columns = [t(value) for value in ["品类", "品牌", "材质"]]
+    if show_style:
+        columns.append("款式")
+    columns.extend(t(value) for value in [
+        "颜色", "规格", "单位", "当前库存", "状态",
+    ])
+    return sort_sku_rows(
+        result[columns],
+        material=t("材质"), style="款式", color=t("颜色"),
+        size=t("规格"),
+    )

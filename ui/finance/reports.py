@@ -119,20 +119,23 @@ def render_inventory_filters(finance_df, *, key):
     dimensions = finance_df[[
         "department", "category", "brand", "material", "color", "size",
     ]].drop_duplicates()
-    department, category, brands, materials, colors, sizes = (
+    department, category, brands, materials, styles, colors, sizes = (
         render_inventory_dimension_filters(
             dimensions, key=key, allow_all_departments=True
         )
     )
     return filter_finance_scope(
         finance_df,
-        (department, category, brands, materials, colors, sizes),
+        (department, category, brands, materials, styles, colors, sizes),
     )
 
 
 def build_finance_scope_dimensions(*frames):
     """Build one selector scope shared by stock value and monthly movements."""
-    columns = ["department", "category", "brand", "material", "color", "size"]
+    columns = [
+        "department", "category", "brand", "material", "style", "color",
+        "size",
+    ]
     parts = []
     for frame in frames:
         data = pd.DataFrame(frame).copy()
@@ -154,9 +157,15 @@ def filter_finance_scope(rows, scope):
     data = pd.DataFrame(rows).copy()
     if data.empty:
         return data
-    department, category, brands, materials, colors, sizes = scope
+    if len(scope) == 6:
+        # Compatibility for callers saved before the hoodie-only style
+        # dimension was introduced.
+        department, category, brands, materials, colors, sizes = scope
+        styles = []
+    else:
+        department, category, brands, materials, styles, colors, sizes = scope
     filtered = filter_inventory_rows(
-        data, category, brands, materials, colors, sizes
+        data, category, brands, materials, colors, sizes, styles=styles
     )
     if department and "department" in filtered:
         filtered = filtered[filtered["department"] == department]

@@ -12,9 +12,9 @@ from ui.inventory.shared.linked_sku_table import render_linked_outbound_scope
 from ui.inventory.shared.linked_sku_table import render_linked_outbound_table
 
 SKU_ENTRY_TEXT = {
-    "zh": {"title": "按 SKU 和包装单位录入", "help": "只添加实际出库的 SKU；默认按件录入，选择箱或包时再按包装规格换算。", "sku": "UV SKU", "sku_multi": "3. 选择多个 UV SKU", "sku_multi_help": "可一次选择多个 SKU；系统会为每个 SKU 生成一行，统一填写数量并一次提交。", "category_filter": "1. 先选品类", "material_filter": "2. 再选材质", "hierarchy_help": "按品类 → 材质 → SKU 逐层缩小范围；下一级只显示符合上一级的选项。", "brand": "品牌", "material": "材质", "color": "颜色", "size": "尺码", "package": "包装单位", "units": "每箱 / 包件数", "units_help": "按件录入时无需填写；箱或包可留空使用换算规则，同一 SKU 有 70/72 件箱规时请直接填写。", "count": "数量", "total": "总件数", "total_help": "按件录入时等于数量；按箱或包录入时自动换算。", "packages": {"Piece": "件", "Box": "箱", "Bag": "包"}, "import_title": "批量文件导入（可选）"},
-    "en": {"title": "Enter by SKU and package unit", "help": "Add only outbound SKUs. Piece is the default; boxes and bags use their package conversion.", "sku": "UV SKU", "sku_multi": "3. Select multiple UV SKUs", "sku_multi_help": "Select multiple SKUs at once. One quantity row is created for each selection.", "category_filter": "1. Select categories", "material_filter": "2. Select materials", "hierarchy_help": "Narrow the choices by category, then material, then SKU.", "brand": "Brand", "material": "Material", "color": "Color", "size": "Size", "package": "Package unit", "units": "Pieces per box / bag", "units_help": "Not needed for pieces. Leave blank to use the box or bag conversion rule.", "count": "Quantity", "total": "Total pieces", "total_help": "Equal to quantity for pieces; converted automatically for boxes or bags.", "packages": {"Piece": "Piece", "Box": "Box", "Bag": "Bag"}, "import_title": "Batch file import (optional)"},
-    "es": {"title": "Registrar por SKU y unidad de empaque", "help": "Agregue solo los SKU enviados. La pieza es la unidad predeterminada.", "sku": "SKU UV", "sku_multi": "3. Seleccionar varios SKU UV", "sku_multi_help": "Seleccione varios SKU a la vez; se creará una fila para cada uno.", "category_filter": "1. Seleccionar categorías", "material_filter": "2. Seleccionar materiales", "hierarchy_help": "Filtre por categoría, luego por material y finalmente por SKU.", "brand": "Marca", "material": "Material", "color": "Color", "size": "Talla", "package": "Unidad", "units": "Piezas por caja / bolsa", "units_help": "No se requiere para piezas; déjelo vacío para usar la regla de conversión.", "count": "Cantidad", "total": "Piezas totales", "total_help": "Para piezas equivale a la cantidad; cajas y bolsas se convierten automáticamente.", "packages": {"Piece": "Pieza", "Box": "Caja", "Bag": "Bolsa"}, "import_title": "Importación por archivo (opcional)"},
+    "zh": {"title": "按 SKU 和包装单位录入", "help": "只添加实际出库的 SKU；默认按件录入，选择箱或包时再按包装规格换算。", "sku": "UV SKU", "sku_multi": "3. 选择多个 UV SKU", "sku_multi_help": "可一次选择多个 SKU；系统会为每个 SKU 生成一行，统一填写数量并一次提交。", "category_filter": "1. 先选品类", "material_filter": "2. 再选材质", "hierarchy_help": "按品类 → 材质 → SKU 逐层缩小范围；下一级只显示符合上一级的选项。", "brand": "品牌", "material": "材质", "style": "款式", "color": "颜色", "size": "尺码", "package": "包装单位", "units": "每箱 / 包件数", "units_help": "按件录入时无需填写；箱或包可留空使用换算规则，同一 SKU 有 70/72 件箱规时请直接填写。", "count": "数量", "total": "总件数", "total_help": "按件录入时等于数量；按箱或包录入时自动换算。", "packages": {"Piece": "件", "Box": "箱", "Bag": "包"}, "import_title": "批量文件导入（可选）"},
+    "en": {"title": "Enter by SKU and package unit", "help": "Add only outbound SKUs. Piece is the default; boxes and bags use their package conversion.", "sku": "UV SKU", "sku_multi": "3. Select multiple UV SKUs", "sku_multi_help": "Select multiple SKUs at once. One quantity row is created for each selection.", "category_filter": "1. Select categories", "material_filter": "2. Select materials", "hierarchy_help": "Narrow the choices by category, then material, then SKU.", "brand": "Brand", "material": "Material", "style": "Style", "color": "Color", "size": "Size", "package": "Package unit", "units": "Pieces per box / bag", "units_help": "Not needed for pieces. Leave blank to use the box or bag conversion rule.", "count": "Quantity", "total": "Total pieces", "total_help": "Equal to quantity for pieces; converted automatically for boxes or bags.", "packages": {"Piece": "Piece", "Box": "Box", "Bag": "Bag"}, "import_title": "Batch file import (optional)"},
+    "es": {"title": "Registrar por SKU y unidad de empaque", "help": "Agregue solo los SKU enviados. La pieza es la unidad predeterminada.", "sku": "SKU UV", "sku_multi": "3. Seleccionar varios SKU UV", "sku_multi_help": "Seleccione varios SKU a la vez; se creará una fila para cada uno.", "category_filter": "1. Seleccionar categorías", "material_filter": "2. Seleccionar materiales", "hierarchy_help": "Filtre por categoría, luego por material y finalmente por SKU.", "brand": "Marca", "material": "Material", "style": "Estilo", "color": "Color", "size": "Talla", "package": "Unidad", "units": "Piezas por caja / bolsa", "units_help": "No se requiere para piezas; déjelo vacío para usar la regla de conversión.", "count": "Cantidad", "total": "Piezas totales", "total_help": "Para piezas equivale a la cantidad; cajas y bolsas se convierten automáticamente.", "packages": {"Piece": "Pieza", "Box": "Caja", "Bag": "Bolsa"}, "import_title": "Importación por archivo (opcional)"},
 }
 
 
@@ -92,9 +92,9 @@ def render_sku_outbound_entry(
         for row in existing_rows:
             sku = sku_lookup[row[text["sku"]]]
             row["品类"] = sku.get("category", "")
-            for dimension in (("material", "brand", "color", "size")
+            for dimension in (("material", "brand", "style", "color", "size")
                               if apparel else ("material", "size")):
-                row[text[dimension]] = sku[dimension]
+                row[text[dimension]] = sku.get(dimension, "")
         selection_signature = sha1(
             "|".join(selected_skus).encode()
         ).hexdigest()[:8]
@@ -111,11 +111,11 @@ def render_sku_outbound_entry(
         height=max(180, 38 + 35 * len(source)),
         num_rows="fixed",
         disabled=["品类", text["material"], text["size"], text["total"], text["sku"], *(
-            [text[key] for key in ("material", "brand", "color", "size")]
+            [text[key] for key in ("material", "brand", "style", "color", "size")]
             if apparel else []
         )],
         column_order=(
-            ["品类", *[text[key] for key in ("material", "brand", "color", "size", "package", "units", "count", "total")]]
+            ["品类", *[text[key] for key in ("material", "brand", "style", "color", "size", "package", "units", "count", "total")]]
             if apparel else ["品类", *[text[key] for key in ("material", "size", "package", "units", "count", "total")]]
         ),
         column_config=_column_config(
@@ -129,6 +129,7 @@ def render_sku_outbound_entry(
     entries = display.rename(columns={
         text.get("sku", "UV SKU"): "SKU",
         text["brand"]: "品牌", text["material"]: "材质",
+        text["style"]: "款式",
         text["color"]: "颜色", text["size"]: "尺码",
         text["package"]: "包装单位", text["units"]: "箱规",
         text["count"]: "包装数量", text["total"]: "换算件数",

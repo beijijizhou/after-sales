@@ -14,7 +14,9 @@ from ui.inventory.operations.adjustment_preview import (
 )
 
 
-LOCKED_COLUMNS = ["品类", "品牌", "材质", "颜色", "型号", "成本"]
+LOCKED_COLUMNS = [
+    "品类", "品牌", "材质", "款式", "颜色", "型号", "成本",
+]
 
 
 def render_inventory_table_editor(
@@ -108,7 +110,7 @@ def render_inventory_table_editor(
 
 def _wide_inventory_to_long(inventory_df):
     identity = [
-        column for column in ["品类", "品牌", "材质", "颜色"]
+        column for column in ["品类", "品牌", "材质", "款式", "颜色"]
         if column in inventory_df
     ]
     sizes = [size for size in SIZE_COLUMNS if size in inventory_df]
@@ -139,6 +141,7 @@ def build_inline_adjustments(original_df, edited_df):
                 "品类": original.get("品类", ""),
                 "品牌": original.get("品牌", ""),
                 "材质": original.get("材质", ""),
+                "款式": original.get("款式", ""),
                 "颜色": original.get("颜色", ""),
                 "尺码": size,
                 "数量": abs(difference),
@@ -162,6 +165,7 @@ def build_model_inline_adjustments(original_df, edited_df):
             "品类": original.get("品类", ""),
             "品牌": original.get("品牌", ""),
             "材质": original.get("材质", ""),
+            "款式": original.get("款式", ""),
             "颜色": original.get("颜色", ""),
             "尺码": original.get("型号", ""),
             "数量": abs(difference),

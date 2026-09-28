@@ -41,7 +41,7 @@ def render_sku_management_page(supabase):
     dimensions = exclude_consumable_dimensions(dimensions)
     st.markdown(f"#### {t('筛选库存范围')}")
     (
-        department, category, brands, materials, colors, sizes,
+        department, category, brands, materials, styles, colors, sizes,
     ) = render_inventory_dimension_filters(
         dimensions, key="sku_management_filters", supabase=supabase
     )
@@ -49,6 +49,7 @@ def render_sku_management_page(supabase):
         "category": category,
         "brand": brands,
         "material": materials,
+        "style": styles,
         "color": colors,
         "规格": sizes,
     }
@@ -103,7 +104,8 @@ def render_sku_management_page(supabase):
         )
     with operation_tab:
         operation_inventory = filter_inventory_rows(
-            inventory_df, category, brands, materials, colors, sizes
+            inventory_df, category, brands, materials, colors, sizes,
+            styles=styles,
         )
         render_sku_operation_history(
             operation_inventory, history_data, visible_sizes, sku_change_log

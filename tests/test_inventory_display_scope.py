@@ -11,6 +11,26 @@ from ui.inventory.stock.table_filters import render_inventory_table_filters
 
 
 class InventoryDisplayScopeTests(unittest.TestCase):
+    def test_hoodie_inventory_starts_with_regular_hooded_and_crewneck(self):
+        source = pd.DataFrame([
+            {
+                "category": "卫衣", "brand": "Haloo",
+                "material": material, "style": style, "color": "黑",
+                "size": "M", "quantity": 10,
+            }
+            for material, style in [
+                ("圆领", "旧款-厚"), ("连帽", "女款"),
+                ("圆领", "常规"), ("连帽", "常规"),
+            ]
+        ])
+
+        result = build_inventory_table(source, category="卫衣")
+
+        self.assertEqual(
+            result[["材质", "款式"]].head(2).values.tolist(),
+            [["连帽", "常规"], ["圆领", "常规"]],
+        )
+
     def test_uv_routine_views_hide_brand_and_color_only(self):
         source = pd.DataFrame([{
             "品类": "铁板画", "品牌": "内部品牌", "材质": "铁牌",

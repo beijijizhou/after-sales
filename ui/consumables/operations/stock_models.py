@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from ui.consumables.units import boxes_to_base, to_boxes
+from ui.consumables.units import entry_to_base, entry_unit, to_entry_quantity
 from ui.operations import prepare_stock_change_display
 
 
@@ -21,11 +21,13 @@ def normalize_initialization(edited, label_to_row, include_cost):
     for row in edited.to_dict("records"):
         label = row["耗材 SKU"]
         item = label_to_row[label]
-        current_boxes = to_boxes(item["current_quantity"], item)
-        target_boxes = pd.to_numeric(row.get("目标库存（箱）", row.get("目标库存")), errors="coerce")
-        if current_boxes is None or pd.isna(target_boxes) or target_boxes < 0:
+        current_entry = to_entry_quantity(item["current_quantity"], item)
+        target_entry = pd.to_numeric(
+            row.get("目标库存", row.get("目标库存（箱）")), errors="coerce"
+        )
+        if current_entry is None or pd.isna(target_entry) or target_entry < 0:
             continue
-        target = boxes_to_base(target_boxes, item)
+        target = entry_to_base(target_entry, item)
         difference = float(target) - float(item["current_quantity"])
         if abs(difference) < 0.00005:
             continue
@@ -35,9 +37,11 @@ def normalize_initialization(edited, label_to_row, include_cost):
             record["unit_cost"] = float(cost)
         rows.append(record)
         preview.append({
-            "耗材 SKU": label, "当前库存（箱）": current_boxes,
-            "目标库存（箱）": float(target_boxes),
-            "库存差额（箱）": float(target_boxes) - current_boxes,
+            "耗材 SKU": label,
+            "当前库存": current_entry,
+            "本次变动": float(target_entry) - current_entry,
+            "调整后库存": float(target_entry),
+            "录入单位": entry_unit(item),
             **({"单位成本": record.get("unit_cost")} if include_cost else {}),
         })
     return rows, pd.DataFrame(preview)
