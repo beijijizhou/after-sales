@@ -630,8 +630,15 @@ forecast as an estimate.
   displaying an ambiguous generic completion message. Each platform row shows
   its own acquisition duration so the slowest connector is visible.
 - SDS logistics treats the selected dates as New York business dates and
-  converts their boundaries to Asia/Shanghai before calling the domestic SDS
-  API. SDS order and QA-label progress must update its own platform status row.
+  converts their boundaries to Asia/Shanghai before calling the SDS API.
+  SDS order and QA-label progress must update its own platform status row.
+  SDS factory and QA login always send `extraInfo`, but an empty value is valid
+  and must not block an otherwise complete account configuration.
+- SDS factory login, order, and production-detail requests prefer the overseas
+  API used by `gfactory.sdspod.com`: `g-factory-api.sdspod.com`. QA login and
+  parcel requests prefer `g-pod-api.sdspod.com`. The former factory and parcel
+  hosts are compatibility fallbacks only for network, routing, throttling, or
+  5xx failures; authentication and business validation failures remain visible.
 - Humbird database-token fallback validates the tracking-number field on its
   first order-detail batch. If the ERP omits that field, stop immediately and
   report an integration error; never read every remaining batch or present the

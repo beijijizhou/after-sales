@@ -1,28 +1,43 @@
 import requests
 
+from automation.api.sds.endpoints import (
+    FACTORY_COMPAT_BASE_URL,
+    FACTORY_PRIMARY_BASE_URL,
+    sds_endpoint_urls,
+)
+from automation.api.sds.transport import request_with_sds_fallback
 
-LOGIN_URL = "https://factory-api.sdspod.com/login"
+LOGIN_URLS = sds_endpoint_urls(
+    "/login",
+    primary_base_url=FACTORY_PRIMARY_BASE_URL,
+    compatibility_base_url=FACTORY_COMPAT_BASE_URL,
+)
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36"
 )
 REQUIRED_CREDENTIALS = (
     "contact_tel",
-    "extraInfo",
     "factory_code",
     "password",
 )
 
 
-def login_sds_factory(credentials, session=None):
+def login_sds_factory(credentials, session=None, report_progress=None):
     missing = [key for key in REQUIRED_CREDENTIALS if not credentials.get(key)]
     if missing:
         raise ValueError(f"SDS 工厂登录配置缺少：{', '.join(missing)}")
 
     client = session or requests.Session()
-    response = client.post(
-        LOGIN_URL,
-        json={key: credentials[key] for key in REQUIRED_CREDENTIALS},
+    payload = {key: credentials[key] for key in REQUIRED_CREDENTIALS}
+    payload["extraInfo"] = credentials.get("extraInfo") or ""
+    response = request_with_sds_fallback(
+        client,
+        "post",
+        LOGIN_URLS,
+        report_progress=report_progress,
+        operation="SDS工厂登录",
+        json=payload,
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*",
@@ -30,7 +45,6 @@ def login_sds_factory(credentials, session=None):
         },
         timeout=30,
     )
-    response.raise_for_status()
     payload = response.json()
     data = payload.get("data") or {}
     token = data.get("access_token") or data.get("token")

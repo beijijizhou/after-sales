@@ -142,9 +142,10 @@ sorting so users never have to relearn row order between workflows.
 Do not infer database structure when it can be inspected. Confirm schema before
 designing database changes. Never overwrite unrelated worktree changes.
 
-Treat every user-requested Git push as a release gate. Before pushing, run the
-full project test suite and expose the test command's direct result to the user
-instead of spending response tokens restating the log. Do not push when any
-test fails; diagnose and fix the failure first, then rerun the gate. Push only
-after the complete suite passes. A short final pass/fail statement is enough
-unless a failure needs explanation.
+Run tests only when the user explicitly asks for testing. A request to commit,
+push, deploy, or release does not implicitly authorize or require unit tests,
+integration tests, browser checks, or the full project test suite. When the
+user asks for tests, expose the test command's direct result and do not claim a
+passing release if a requested test fails. When the user asks to push without
+requesting tests, proceed without running them and state that tests were not
+run.

@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from unittest.mock import MagicMock, Mock, patch
 
 import pandas as pd
+import requests
 
 from automation.api.s2b.shipments import (
     PENDING_STATUS,
@@ -40,10 +41,14 @@ from automation.logistics.label_cache import (
 )
 from automation.logistics.label_downloads import build_label_archive
 from automation.api.sds.shipments import (
+    ORDERS_URLS,
+    _login_qa as _sds_login_qa,
     _parcel_rows as _sds_parcel_rows,
     _qa_token,
     sds_time_range,
 )
+from automation.api.sds.auth import login_sds_factory
+from automation.api.sds.client import DETAIL_URLS
 from automation.api.humbird.shipments import (
     HumbirdBrowserRefreshRequired,
     _stage_items,
@@ -356,6 +361,91 @@ class LogisticsTrackingTests(unittest.TestCase):
             report_progress=report,
         )
 
+    def test_sds_factory_login_allows_blank_extra_info(self):
+        client = Mock()
+        response = client.post.return_value
+        response.json.return_value = {
+            "data": {"access_token": "token", "factory_id": "factory"}
+        }
+        credentials = {
+            "contact_tel": "contact",
+            "factory_code": "factory-code",
+            "password": "password",
+            "extraInfo": "",
+        }
+
+        _client, token, factory_id = login_sds_factory(
+            credentials, session=client
+        )
+
+        self.assertEqual(token, "token")
+        self.assertEqual(factory_id, "factory")
+        self.assertEqual(
+            client.post.call_args.args[0],
+            "https://g-factory-api.sdspod.com/login",
+        )
+        self.assertEqual(client.post.call_args.kwargs["json"]["extraInfo"], "")
+
+    def test_sds_factory_reads_prefer_overseas_api(self):
+        self.assertEqual(
+            ORDERS_URLS[0],
+            "https://g-factory-api.sdspod.com/"
+            "factory_orders/v2/order/allByEs",
+        )
+        self.assertEqual(
+            DETAIL_URLS[0],
+            "https://g-factory-api.sdspod.com/"
+            "factoryOrderMonthBill/detail/page",
+        )
+
+    def test_sds_factory_login_falls_back_after_primary_timeout(self):
+        client = Mock()
+        success = Mock(status_code=200)
+        success.json.return_value = {
+            "data": {"access_token": "token", "factory_id": "factory"}
+        }
+        success.raise_for_status.return_value = None
+        client.post.side_effect = [requests.Timeout(), success]
+        report = Mock()
+
+        _client, token, factory_id = login_sds_factory(
+            {
+                "contact_tel": "contact",
+                "factory_code": "factory-code",
+                "password": "password",
+            },
+            session=client,
+            report_progress=report,
+        )
+
+        self.assertEqual((token, factory_id), ("token", "factory"))
+        self.assertEqual(
+            [call.args[0] for call in client.post.call_args_list],
+            [
+                "https://g-factory-api.sdspod.com/login",
+                "https://factory-api.sdspod.com/login",
+            ],
+        )
+        self.assertIn("已切换", report.call_args.args[0])
+
+    def test_sds_qa_login_allows_missing_extra_info(self):
+        client = Mock()
+        response = client.post.return_value
+        response.json.return_value = {"data": {"access_token": "qa-token"}}
+
+        token = _sds_login_qa(client, {
+            "no": "factory-no",
+            "password": "password",
+            "username": "username",
+        })
+
+        self.assertEqual(token, "qa-token")
+        self.assertEqual(
+            client.post.call_args.args[0],
+            "https://g-pod-api.sdspod.com/pod/auth/login",
+        )
+        self.assertEqual(client.post.call_args.kwargs["json"]["extraInfo"], "")
+
     @patch("ui.logistics.source_gateway.load_humbird_credentials")
     @patch(
         "ui.logistics.source_gateway.fetch_humbird_shipments_with_fallback"
@@ -466,6 +556,10 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(rows[0]["erp_platform"], "忆点万象")
         self.assertEqual(rows[0]["erp_account"], "忆点万象")
         self.assertEqual(rows[0]["department"], "UV")
+        self.assertEqual(
+            client.get.call_args.args[0],
+            "https://g-pod-api.sdspod.com/pod/parcel/qc/1/detail",
+        )
 
     def test_uv_department_exposes_its_s2b_account_platform(self):
         self.assertIn("S2B", PLATFORMS_BY_DEPARTMENT["UV"])

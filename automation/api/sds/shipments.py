@@ -3,15 +3,33 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, time as datetime_time, timedelta
 from zoneinfo import ZoneInfo
 
-import requests
-
 from automation.api.sds.auth import USER_AGENT, login_sds_factory
+from automation.api.sds.endpoints import (
+    FACTORY_COMPAT_BASE_URL,
+    FACTORY_PRIMARY_BASE_URL,
+    PARCEL_COMPAT_BASE_URL,
+    POD_PRIMARY_BASE_URL,
+    sds_endpoint_urls,
+)
+from automation.api.sds.transport import request_with_sds_fallback
 from automation.integrations.stages import UNACCEPTED, stage_label
 
 
-ORDERS_URL = "https://factory-api.sdspod.com/factory_orders/v2/order/allByEs"
-QA_LOGIN_URL = "https://g-pod-api.sdspod.com/pod/auth/login"
-PARCEL_URL = "https://pod-api.sdspod.com/pod/parcel/qc/{order_id}/detail"
+ORDERS_URLS = sds_endpoint_urls(
+    "/factory_orders/v2/order/allByEs",
+    primary_base_url=FACTORY_PRIMARY_BASE_URL,
+    compatibility_base_url=FACTORY_COMPAT_BASE_URL,
+)
+QA_LOGIN_URLS = sds_endpoint_urls(
+    "/pod/auth/login",
+    primary_base_url=POD_PRIMARY_BASE_URL,
+    compatibility_base_url=PARCEL_COMPAT_BASE_URL,
+)
+PARCEL_URLS = sds_endpoint_urls(
+    "/pod/parcel/qc/{order_id}/detail",
+    primary_base_url=POD_PRIMARY_BASE_URL,
+    compatibility_base_url=PARCEL_COMPAT_BASE_URL,
+)
 NEW_YORK = ZoneInfo("America/New_York")
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 
@@ -29,7 +47,9 @@ def fetch_sds_pending_shipments(
     report = report_progress or (lambda _message: None)
     platform = platform_name or profile
     report(f"{platform}：正在登录工厂订单接口。")
-    client, token, _factory_id = login_sds_factory(account["factory"])
+    client, token, _factory_id = login_sds_factory(
+        account["factory"], report_progress=report
+    )
     records = _fetch_order_records(
         client, token, max_pages, status=status, time_range=time_range,
         report_progress=report, platform_name=platform,
@@ -40,7 +60,7 @@ def fetch_sds_pending_shipments(
     report(
         f"{platform}：已取得 {len(records):,} 条订单，正在登录QA面单接口。"
     )
-    qa_token = _login_qa(client, account["qa"])
+    qa_token = _login_qa(client, account["qa"], report_progress=report)
     rows = _fetch_parcels(
         client,
         qa_token,
@@ -73,12 +93,15 @@ def _fetch_order_records(
             "noManuscriptFeedbackStatus": 1, "sort": "-id",
         }
         params.update(time_range or {})
-        response = client.get(
-            ORDERS_URL,
+        response = request_with_sds_fallback(
+            client,
+            "get",
+            ORDERS_URLS,
+            report_progress=report,
+            operation=f"{platform_name}订单读取",
             params=params,
             headers=headers, timeout=60,
         )
-        response.raise_for_status()
         page_rows = response.json().get("records", [])
         rows.extend(page_rows)
         report(
@@ -90,19 +113,24 @@ def _fetch_order_records(
     return rows
 
 
-def _login_qa(client, credentials):
-    required = ("extraInfo", "no", "password", "username")
+def _login_qa(client, credentials, report_progress=None):
+    required = ("no", "password", "username")
     missing = [key for key in required if not credentials.get(key)]
     if missing:
         raise ValueError(f"SDS QA配置缺少：{', '.join(missing)}")
-    response = client.post(
-        QA_LOGIN_URL,
+    payload = {key: credentials[key] for key in required}
+    payload["extraInfo"] = credentials.get("extraInfo") or ""
+    response = request_with_sds_fallback(
+        client,
+        "post",
+        QA_LOGIN_URLS,
+        report_progress=report_progress,
+        operation="SDS QA登录",
         params={"t": int(time.time() * 1000)},
-        json={key: credentials[key] for key in required},
+        json=payload,
         headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
         timeout=30,
     )
-    response.raise_for_status()
     payload = response.json()
     token = _qa_token(payload)
     if not token:
@@ -174,11 +202,16 @@ def sds_time_range(start_date, end_date):
 def _parcel_rows(
     client, headers, record, profile, platform_name=None, department="DTF"
 ):
-    response = client.get(
-        PARCEL_URL.format(order_id=_order_id(record)),
+    urls = tuple(
+        url.format(order_id=_order_id(record)) for url in PARCEL_URLS
+    )
+    response = request_with_sds_fallback(
+        client,
+        "get",
+        urls,
+        operation=f"{platform_name or profile}面单读取",
         params={"t": int(time.time() * 1000)}, headers=headers, timeout=(5, 30),
     )
-    response.raise_for_status()
     rows = []
     for parcel in response.json().get("detailList", []):
         tracking = str(parcel.get("carriageNo") or "").strip()

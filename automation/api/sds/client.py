@@ -1,10 +1,20 @@
 from datetime import datetime
 
 from automation.api.sds.auth import USER_AGENT, login_sds_factory
+from automation.api.sds.endpoints import (
+    FACTORY_COMPAT_BASE_URL,
+    FACTORY_PRIMARY_BASE_URL,
+    sds_endpoint_urls,
+)
+from automation.api.sds.transport import request_with_sds_fallback
 from utils.erp.time_range import build_hour_range
 
 
-DETAIL_URL = "https://factory-api.sdspod.com/factoryOrderMonthBill/detail/page"
+DETAIL_URLS = sds_endpoint_urls(
+    "/factoryOrderMonthBill/detail/page",
+    primary_base_url=FACTORY_PRIMARY_BASE_URL,
+    compatibility_base_url=FACTORY_COMPAT_BASE_URL,
+)
 MAX_DAILY_RECORDS = 50_000
 
 
@@ -19,14 +29,20 @@ def fetch_sds_production_records(
 ):
     report = report_progress or (lambda _message: None)
     report(f"1/3 正在登录 {platform} 工厂接口")
-    client, token, factory_id = login_sds_factory(credentials)
+    client, token, factory_id = login_sds_factory(
+        credentials, report_progress=report
+    )
     start_at, end_at = build_hour_range(
         start_date, end_date, start_hour, end_hour
     )
 
     report(f"2/3 正在获取 {platform} 生产完成数据（单次请求）")
-    response = client.get(
-        DETAIL_URL,
+    response = request_with_sds_fallback(
+        client,
+        "get",
+        DETAIL_URLS,
+        report_progress=report,
+        operation=f"{platform}生产数据读取",
         params={
             "page": 1,
             "size": MAX_DAILY_RECORDS,
@@ -42,7 +58,6 @@ def fetch_sds_production_records(
         },
         timeout=90,
     )
-    response.raise_for_status()
     payload = response.json()
     records = payload.get("list") or []
     total = int(payload.get("totalCount") or len(records))
