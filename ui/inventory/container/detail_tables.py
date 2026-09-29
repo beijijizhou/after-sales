@@ -35,7 +35,10 @@ def _render_item_detail(detail, display_df, container_key, editable_cost):
     hidden = ["货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期", "实际到货日期", "实际到货时间（纽约）", "货柜号", "状态", "确认到柜时间（纽约）"]
     detail = detail.drop(columns=hidden)
     items = get_container_item_columns(display_df)
-    front = ["部门", "品类", "品牌", "材质", "颜色", "备注"]
+    front = [
+        "部门", "品类", "品牌", "材质",
+        *( ["款式"] if "款式" in detail.columns else []), "颜色", "备注",
+    ]
     costs = ["成本"] if "成本" in detail.columns else []
     detail = (
         detail[[*front[:-1], *costs, "型号", "数量", "备注"]]

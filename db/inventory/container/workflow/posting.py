@@ -99,6 +99,7 @@ def _apply_inventory_groups(
             "操作": "增加",
             "品牌": group["brand"].fillna(""),
             "材质": group["material"].fillna(""),
+            "款式": group["style"].fillna(""),
             "颜色": group["color"].fillna(""),
             "尺码": group["size"].fillna(""),
             "数量": pd.to_numeric(group["quantity"]).astype(int),
@@ -126,7 +127,8 @@ def _load_container_rows(supabase, container_key):
         supabase.table("inventory_container_imports")
         .select(
             "container_no,status,department,category,brand,material,"
-            "color,size,quantity,unit_cost,actual_arrival_date,actual_arrival_at"
+            "style,color,size,quantity,unit_cost,actual_arrival_date,"
+            "actual_arrival_at"
         )
         .eq("container_key", container_key)
         .execute()

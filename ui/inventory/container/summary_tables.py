@@ -26,7 +26,7 @@ def render_filtered_container_summary(raw):
         return
     st.subheader("筛选结果汇总")
     st.caption("以下数量严格按照页面当前的部门、品类、品牌、材质、颜色和尺码筛选汇总。")
-    fixed = {"涉及货柜", "部门", "品类", "品牌", "材质", "颜色", "总件数"}
+    fixed = {"涉及货柜", "部门", "品类", "品牌", "材质", "款式", "颜色", "总件数"}
     items = [column for column in summary.columns if column not in fixed]
     st.dataframe(summary, hide_index=True, width="stretch", height=fit_table_height(summary), column_config={
         "涉及货柜": st.column_config.TextColumn("涉及货柜", width="medium"),
@@ -39,7 +39,10 @@ def _render_summary(raw):
     summary = build_container_inventory_summary(build_container_display(raw, include_cost=False))
     if summary.empty:
         return
-    items = [column for column in summary.columns if column not in {"材质", "颜色", "总件数"}]
+    items = [
+        column for column in summary.columns
+        if column not in {"材质", "款式", "颜色", "总件数"}
+    ]
     st.dataframe(summary, hide_index=True, width="stretch", height=fit_table_height(summary), column_config={
         "总件数": st.column_config.NumberColumn("总件数", format="%d"),
         **{item: st.column_config.NumberColumn(_item_label(item), format="%d") for item in items},

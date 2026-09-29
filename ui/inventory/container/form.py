@@ -79,9 +79,14 @@ def render_container_form(supabase, department=None, category=None):
         f"{department}_{category or 'all'}"
     )
     if items_key not in st.session_state:
-        st.session_state[items_key] = _empty_container_items(department)
+        st.session_state[items_key] = _empty_container_items(
+            department, category or ""
+        )
     st.markdown("#### 添加 SKU 明细")
-    st.caption("按品类 → 材质 → 品牌 → 颜色联动选择；下游选项只显示有效 SKU 组合。")
+    st.caption(
+        "按品类 → 材质 → 品牌 → 款式 → 颜色联动选择；"
+        "款式仅在卫衣中显示，未特别注明时默认为常规。"
+    )
     selected_identity = _render_container_sku_selector(
         sku_catalog, department, category, form_version
     )
@@ -112,7 +117,9 @@ def render_container_form(supabase, department=None, category=None):
         width="stretch",
         key=f"inventory_container_editor_{form_version}_{department}_{category or 'all'}",
         column_config=_build_item_column_config(department, can_view_cost),
-        disabled=_container_identity_columns(department),
+        disabled=_container_identity_columns(
+            department, include_style="款式" in items.columns
+        ),
         height=fit_table_height(items),
     )
     edited_items = keep_container_items(edited_items)
@@ -177,7 +184,8 @@ def _render_container_sku_selector(catalog, department, fixed_category, version)
         "品类", categories, f"container_item_category_{version}"
     )
     scoped = catalog[catalog["category"] == category] if category else catalog
-    columns = st.columns(4 if department != "DTF" else 3)
+    is_hoodie = department == "DTF" and category == "卫衣"
+    columns = st.columns(4 if department != "DTF" or is_hoodie else 3)
     all_options = linked_sku_options(scoped)
     material = _select_linked_value(
         "材质", all_options["materials"],
@@ -189,9 +197,20 @@ def _render_container_sku_selector(catalog, department, fixed_category, version)
         f"container_item_brand_{version}", columns[1], allow_blank=True,
     )
     brand_options = linked_sku_options(scoped, material, brand or None)
+    style = ""
+    if is_hoodie:
+        style = _select_linked_value(
+            "款式", brand_options["styles"],
+            f"container_item_style_{version}", columns[2],
+            preferred="常规",
+        )
+        brand_options = linked_sku_options(
+            scoped, material, brand or None, style or None
+        )
     color = _select_linked_value(
         "颜色", brand_options["colors"],
-        f"container_item_color_{version}", columns[2], allow_blank=True,
+        f"container_item_color_{version}",
+        columns[3] if is_hoodie else columns[2], allow_blank=True,
     )
     model = ""
     if department != "DTF":
@@ -204,12 +223,12 @@ def _render_container_sku_selector(catalog, department, fixed_category, version)
         )
     return {
         "品类": category, "品牌": brand, "材质": material,
-        "颜色": color, "型号": model,
+        "款式": style, "颜色": color, "型号": model,
     }
 
 
 def _select_linked_value(
-    label, options, key, container=None, allow_blank=False,
+    label, options, key, container=None, allow_blank=False, preferred=None,
 ):
     target = container if container is not None else st
     choices = list(options)
@@ -219,5 +238,7 @@ def _select_linked_value(
         target.text_input(label, value="", disabled=True, key=f"{key}_empty")
         return ""
     if st.session_state.get(key) not in choices:
-        st.session_state[key] = choices[0]
+        st.session_state[key] = (
+            preferred if preferred in choices else choices[0]
+        )
     return target.selectbox(label, choices, key=key)

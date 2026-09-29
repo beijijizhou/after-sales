@@ -20,10 +20,13 @@ def build_container_inventory_summary(display_df):
         front = ["材质", "颜色"]
     else:
         items = get_container_item_columns(display_df)
+        front = [
+            column for column in ["材质", "款式", "颜色"]
+            if column in display_df.columns
+        ]
         summary = display_df.groupby(
-            "颜色", dropna=False, as_index=False
+            front, dropna=False, as_index=False
         )[items].sum()
-        front = ["颜色"]
     for item in items:
         if item not in summary:
             summary[item] = 0
@@ -40,7 +43,15 @@ def build_container_inventory_summary(display_df):
 
 
 def build_filtered_container_summary(raw_df):
-    front = ["涉及货柜", "部门", "品类", "品牌", "材质", "颜色"]
+    has_style = (
+        raw_df is not None and not raw_df.empty
+        and raw_df.get("style", pd.Series("", index=raw_df.index))
+        .fillna("").astype(str).str.strip().ne("").any()
+    )
+    front = [
+        "涉及货柜", "部门", "品类", "品牌", "材质",
+        *( ["款式"] if has_style else []), "颜色",
+    ]
     if raw_df is None or raw_df.empty:
         return pd.DataFrame(columns=[*front, "总件数"])
     source = raw_df.copy()
@@ -49,16 +60,21 @@ def build_filtered_container_summary(raw_df):
     ).fillna(0)
     fields = [
         "container_key", "container_no", "department", "category", "brand",
-        "material", "color", "size",
+        "material", "style", "color", "size",
     ]
     for column in fields:
+        if column not in source:
+            source[column] = ""
         source[column] = source[column].fillna("").astype(str).str.strip()
     source["涉及货柜"] = source.apply(
         lambda row: get_container_display_label(
             row["container_key"], row["container_no"], [row.get("note", "")]
         ), axis=1,
     )
-    group_keys = ["department", "category", "brand", "material", "color"]
+    group_keys = [
+        "department", "category", "brand", "material",
+        *( ["style"] if has_style else []), "color",
+    ]
     labels = source.groupby(group_keys, dropna=False, as_index=False).agg(
         涉及货柜=("涉及货柜", lambda values: "、".join(dict.fromkeys(
             value for value in values if value
@@ -74,11 +90,14 @@ def build_filtered_container_summary(raw_df):
     ).reset_index()
     names = {
         "department": "部门", "category": "品类", "brand": "品牌",
-        "material": "材质", "color": "颜色",
+        "material": "材质", "style": "款式", "color": "颜色",
     }
     result = quantities.rename(columns=names).merge(
         labels.rename(columns=names),
-        on=["部门", "品类", "品牌", "材质", "颜色"], how="left",
+        on=[
+            "部门", "品类", "品牌", "材质",
+            *( ["款式"] if has_style else []), "颜色",
+        ], how="left",
     )
     for item in items:
         if item not in result:
@@ -88,17 +107,21 @@ def build_filtered_container_summary(raw_df):
         ).fillna(0).astype(int)
     result["总件数"] = result[items].sum(axis=1)
     return result[[*front, *items, "总件数"]].sort_values(
-        ["部门", "品类", "品牌", "材质", "颜色"], kind="stable",
+        [
+            "部门", "品类", "品牌", "材质",
+            *( ["款式"] if has_style else []), "颜色",
+        ], kind="stable",
     ).reset_index(drop=True)
 
 
-def container_display_columns(include_cost, item_columns=None):
+def container_display_columns(include_cost, item_columns=None, include_style=False):
     cost = ["成本"] if include_cost else []
     items = item_columns or SIZE_COLUMNS
     return [
         "货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期",
         "实际到货日期", "实际到货时间（纽约）", "确认到柜时间（纽约）",
-        "货柜号", "部门", "品类", "品牌", "材质", "颜色", *cost,
+        "货柜号", "部门", "品类", "品牌", "材质",
+        *( ["款式"] if include_style else []), "颜色", *cost,
         *items, "总件数", "状态", "备注",
     ]
 
@@ -107,7 +130,7 @@ def get_container_item_columns(display_df):
     metadata = {
         "货柜记录ID", "批次标识", "发货日期", "运输天数", "预计到货日期",
         "实际到货日期", "实际到货时间（纽约）", "确认到柜时间（纽约）",
-        "货柜号", "部门", "品类", "品牌", "材质", "颜色", "成本",
+        "货柜号", "部门", "品类", "品牌", "材质", "款式", "颜色", "成本",
         "总件数", "状态", "备注", "型号", "数量",
     }
     return [column for column in display_df.columns if column not in metadata]

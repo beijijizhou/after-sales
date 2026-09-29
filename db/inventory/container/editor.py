@@ -11,7 +11,7 @@ from db.inventory.operations.adjustments import (
 
 EDITABLE_STATUSES = {"未到货", "在途", "延迟", "已到柜"}
 EDITABLE_FIELDS = {
-    "expected_arrival_date", "category", "brand", "material", "color",
+    "expected_arrival_date", "category", "brand", "material", "style", "color",
     "size", "quantity", "unit_cost", "note",
 }
 
@@ -19,7 +19,7 @@ EDITABLE_FIELDS = {
 def update_container_items(supabase, container_key, updates, operated_by):
     rows = (supabase.table("inventory_container_imports").select(
         "id,container_no,status,expected_arrival_date,category,brand,material,"
-        "color,size,quantity,unit_cost,note"
+        "style,color,size,quantity,unit_cost,note"
     ).eq("container_key", container_key).execute().data or [])
     by_id = {str(row["id"]): row for row in rows}
     if not rows:

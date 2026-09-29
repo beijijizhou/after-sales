@@ -15,18 +15,18 @@ COMPARISON_COLUMNS = [
 def build_inventory_change_comparison(inventory_df, adjustment_df):
     inventory = pd.DataFrame(inventory_df).rename(columns={
         "department": "部门", "category": "品类", "brand": "品牌",
-        "material": "材质", "color": "颜色", "size": "尺码",
+        "material": "材质", "style": "款式", "color": "颜色", "size": "尺码",
         "quantity": "当前库存", "总库存": "当前库存", "型号": "尺码",
     }).copy()
     changes = pd.DataFrame(adjustment_df).rename(columns={
         "department": "部门", "category": "品类", "brand": "品牌",
-        "material": "材质", "color": "颜色", "size": "尺码",
+        "material": "材质", "style": "款式", "color": "颜色", "size": "尺码",
         "quantity": "数量",
     }).copy()
     if changes.empty:
         return pd.DataFrame(columns=COMPARISON_COLUMNS)
     identity = [
-        column for column in ["部门", "品类", "材质", "品牌", "颜色", "尺码"]
+        column for column in ["部门", "品类", "材质", "品牌", "款式", "颜色", "尺码"]
         if column in changes.columns
     ]
     if not {"材质", "品牌", "颜色", "尺码"}.issubset(identity):
@@ -72,13 +72,14 @@ def build_inventory_change_comparison(inventory_df, adjustment_df):
         })
     columns = [
         *[column for column in ["部门", "品类"] if column in identity],
-        *COMPARISON_COLUMNS,
+        "材质", "品牌", *( ["款式"] if "款式" in identity else []),
+        "颜色", "尺码", "当前库存", "本次变动", "调整后库存",
     ]
     return sort_sku_rows(
         pd.DataFrame(rows, columns=columns), material="材质",
         color="颜色", size="尺码",
         leading=[
-            column for column in ["部门", "品类", "材质", "品牌"]
+            column for column in ["部门", "品类", "材质", "品牌", "款式"]
             if column in columns
         ],
     )
@@ -90,7 +91,7 @@ def render_inventory_change_comparison(
     comparison = pd.DataFrame(comparison).copy()
     identity = [
         column for column in [
-            "部门", "品类", "材质", "品牌", "颜色", "尺码"
+            "部门", "品类", "材质", "品牌", "款式", "颜色", "尺码"
         ] if column in comparison
     ]
     return render_stock_change_review(

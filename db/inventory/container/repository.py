@@ -9,8 +9,8 @@ from db.inventory.core.query_filters import apply_inventory_dimension_filters
 
 CONTAINER_COLUMNS = (
     "id,container_key,shipped_date,expected_arrival_date,actual_arrival_date,"
-    "actual_arrival_at,container_no,department,category,brand,material,color,"
-    "size,quantity,unit_cost,status,note,created_at"
+    "actual_arrival_at,container_no,department,category,brand,material,style,"
+    "color,size,quantity,unit_cost,status,note,created_at"
 )
 
 
@@ -54,6 +54,7 @@ def load_inventory_containers(
     result["container_key"] = normalized_no.where(normalized_no != "", result["id"])
     result["actual_arrival_date"] = None
     result["actual_arrival_at"] = None
+    result["style"] = ""
     return result.drop(columns=["id"])
 
 
@@ -178,7 +179,8 @@ def append_inventory_container_items(
         supabase.table("inventory_container_imports")
         .select(
             "container_key,container_no,status,shipped_date,"
-            "expected_arrival_date,department,category,brand,material,color,size"
+            "expected_arrival_date,department,category,brand,material,style,"
+            "color,size"
         )
         .eq("container_key", container_key)
         .execute().data or []
@@ -241,6 +243,7 @@ def _container_records(cleaned_df):
         "category": row["品类"] or None,
         "brand": row["品牌"],
         "material": row["材质"],
+        "style": row.get("款式", ""),
         "color": row["颜色"],
         "size": row["尺码"],
         "quantity": int(row["数量"]),
@@ -255,5 +258,6 @@ def _container_records(cleaned_df):
 
 def _container_item_key(row):
     return tuple(str(row.get(column) or "").strip().casefold() for column in (
-        "department", "category", "brand", "material", "color", "size"
+        "department", "category", "brand", "material", "style", "color",
+        "size",
     ))

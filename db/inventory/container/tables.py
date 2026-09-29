@@ -34,7 +34,9 @@ def build_container_display(df, include_cost=False):
     if uses_model_rows(df):
         return build_model_container_display(df, include_cost)
     item_columns = _ordered_item_columns(df.get("size", []))
-    columns = container_display_columns(include_cost, item_columns)
+    styles = df.get("style", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+    show_style = styles.ne("").any()
+    columns = container_display_columns(include_cost, item_columns, show_style)
     if df.empty:
         return pd.DataFrame(columns=columns)
 
@@ -51,7 +53,9 @@ def build_container_display(df, include_cost=False):
     display["actual_arrival_date"] = display["actual_arrival_date"].fillna(
         missing_arrival
     )
-    for column in ["container_no", "category", "brand", "material", "note"]:
+    for column in ["container_no", "category", "brand", "material", "style", "note"]:
+        if column not in display:
+            display[column] = ""
         display[column] = display[column].fillna("")
     display["department"] = display["department"].fillna(DEFAULT_DEPARTMENT)
     index = [
@@ -59,7 +63,7 @@ def build_container_display(df, include_cost=False):
         "actual_arrival_date", "actual_arrival_at",
         "arrival_confirmed_at",
         "container_no", "department",
-        "category", "brand", "material", "color",
+        "category", "brand", "material", *( ["style"] if show_style else []), "color",
         *(["unit_cost"] if include_cost else []), "status", "note",
     ]
     pivot = display.pivot_table(
@@ -85,7 +89,7 @@ def build_container_display(df, include_cost=False):
         "actual_arrival_at": "实际到货时间（纽约）",
         "arrival_confirmed_at": "确认到柜时间（纽约）",
         "container_no": "货柜号", "department": "部门", "category": "品类",
-        "brand": "品牌", "material": "材质", "color": "颜色",
+        "brand": "品牌", "material": "材质", "style": "款式", "color": "颜色",
         "unit_cost": "成本", "status": "状态", "note": "备注",
     })
     pivot["批次标识"] = pivot.apply(

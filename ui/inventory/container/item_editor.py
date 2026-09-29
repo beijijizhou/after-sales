@@ -19,7 +19,7 @@ from ui.inventory.container.posting import (
 DISPLAY_COLUMNS = {
     "id": "记录ID", "expected_arrival_date": "预计到货日期",
     "category": "品类", "brand": "品牌", "material": "材质",
-    "color": "颜色", "size": "型号", "quantity": "数量",
+    "style": "款式", "color": "颜色", "size": "型号", "quantity": "数量",
     "unit_cost": "成本", "note": "备注",
 }
 
@@ -198,6 +198,6 @@ def build_container_item_editor_source(target):
     ).dt.date
     return sort_sku_rows(
         source,
-        material="材质", color="颜色", size="型号",
+        material="材质", style="款式", color="颜色", size="型号",
         leading=["材质", "品牌"],
     )

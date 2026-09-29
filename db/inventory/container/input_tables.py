@@ -19,7 +19,8 @@ def build_container_template(today=None):
         "发货日期": shipped_date, "预计运输天数": DEFAULT_TRANSIT_DAYS,
         "货柜号": "", "部门": DEFAULT_DEPARTMENT,
         "品类": DEFAULT_CATEGORY, "品牌": "", "材质": "180g",
-        "颜色": "", "成本": 0, **{size: 0 for size in SIZE_COLUMNS},
+        "款式": "", "颜色": "", "成本": 0,
+        **{size: 0 for size in SIZE_COLUMNS},
         "状态": "在途", "备注": "",
     }])
 
@@ -47,11 +48,14 @@ def normalize_container_rows(df):
     )
     defaults = [
         ("货柜号", ""), ("部门", DEFAULT_DEPARTMENT), ("品类", ""),
-        ("品牌", ""), ("材质", "180g"), ("颜色", ""),
+        ("品牌", ""), ("材质", "180g"), ("款式", ""), ("颜色", ""),
         ("状态", "在途"), ("备注", ""),
     ]
     for column, default in defaults:
         result[column] = result[column].fillna(default).astype(str).str.strip()
+    hoodie_rows = result["品类"].eq("卫衣")
+    result.loc[hoodie_rows & result["款式"].eq(""), "款式"] = "常规"
+    result.loc[~hoodie_rows, "款式"] = ""
     container_keys = {}
 
     def container_key(row):
@@ -73,7 +77,7 @@ def normalize_container_rows(df):
     result = result[has_required_identity & ~missing_required_color]
     identifiers = [
         "货柜记录ID", "发货日期", "预计运输天数", "预计到货日期",
-        "货柜号", "部门", "品类", "品牌", "材质", "颜色", "成本",
+        "货柜号", "部门", "品类", "品牌", "材质", "款式", "颜色", "成本",
         "状态", "备注",
     ]
     if model_input:
@@ -99,7 +103,7 @@ def normalize_container_rows(df):
 
 def add_optional_columns(df):
     defaults = {
-        "货柜号": "", "品类": "", "品牌": "", "成本": 0,
+        "货柜号": "", "品类": "", "品牌": "", "款式": "", "成本": 0,
         "状态": "在途", "备注": "", "货柜记录ID": "",
     }
     for column, default in defaults.items():

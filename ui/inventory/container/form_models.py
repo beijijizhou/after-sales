@@ -6,8 +6,11 @@ import streamlit as st
 from db.inventory import SIZE_COLUMNS
 
 
-def empty_container_items(department):
-    columns = ["品类", "材质", "品牌", "颜色"]
+def empty_container_items(department, category=""):
+    columns = ["品类", "材质", "品牌"]
+    if department == "DTF" and category == "卫衣":
+        columns.append("款式")
+    columns.append("颜色")
     columns.extend(SIZE_COLUMNS if department == "DTF" else ["型号", "数量"])
     columns.extend(["成本", "备注", "删除"])
     return pd.DataFrame(columns=columns)
@@ -15,7 +18,12 @@ def empty_container_items(department):
 
 def add_container_identity(items, identity, department):
     result = pd.DataFrame(items).copy()
-    identity_columns = container_identity_columns(department)
+    include_style = (
+        identity.get("品类") == "卫衣" or "款式" in result.columns
+    )
+    identity_columns = container_identity_columns(
+        department, include_style=include_style
+    )
     if any(not str(identity.get(column, "")).strip() for column in ["品类", "材质"]):
         return result, False
     record = {
@@ -23,6 +31,8 @@ def add_container_identity(items, identity, department):
         "品牌": identity.get("品牌", ""), "颜色": identity.get("颜色", ""),
         "成本": 0.0, "备注": "", "删除": False,
     }
+    if include_style:
+        record["款式"] = identity.get("款式", "") or "常规"
     record.update(
         {size: 0 for size in SIZE_COLUMNS}
         if department == "DTF"
@@ -39,8 +49,10 @@ def add_container_identity(items, identity, department):
     return pd.concat([result, pd.DataFrame([record])], ignore_index=True), True
 
 
-def container_identity_columns(department):
+def container_identity_columns(department, include_style=False):
     columns = ["品类", "品牌", "材质", "颜色"]
+    if include_style:
+        columns.insert(3, "款式")
     return [*columns, "型号"] if department != "DTF" else columns
 
 
@@ -49,6 +61,7 @@ def build_item_column_config(department, can_view_cost):
         "品类": st.column_config.TextColumn("品类"),
         "品牌": st.column_config.TextColumn("品牌"),
         "材质": st.column_config.TextColumn("材质"),
+        "款式": st.column_config.TextColumn("款式"),
         "颜色": st.column_config.TextColumn("颜色"),
         "成本": st.column_config.NumberColumn(
             "成本", min_value=0.0, step=0.0001, format="%.4f"
