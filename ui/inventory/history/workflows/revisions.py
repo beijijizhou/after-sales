@@ -56,7 +56,7 @@ def render_daily_outbound_revision_history(
     )
     detail = pd.DataFrame(revisions[selected])
     detail = sort_sku_rows(
-        detail, material="材质", color="颜色", size="尺码",
+        detail, material="材质", style="款式", color="颜色", size="尺码",
         leading=["品牌"],
     )
     st.dataframe(detail, hide_index=True, width="stretch")
@@ -92,6 +92,7 @@ def _flatten_revisions(batches):
                 {
                     "品牌": line.get("brand") or "",
                     "材质": line.get("material") or "",
+                    "款式": line.get("style") or "",
                     "颜色": line.get("color") or "",
                     "尺码": line.get("size") or "",
                     "申报数量": int(line.get("requested_quantity") or 0),

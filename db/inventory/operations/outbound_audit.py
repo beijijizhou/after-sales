@@ -111,7 +111,7 @@ def find_missing_outbound_dates(recorded_dates, start_date, end_date):
 def load_outbound_inventory(supabase, department, category):
     query = (
         supabase.table("inventory_items")
-        .select("category,brand,material,color,size,quantity")
+        .select("category,brand,material,style,color,size,quantity")
         .eq("department", department)
         .eq("is_active", True)
     )
@@ -130,7 +130,7 @@ def load_daily_outbound_batch(supabase, batch_id):
         supabase.table("inventory_movements")
         .select(
             "batch_id,movement_date,department,category,brand,material,"
-            "color,size,quantity_change,reason"
+            "style,color,size,quantity_change,reason"
         )
         .eq("batch_id", str(batch_id))
         .execute()
@@ -145,8 +145,11 @@ def build_daily_outbound_edit_rows(batch_df):
         return pd.DataFrame()
     result = batch_df.rename(columns={
         "movement_date": "日期", "brand": "品牌",
-        "material": "材质", "color": "颜色", "size": "尺码",
+        "material": "材质", "style": "款式", "color": "颜色",
+        "size": "尺码",
     }).copy()
+    if "款式" not in result:
+        result["款式"] = ""
     result["日期"] = pd.to_datetime(
         result["日期"], errors="coerce"
     ).dt.date
@@ -157,7 +160,7 @@ def build_daily_outbound_edit_rows(batch_df):
     result["成本"] = pd.NA
     result["备注"] = "仓库每日出货"
     return result[[
-        "日期", "操作", "品牌", "材质", "颜色", "尺码",
+        "日期", "操作", "品牌", "材质", "款式", "颜色", "尺码",
         "数量", "成本", "备注",
     ]]
 
@@ -166,7 +169,9 @@ def build_replacement_inventory(current_inventory, original_batch):
     inventory = current_inventory.copy()
     if inventory.empty:
         return inventory
-    for column in ["brand", "material", "color", "size"]:
+    for column in ["brand", "material", "style", "color", "size"]:
+        if column not in inventory:
+            inventory[column] = ""
         inventory[column] = (
             inventory[column].fillna("").astype(str).str.strip()
         )
@@ -179,6 +184,7 @@ def build_replacement_inventory(current_inventory, original_batch):
         matches = (
             (inventory["brand"] == str(row["品牌"]).strip())
             & (inventory["material"] == str(row["材质"]).strip())
+            & (inventory["style"] == str(row.get("款式") or "").strip())
             & (inventory["color"] == str(row["颜色"]).strip())
             & (inventory["size"] == str(row["尺码"]).strip().upper())
         )

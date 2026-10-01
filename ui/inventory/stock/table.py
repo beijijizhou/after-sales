@@ -69,7 +69,7 @@ def render_inventory_table(
         )
     show_zero_stock = st.checkbox(
         t("显示零库存 SKU"),
-        value=False,
+        value=category == "卫衣",
         key=(
             f"inventory_show_zero_stock_{department}_{category or 'all'}_"
             f"{'historical' if is_historical else 'current'}"

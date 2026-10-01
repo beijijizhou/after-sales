@@ -40,14 +40,43 @@ create table if not exists public.inventory_daily_outbound_lines (
         references public.inventory_daily_outbound_revisions(id),
     brand text not null default '',
     material text not null,
+    style text not null default '',
     color text not null,
     size text not null,
     requested_quantity integer not null check (requested_quantity > 0),
     applied_quantity integer not null check (applied_quantity >= 0),
     shortage_quantity integer not null check (shortage_quantity >= 0),
     constraint inventory_daily_outbound_line_math_check
-        check (requested_quantity = applied_quantity + shortage_quantity),
-    unique (revision_id, brand, material, color, size)
+        check (requested_quantity = applied_quantity + shortage_quantity)
+);
+
+alter table public.inventory_daily_outbound_lines
+add column if not exists style text not null default '';
+
+do $$
+declare
+    constraint_row record;
+begin
+    for constraint_row in
+        select conname
+        from pg_constraint
+        where conrelid = 'public.inventory_daily_outbound_lines'::regclass
+          and contype = 'u'
+          and position(
+              'style' in lower(pg_get_constraintdef(oid))
+          ) = 0
+    loop
+        execute format(
+            'alter table public.inventory_daily_outbound_lines drop constraint %I',
+            constraint_row.conname
+        );
+    end loop;
+end;
+$$;
+
+create unique index if not exists inventory_daily_outbound_lines_revision_sku_key
+on public.inventory_daily_outbound_lines (
+    revision_id, brand, material, style, color, size
 );
 
 create index if not exists idx_daily_outbound_revision_batch
@@ -142,6 +171,7 @@ begin
           and category = p_category
           and brand = coalesce(trim(source_row->>'brand'), '')
           and material = coalesce(trim(source_row->>'material'), '')
+          and style = coalesce(trim(source_row->>'style'), '')
           and color = coalesce(trim(source_row->>'color'), '')
           and size = upper(coalesce(trim(source_row->>'size'), ''))
         for update;
@@ -155,6 +185,7 @@ begin
         result_lines := result_lines || jsonb_build_array(jsonb_build_object(
             'brand', coalesce(trim(source_row->>'brand'), ''),
             'material', coalesce(trim(source_row->>'material'), ''),
+            'style', coalesce(trim(source_row->>'style'), ''),
             'color', coalesce(trim(source_row->>'color'), ''),
             'size', upper(coalesce(trim(source_row->>'size'), '')),
             'requested_quantity', requested,
@@ -166,6 +197,7 @@ begin
             applied_rows := applied_rows || jsonb_build_array(jsonb_build_object(
                 'brand', coalesce(trim(source_row->>'brand'), ''),
                 'material', coalesce(trim(source_row->>'material'), ''),
+                'style', coalesce(trim(source_row->>'style'), ''),
                 'color', coalesce(trim(source_row->>'color'), ''),
                 'size', upper(coalesce(trim(source_row->>'size'), '')),
                 'quantity_change', -applied,
@@ -176,7 +208,7 @@ begin
     end loop;
 
     if jsonb_array_length(applied_rows) > 0 then
-        inventory_batch_id := public.apply_inventory_adjustment_batch(
+        inventory_batch_id := public.apply_inventory_adjustment_batch_with_style(
             p_department, p_category, applied_rows,
             gen_random_uuid(), effective_user
         );
@@ -199,12 +231,13 @@ begin
     ) returning id into new_revision_id;
 
     insert into public.inventory_daily_outbound_lines (
-        revision_id, brand, material, color, size,
+        revision_id, brand, material, style, color, size,
         requested_quantity, applied_quantity, shortage_quantity
     )
     select
         new_revision_id,
-        value->>'brand', value->>'material', value->>'color', value->>'size',
+        value->>'brand', value->>'material', value->>'style',
+        value->>'color', value->>'size',
         (value->>'requested_quantity')::integer,
         (value->>'applied_quantity')::integer,
         (value->>'shortage_quantity')::integer

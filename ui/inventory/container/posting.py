@@ -13,10 +13,6 @@ from ui.inventory.container.tables import (
     render_container_detail,
     render_container_inventory_summary,
 )
-from ui.inventory.container.cost_editor import (
-    auto_save_container_costs,
-    can_edit_container_cost,
-)
 from ui.inventory.container.selection import (
     container_selection_widget_key,
     selected_container_key,
@@ -45,6 +41,8 @@ def load_pending_containers(
 
 
 def render_pending_container_posting(supabase, raw_df):
+    from ui.inventory.container.item_editor import render_container_item_editor
+
     st.subheader("待确认入库")
     st.caption(
         "货柜已经到柜，但尚未增加库存。确认后整柜一次性入库，"
@@ -112,15 +110,17 @@ def render_pending_container_posting(supabase, raw_df):
         return
 
     target = raw_df[raw_df["container_key"] == container_key]
-    edited_detail_df = render_container_detail(
+    render_container_detail(
         build_container_display(
             target, include_cost=has_permission("can_view_cost")
         ),
         container_key,
-        editable_cost=can_edit_container_cost(),
     )
-    auto_save_container_costs(
-        supabase, raw_df, container_key, edited_detail_df
+    render_container_item_editor(
+        supabase,
+        target,
+        container_key,
+        has_permission("can_edit_container"),
     )
     render_container_posting_action(
         supabase, target, container_key, key_prefix="pending_container"

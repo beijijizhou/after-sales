@@ -11,6 +11,7 @@ from db.inventory.container.repository import load_container_search_records
 from db.inventory.container.labels import get_container_display_label
 from db.inventory.container.tables import build_container_display
 from ui.inventory.container.events import render_status_update
+from ui.inventory.container.item_editor import render_container_item_editor
 from ui.inventory.container.tables import render_container_detail
 from ui.table_layout import fit_table_height
 from utils.auth import has_permission
@@ -141,6 +142,12 @@ def render_container_search(supabase):
             target, include_cost=has_permission("can_view_cost")
         ),
         container_key,
+    )
+    render_container_item_editor(
+        supabase,
+        target,
+        container_key,
+        has_permission("can_edit_container"),
     )
     _render_search_action(supabase, target, container_key)
     _render_search_history(supabase, container_key)

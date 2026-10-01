@@ -106,7 +106,7 @@ def render_daily_outbound_replacement(supabase, batch_id, key_scope=""):
 def movement_rows_as_adjustments(rows, reverse=False):
     result = pd.DataFrame(rows).rename(columns={
         "department": "部门", "category": "品类", "brand": "品牌",
-        "material": "材质", "color": "颜色", "size": "尺码",
+        "material": "材质", "style": "款式", "color": "颜色", "size": "尺码",
     }).copy()
     quantity = pd.to_numeric(
         result["quantity_change"], errors="coerce"
@@ -115,7 +115,12 @@ def movement_rows_as_adjustments(rows, reverse=False):
         quantity = -quantity
     result["操作"] = quantity.map(lambda value: "增加" if value > 0 else "扣减")
     result["数量"] = quantity.abs()
-    return result[["部门", "品类", "品牌", "材质", "颜色", "尺码", "操作", "数量"]]
+    if "款式" not in result:
+        result["款式"] = ""
+    return result[[
+        "部门", "品类", "品牌", "材质", "款式", "颜色", "尺码",
+        "操作", "数量",
+    ]]
 
 
 def _load_editable_batch(supabase, batch_id):

@@ -132,6 +132,7 @@ def save_daily_outbound_revision(
         prepared.append({
             "brand": str(row.get("品牌") or "").strip(),
             "material": str(row.get("材质") or "").strip(),
+            "style": str(row.get("款式") or "").strip(),
             "color": str(row.get("颜色") or "").strip(),
             "size": str(row.get("尺码") or "").strip().upper(),
             "requested_quantity": quantity,
@@ -272,7 +273,7 @@ def load_daily_outbound_revisions(
             "id,revision_number,action,inventory_batch_id,"
             "reversal_inventory_batch_id,requested_total,applied_total,"
             "shortage_total,note,created_by,created_at,"
-            "inventory_daily_outbound_lines(brand,material,color,size,"
+            "inventory_daily_outbound_lines(brand,material,style,color,size,"
             "requested_quantity,applied_quantity,shortage_quantity))"
         )
         .eq("department", department)
@@ -292,7 +293,7 @@ def load_daily_outbound_revision_by_inventory_batch(
         supabase.table("inventory_daily_outbound_revisions")
         .select(
             "id,daily_outbound_batch_id,revision_number,"
-            "inventory_daily_outbound_lines(brand,material,color,size,"
+            "inventory_daily_outbound_lines(brand,material,style,color,size,"
             "requested_quantity,applied_quantity,shortage_quantity),"
             "inventory_daily_outbound_batches("
             "department,category,movement_date,current_revision,status)"
@@ -318,6 +319,7 @@ def build_daily_outbound_edit_rows(revision):
         "操作": "扣减",
         "品牌": line.get("brand") or "",
         "材质": line.get("material") or "",
+        "款式": line.get("style") or "",
         "颜色": line.get("color") or "",
         "尺码": line.get("size") or "",
         "数量": int(line.get("requested_quantity") or 0),

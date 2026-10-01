@@ -6,10 +6,16 @@ import pandas as pd
 
 
 def find_outbound_inventory_issues(expected_df, inventory_df):
-    keys = ["品牌", "材质", "颜色", "尺码"]
+    keys = ["品牌", "材质", "款式", "颜色", "尺码"]
+    expected_df = pd.DataFrame(expected_df).copy()
+    inventory_df = pd.DataFrame(inventory_df).copy()
+    if "款式" not in expected_df:
+        expected_df["款式"] = ""
+    if "style" not in inventory_df:
+        inventory_df["style"] = ""
     expected = expected_df.groupby(keys, as_index=False)["数量"].sum()
     inventory = inventory_df.rename(columns={
-        "brand": "品牌", "material": "材质", "color": "颜色",
+        "brand": "品牌", "material": "材质", "style": "款式", "color": "颜色",
         "size": "尺码", "quantity": "当前库存",
     })
     available = [*keys, "当前库存"]
@@ -61,14 +67,16 @@ def audit_outbound_batch(supabase, batch_id, expected_df):
 def _load_outbound_batch(supabase, batch_id):
     return (
         supabase.table("inventory_movements")
-        .select("movement_date,brand,material,color,size,quantity_change")
+        .select("movement_date,brand,material,style,color,size,quantity_change")
         .eq("batch_id", str(batch_id)).execute().data or []
     )
 
 
 def _build_outbound_mismatches(rows, expected_df):
-    keys = ["日期", "品牌", "材质", "颜色", "尺码"]
+    keys = ["日期", "品牌", "材质", "款式", "颜色", "尺码"]
     expected = expected_df.copy()
+    if "款式" not in expected:
+        expected["款式"] = ""
     expected["日期"] = pd.to_datetime(
         expected["日期"], errors="coerce"
     ).dt.date.astype(str)
@@ -78,12 +86,13 @@ def _build_outbound_mismatches(rows, expected_df):
     saved = pd.DataFrame(rows)
     if saved.empty:
         saved = pd.DataFrame(columns=[
-            "movement_date", "brand", "material", "color", "size",
+            "movement_date", "brand", "material", "style", "color", "size",
             "quantity_change",
         ])
     saved = saved.rename(columns={
         "movement_date": "日期", "brand": "品牌", "material": "材质",
-        "color": "颜色", "size": "尺码", "quantity_change": "数据库变化",
+        "style": "款式", "color": "颜色", "size": "尺码",
+        "quantity_change": "数据库变化",
     })
     saved["日期"] = saved["日期"].astype(str)
     saved["数据库件数"] = pd.to_numeric(
@@ -102,6 +111,7 @@ def _movement_signatures(rows):
         (
             str(row.get("movement_date")), str(row.get("brand") or "").strip(),
             str(row.get("material") or "").strip(),
+            str(row.get("style") or "").strip(),
             str(row.get("color") or "").strip(),
             str(row.get("size") or "").strip().upper(),
             int(row.get("quantity_change") or 0),
@@ -121,6 +131,7 @@ def _expected_signatures(expected_df):
             movement_date.date().isoformat(),
             str(row.get("品牌") or "").strip(),
             str(row.get("材质") or "").strip(),
+            str(row.get("款式") or "").strip(),
             str(row.get("颜色") or "").strip(),
             str(row.get("尺码") or "").strip().upper(), quantity,
         ))
