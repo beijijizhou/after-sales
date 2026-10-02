@@ -21,6 +21,7 @@ create table if not exists public.inventory_stocktake_lines (
     inventory_item_id uuid not null references public.inventory_items(id),
     brand text not null default '',
     material text not null,
+    style text not null default '',
     color text not null default '',
     size text not null default '',
     quantity_before integer not null,
@@ -33,6 +34,9 @@ create table if not exists public.inventory_stocktake_lines (
 
 create index if not exists inventory_stocktake_batches_date_idx
 on public.inventory_stocktake_batches (business_date desc, created_at desc);
+
+alter table public.inventory_stocktake_lines
+add column if not exists style text not null default '';
 
 drop function if exists public.apply_inventory_stocktake_batch(
     text, text, jsonb, uuid, text
@@ -59,6 +63,7 @@ declare
     normalized_category text := nullif(trim(coalesce(p_category, '')), '');
     normalized_brand text;
     normalized_material text;
+    normalized_style text;
     normalized_color text;
     normalized_size text;
     target_quantity integer;
@@ -81,7 +86,8 @@ begin
         select value
         from jsonb_array_elements(p_rows)
         order by
-            value->>'material', value->>'brand', value->>'color', value->>'size'
+            value->>'material', value->>'brand', value->>'style',
+            value->>'color', value->>'size'
     loop
         if coalesce(
             (stocktake_row->>'movement_date')::date, business_date
@@ -90,6 +96,7 @@ begin
         end if;
         normalized_brand := coalesce(trim(stocktake_row->>'brand'), '');
         normalized_material := coalesce(trim(stocktake_row->>'material'), '');
+        normalized_style := coalesce(trim(stocktake_row->>'style'), '');
         normalized_color := coalesce(trim(stocktake_row->>'color'), '');
         normalized_size := upper(coalesce(trim(stocktake_row->>'size'), ''));
         target_quantity := (stocktake_row->>'target_quantity')::integer;
@@ -103,6 +110,7 @@ begin
           and coalesce(category, '') = coalesce(normalized_category, '')
           and brand = normalized_brand
           and material = normalized_material
+          and coalesce(style, '') = normalized_style
           and coalesce(color, '') = normalized_color
           and coalesce(size, '') = normalized_size
         for update;
@@ -111,9 +119,9 @@ begin
             continue;
         end if;
         if current_item.id is null then
-            raise exception '未找到需要设置的 SKU：% % % %',
+            raise exception '未找到需要设置的 SKU：% % % % %',
                 normalized_material, normalized_brand,
-                normalized_color, normalized_size;
+                normalized_style, normalized_color, normalized_size;
         end if;
         quantity_before := current_item.quantity;
         quantity_difference := target_quantity - quantity_before;
@@ -122,6 +130,7 @@ begin
             'inventory_item_id', current_item.id,
             'brand', normalized_brand,
             'material', normalized_material,
+            'style', normalized_style,
             'color', normalized_color,
             'size', normalized_size,
             'quantity_before', quantity_before,
@@ -134,6 +143,7 @@ begin
                 jsonb_build_object(
                     'brand', normalized_brand,
                     'material', normalized_material,
+                    'style', normalized_style,
                     'color', normalized_color,
                     'size', normalized_size,
                     'quantity_change', quantity_difference,
@@ -146,7 +156,7 @@ begin
     end loop;
 
     if jsonb_array_length(adjustment_rows) > 0 then
-        perform public.apply_inventory_adjustment_batch(
+        perform public.apply_inventory_adjustment_batch_with_style(
             normalized_department, normalized_category, adjustment_rows,
             effective_batch_id, effective_user, 'bulk'
         );
@@ -165,13 +175,14 @@ begin
     from jsonb_array_elements(audit_rows);
 
     insert into public.inventory_stocktake_lines (
-        batch_id, inventory_item_id, brand, material, color, size,
+        batch_id, inventory_item_id, brand, material, style, color, size,
         quantity_before, target_quantity, quantity_difference,
         quantity_after, reason
     )
     select
         effective_batch_id, (value->>'inventory_item_id')::uuid,
-        value->>'brand', value->>'material', value->>'color', value->>'size',
+        value->>'brand', value->>'material', value->>'style',
+        value->>'color', value->>'size',
         (value->>'quantity_before')::integer,
         (value->>'target_quantity')::integer,
         (value->>'quantity_difference')::integer,

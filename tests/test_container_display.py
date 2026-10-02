@@ -251,7 +251,7 @@ class ContainerDisplayTests(unittest.TestCase):
         self.assertEqual(quantity, 22_508)
         self.assertAlmostEqual(cost, 32_811.04)
 
-    def test_dtf_summary_combines_brands_and_materials(self):
+    def test_dtf_summary_keeps_material_identity_while_combining_brands(self):
         source = pd.DataFrame([
             {
                 **container_row("DTF", "180g", "S", 72),
@@ -269,9 +269,12 @@ class ContainerDisplayTests(unittest.TestCase):
             build_container_display(source)
         )
 
-        self.assertEqual(len(summary), 1)
-        self.assertEqual(summary.iloc[0]["S"], 172)
-        self.assertEqual(summary.iloc[0]["总件数"], 172)
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(
+            dict(zip(summary["材质"], summary["S"])),
+            {"180g": 72, "CVC": 100},
+        )
+        self.assertEqual(summary["总件数"].sum(), 172)
 
     def test_uv_summary_uses_models_instead_of_sizes(self):
         source = pd.DataFrame([

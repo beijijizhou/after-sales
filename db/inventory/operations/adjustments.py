@@ -16,7 +16,9 @@ def build_adjustment_template():
 
 
 def build_wide_adjustment_template():
-    return pd.DataFrame(columns=["日期", "品牌", "材质", "颜色", *SIZE_COLUMNS, "备注"])
+    return pd.DataFrame(columns=[
+        "日期", "品牌", "材质", "款式", "颜色", *SIZE_COLUMNS, "备注",
+    ])
 
 
 def normalize_wide_adjustment_rows(df):
@@ -193,7 +195,7 @@ def apply_stocktake_rows(
     batch_id = str(batch_id or uuid4())
     existing_rows = (
         supabase.table("inventory_items")
-        .select("brand,material,color,size")
+        .select("brand,material,style,color,size")
         .eq("department", department)
         .eq("category", category)
         .execute()
@@ -204,6 +206,7 @@ def apply_stocktake_rows(
         (
             str(row.get("brand") or "").strip(),
             str(row.get("material") or "").strip(),
+            str(row.get("style") or "").strip(),
             str(row.get("color") or "").strip(),
             str(row.get("size") or "").strip().upper(),
         )
@@ -214,6 +217,7 @@ def apply_stocktake_rows(
         identity = (
             str(row["品牌"] or "").strip(),
             str(row["材质"] or "").strip(),
+            str(row.get("款式") or "").strip(),
             str(row["颜色"] or "").strip(),
             str(row["尺码"] or "").strip().upper(),
         )
@@ -229,8 +233,9 @@ def apply_stocktake_rows(
         records.append({
             "brand": identity[0],
             "material": identity[1],
-            "color": identity[2],
-            "size": identity[3],
+            "style": identity[2],
+            "color": identity[3],
+            "size": identity[4],
             "target_quantity": target_quantity,
             "reason": reason,
             "movement_date": row["日期"].isoformat(),

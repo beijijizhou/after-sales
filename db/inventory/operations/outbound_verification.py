@@ -94,6 +94,8 @@ def _build_outbound_mismatches(rows, expected_df):
         "style": "款式", "color": "颜色", "size": "尺码",
         "quantity_change": "数据库变化",
     })
+    if "款式" not in saved:
+        saved["款式"] = ""
     saved["日期"] = saved["日期"].astype(str)
     saved["数据库件数"] = pd.to_numeric(
         saved["数据库变化"], errors="coerce"

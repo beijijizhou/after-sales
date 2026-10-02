@@ -25,7 +25,8 @@ def build_adjustment_stock_comparison(inventory_df, edited_df, action):
     if {"型号", "数量"}.issubset(edited.columns):
         return _build_model_stock_comparison(inventory, edited, action)
 
-    identity = ["品牌", "材质", "颜色"]
+    has_style = _has_style_dimension(inventory, edited)
+    identity = ["品牌", "材质", *(["款式"] if has_style else []), "颜色"]
     for frame in [inventory, edited]:
         for column in identity:
             if column not in frame:
@@ -78,6 +79,7 @@ def build_adjustment_stock_comparison(inventory_df, edited_df, action):
             rows.append({
                 "材质": item["材质"],
                 "品牌": item["品牌"],
+                **({"款式": item["款式"]} if has_style else {}),
                 "颜色": item["颜色"],
                 "尺码": size,
                 "当前库存": current_quantity,
@@ -85,13 +87,16 @@ def build_adjustment_stock_comparison(inventory_df, edited_df, action):
                 "调整后库存": current_quantity + change,
                 "设置为": entered if action == "设置" else pd.NA,
             })
-    result_columns = [*COMPARISON_COLUMNS]
+    result_columns = [
+        "材质", "品牌", *(["款式"] if has_style else []), "颜色",
+        "尺码", "当前库存", "本次变动", "调整后库存",
+    ]
     if action == "设置":
         result_columns.append("设置为")
     return sort_sku_rows(
         pd.DataFrame(rows, columns=result_columns),
         material="材质", color="颜色", size="尺码",
-        leading=["材质", "品牌"],
+        leading=["材质", "品牌", *(["款式"] if has_style else [])],
     )
 
 def render_adjustment_stock_comparison(inventory_df, edited_df, action):
@@ -107,9 +112,13 @@ def render_adjustment_stock_comparison(inventory_df, edited_df, action):
             "设置为": "本次设置为", "本次变动": "实际变动 (+/-)",
         })
         display["实际变动 (+/-)"] = display["实际变动 (+/-)"].map(_format_signed)
+        identity_columns = [
+            "材质", "品牌", *(["款式"] if "款式" in display else []),
+            "颜色", "尺码",
+        ]
         st.dataframe(
             display[[
-                "材质", "品牌", "颜色", "尺码", "当前库存",
+                *identity_columns, "当前库存",
                 "本次设置为", "实际变动 (+/-)", "调整后库存",
             ]],
             hide_index=True, width="stretch", height=fit_table_height(display),
@@ -181,3 +190,12 @@ def _wide_values(indexed, key):
     if isinstance(values, pd.DataFrame):
         values = values.sum(axis=0)
     return pd.to_numeric(values, errors="coerce").fillna(0).astype(int)
+
+
+def _has_style_dimension(*frames):
+    for frame in frames:
+        if "款式" not in frame:
+            continue
+        if frame["款式"].fillna("").astype(str).str.strip().ne("").any():
+            return True
+    return False

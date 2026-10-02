@@ -91,6 +91,28 @@ class InventoryAdjustmentPreviewTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["本次变动"], -60)
         self.assertEqual(result.iloc[0]["调整后库存"], -10)
 
+    def test_hoodie_styles_are_separate_inventory_identities(self):
+        inventory = pd.DataFrame([
+            {
+                "品牌": "Haloo", "材质": "连帽", "款式": "常规",
+                "颜色": "黑", **{size: 0 for size in SIZE_COLUMNS}, "M": 120,
+            },
+            {
+                "品牌": "Haloo", "材质": "连帽", "款式": "拉链",
+                "颜色": "黑", **{size: 0 for size in SIZE_COLUMNS}, "M": 40,
+            },
+        ])
+        edited = pd.DataFrame([{
+            "品牌": "Haloo", "材质": "连帽", "款式": "常规",
+            "颜色": "黑", **{size: 0 for size in SIZE_COLUMNS}, "M": 20,
+        }])
+
+        result = build_adjustment_stock_comparison(inventory, edited, "增加")
+
+        self.assertEqual(result.iloc[0]["款式"], "常规")
+        self.assertEqual(result.iloc[0]["当前库存"], 120)
+        self.assertEqual(result.iloc[0]["调整后库存"], 140)
+
     def test_long_preview_uses_material_brand_color_size_order(self):
         inventory = pd.DataFrame([
             {

@@ -40,9 +40,17 @@ def render_adjust_form(supabase, department, category, inventory_df):
     current_date = datetime.now(ZoneInfo("America/New_York")).date()
     form_version = st.session_state.get("manual_adjustment_editor_version", 0)
     brands, materials, colors = adjustment_dimension_options(inventory_df)
+    styles = adjustment_style_options(inventory_df)
+    uses_style = category == "卫衣" or bool(styles)
     default_df = build_wide_adjustment_template().drop(
         columns=["日期"], errors="ignore"
     )
+    if not uses_style:
+        default_df = default_df.drop(columns=["款式"], errors="ignore")
+    elif styles:
+        default_df.loc[0, "款式"] = (
+            "常规" if "常规" in styles else styles[0]
+        )
     default_df.loc[0, "材质"] = (
         "180g" if "180g" in materials else materials[0]
     )
@@ -69,6 +77,10 @@ def render_adjust_form(supabase, department, category, inventory_df):
         "材质": st.column_config.SelectboxColumn(t("材质"), options=materials, required=True),
         "颜色": st.column_config.SelectboxColumn(t("颜色"), options=colors, required=True),
     }
+    if uses_style:
+        adjustment_columns["款式"] = st.column_config.SelectboxColumn(
+            "款式", options=styles or ["常规"], required=True
+        )
     if action == "设置":
         adjustment_columns["设置此行"] = st.column_config.CheckboxColumn(
             "设置此行", help="目标库存全部为 0 时，请勾选此项。"
@@ -85,7 +97,7 @@ def render_adjust_form(supabase, department, category, inventory_df):
         key=(
             f"manual_inventory_adjustments_{get_language()}_"
             f"{current_date.isoformat()}_{form_version}_"
-            f"{_adjustment_scope_key(department, category, brands, materials, colors)}"
+            f"{_adjustment_scope_key(department, category, brands, materials, colors, styles)}"
         ),
     )
     render_adjustment_stock_comparison(
@@ -149,8 +161,21 @@ def adjustment_dimension_options(inventory_df):
     return brands, values("材质") or ["180g"], values("颜色")
 
 
-def _adjustment_scope_key(department, category, brands, materials, colors):
-    value = repr((department, category, brands, materials, colors))
+def adjustment_style_options(inventory_df):
+    source = inventory_df
+    if source is None or source.empty or "款式" not in source:
+        return []
+    return sorted({
+        str(value).strip()
+        for value in source["款式"].dropna()
+        if str(value).strip()
+    })
+
+
+def _adjustment_scope_key(
+    department, category, brands, materials, colors, styles=None,
+):
+    value = repr((department, category, brands, materials, colors, styles or []))
     return sha1(value.encode("utf-8")).hexdigest()[:10]
 
 

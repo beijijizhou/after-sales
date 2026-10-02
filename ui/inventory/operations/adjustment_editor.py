@@ -12,12 +12,21 @@ def build_adjustment_preview(adjustment_df):
         return pd.DataFrame()
     preview = adjustment_df.copy()
     preview["日期"] = pd.to_datetime(preview["日期"], errors="coerce").dt.date
-    for column in ["品牌", "材质", "颜色", "备注"]:
+    has_style = (
+        "款式" in preview
+        and preview["款式"].fillna("").astype(str).str.strip().ne("").any()
+    )
+    for column in [
+        "品牌", "材质", *(["款式"] if has_style else []), "颜色", "备注",
+    ]:
         preview[column] = preview[column].fillna("").astype(str)
     preview["数量"] = pd.to_numeric(
         preview["数量"], errors="coerce"
     ).fillna(0).astype(int)
-    index = ["日期", "操作", "品牌", "材质", "颜色", "备注"]
+    index = [
+        "日期", "操作", "品牌", "材质",
+        *(["款式"] if has_style else []), "颜色", "备注",
+    ]
     wide = preview.pivot_table(
         index=index, columns="尺码", values="数量",
         aggfunc="sum", fill_value=0,
@@ -48,6 +57,8 @@ def render_adjustment_preview_editor(
         "颜色": st.column_config.TextColumn(t("颜色"), required=True),
         "备注": st.column_config.TextColumn(t("备注")),
     }
+    if "款式" in preview:
+        config["款式"] = st.column_config.TextColumn("款式", required=True)
     if fixed_date is None:
         config["日期"] = st.column_config.DateColumn(t("日期"), required=True)
     for size in SIZE_COLUMNS:
@@ -56,7 +67,9 @@ def render_adjustment_preview_editor(
         )
     disabled = ["操作"] if lock_operation else []
     if lock_identity:
-        disabled.extend(["品牌", "材质", "颜色"])
+        disabled.extend([
+            "品牌", "材质", *(["款式"] if "款式" in preview else []), "颜色",
+        ])
         if fixed_date is None:
             disabled.append("日期")
     disabled.extend(disabled_columns or [])

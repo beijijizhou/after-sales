@@ -2,7 +2,10 @@ import unittest
 
 import pandas as pd
 
-from ui.inventory.operations.forms import adjustment_dimension_options
+from ui.inventory.operations.forms import (
+    adjustment_dimension_options,
+    adjustment_style_options,
+)
 from ui.inventory.operations.adjustment_batch import (
     apply_adjustment_batch_fields,
 )
@@ -36,6 +39,16 @@ class InventoryAdjustmentFormTests(unittest.TestCase):
         self.assertEqual(materials, ["160g", "180g", "CVC"])
         self.assertEqual(brands, ["", "Caribbean", "Haloo"])
         self.assertEqual(colors, ["白", "黑"])
+
+    def test_hoodie_adjustment_lists_available_styles(self):
+        inventory = pd.DataFrame([
+            {"品牌": "Haloo", "材质": "连帽", "款式": "常规", "颜色": "黑"},
+            {"品牌": "Haloo", "材质": "连帽", "款式": "拉链", "颜色": "白"},
+        ])
+
+        self.assertEqual(
+            adjustment_style_options(inventory), ["常规", "拉链"]
+        )
 
 
 if __name__ == "__main__":

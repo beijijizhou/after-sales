@@ -192,6 +192,9 @@ def render_posted_container_correction(supabase, target, container_key):
 
 
 def build_container_item_editor_source(target):
+    target = pd.DataFrame(target).copy()
+    if "style" not in target:
+        target["style"] = ""
     source = target[list(DISPLAY_COLUMNS)].rename(columns=DISPLAY_COLUMNS).copy()
     source["预计到货日期"] = pd.to_datetime(
         source["预计到货日期"], errors="coerce"
