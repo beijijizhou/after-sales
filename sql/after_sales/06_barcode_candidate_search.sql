@@ -38,8 +38,15 @@ begin
         scan.scanned_by::text,
         scan.scanned_at::timestamptz
     from unnest(coalesce(p_prefixes, '{}')) as term(prefix)
+    -- A LIKE whose pattern is not a constant cannot use an index, so bound
+    -- the prefix with the byte-order operators of the text_pattern_ops index.
     join public.barcode_scans scan
-      on scan.barcode like term.prefix || '%'
+      on term.prefix <> ''
+     and scan.barcode ~>=~ term.prefix
+     and scan.barcode ~<~ (
+         left(term.prefix, -1)
+         || chr(ascii(right(term.prefix, 1)) + 1)
+     )
     union
     select
         scan.barcode::text,
