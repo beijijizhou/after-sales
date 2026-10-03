@@ -1,8 +1,13 @@
 import re
 
 
+HUMBIRD_PATTERN = re.compile(
+    r"(?:SCGD-)?(B[A-Z0-9]{6})(?:-(\d+))?(?:-([AB]))?"
+)
+
+
 def matches(value):
-    return re.fullmatch(r"B[A-Z0-9]{6}(-\d)?", value.strip().upper()) is not None
+    return HUMBIRD_PATTERN.fullmatch(value.strip().upper()) is not None
 
 
 def build_candidates(value):
@@ -11,15 +16,33 @@ def build_candidates(value):
     if not value:
         return []
 
-    if value.startswith("SCGD-"):
-        base = value
-    else:
-        base = f"SCGD-{value}"
+    match = HUMBIRD_PATTERN.fullmatch(value)
+    if not match:
+        return [value]
 
-    if base.endswith("-A") or base.endswith("-B"):
-        return [base]
+    order_code, sequence, variant = match.groups()
+    prefix = f"SCGD-{order_code}"
+    if variant:
+        return [
+            f"{prefix}-{sequence}-{variant}"
+            if sequence else f"{prefix}-{variant}"
+        ]
+    if sequence:
+        return [
+            f"{prefix}-{sequence}-A",
+            f"{prefix}-{sequence}-B",
+        ]
 
-    return [
-        f"{base}-A",
-        f"{base}-B",
-    ]
+    return [value]
+
+
+def build_prefixes(value):
+    value = value.strip().upper()
+    match = HUMBIRD_PATTERN.fullmatch(value)
+    if not match:
+        return []
+
+    order_code, sequence, variant = match.groups()
+    if sequence or variant:
+        return []
+    return [f"SCGD-{order_code}-"]

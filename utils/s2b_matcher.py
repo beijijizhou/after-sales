@@ -11,7 +11,14 @@ def build_candidates(value):
     if not value:
         return []
 
-    if re.fullmatch(r"[A-Z0-9]{6}-\d", value):
+    if re.fullmatch(r"[A-Z0-9]{6}-\d+", value):
         return [value]
 
-    return [f"{value}-1"]
+    return [value]
+
+
+def build_prefixes(value):
+    value = value.strip().upper()
+    if not matches(value):
+        return []
+    return [f"{value}-"]

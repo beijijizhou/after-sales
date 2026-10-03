@@ -56,6 +56,11 @@ col1, col2 = st.columns(2)
 
 exact_search = col1.button("精准匹配")
 like_search = col2.button("模糊匹配")
+st.caption(
+    "精准匹配：只查完整单号（LB26092550140 不会带出 LB26092550140E1）。"
+    "模糊匹配：查以输入开头的全部条码，包含 E1/E2 等补打标签。"
+    "两种方式都走索引，不做全表扫描。"
+)
 
 if exact_search or like_search:
     if not barcodes:

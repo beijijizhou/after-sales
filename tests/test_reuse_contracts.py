@@ -9,9 +9,12 @@ from ui.inventory.operations.system_deduction import (
     system_deduction_display,
 )
 from utils.barcode_patterns import (
+    build_barcode_candidates,
+    build_barcode_prefixes,
     build_exact_search_preview,
     build_fuzzy_search_preview,
 )
+from utils.hansen_matcher import extract_order_key
 from utils.option_values import ordered_values, unique_values
 
 
@@ -61,11 +64,54 @@ class SharedReuseContractTests(unittest.TestCase):
 
     def test_barcode_preview_builders_share_canonical_schema(self):
         self.assertEqual(
-            build_fuzzy_search_preview(["ABC"]),
-            [{"原始输入": "ABC", "实际查询内容": "%ABC%"}],
+            build_fuzzy_search_preview(["ABCD"]),
+            [
+                {"原始输入": "ABCD", "实际查询内容": "ABCD"},
+                {"原始输入": "ABCD", "实际查询内容": "ABCD*"},
+            ],
         )
         exact = build_exact_search_preview(["ABC"])
         self.assertEqual(set(exact[0]), {"原始输入", "实际查询内容"})
+
+    def test_humbird_main_order_expands_multi_item_variants(self):
+        self.assertEqual(
+            build_barcode_prefixes("BVF3J2C"),
+            ["SCGD-BVF3J2C-"],
+        )
+
+    def test_humbird_multi_digit_item_expands_a_and_b(self):
+        self.assertEqual(
+            build_barcode_candidates("BVF3J2C-15"),
+            ["SCGD-BVF3J2C-15-A", "SCGD-BVF3J2C-15-B"],
+        )
+
+    def test_s2b_main_order_expands_multiple_items(self):
+        self.assertEqual(
+            build_barcode_prefixes("WPG6SJ"),
+            ["WPG6SJ-"],
+        )
+
+    def test_hansen_fuzzy_prefix_includes_reprint_suffixes(self):
+        self.assertEqual(
+            build_barcode_prefixes("LB26092550140"),
+            ["LB26092550140,"],
+        )
+        self.assertEqual(
+            build_barcode_prefixes("LB26092550140", fuzzy=True),
+            ["LB26092550140"],
+        )
+
+    def test_hansen_order_key_is_extracted_from_composite_scan(self):
+        self.assertEqual(
+            extract_order_key(
+                "internIntern123*LB26100250808,1,1,2XL,White,CVC,end"
+            ),
+            "LB26100250808",
+        )
+        self.assertEqual(
+            extract_order_key("LB26092660135E1,1,1,L,Black,CVC,end"),
+            "LB26092660135E1",
+        )
 
     def test_pages_do_not_redefine_canonical_option_helpers(self):
         files = (

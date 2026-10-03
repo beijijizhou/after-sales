@@ -1,14 +1,10 @@
-from utils import hum_bird_matcher, s2b_matcher
-
-
-def is_exact_expansion_pattern(value):
-    return (
-        hum_bird_matcher.matches(value)
-        or s2b_matcher.matches(value)
-    )
+from utils import hansen_matcher, hum_bird_matcher, s2b_matcher
 
 
 def build_barcode_candidates(value):
+    if hansen_matcher.matches(value):
+        return hansen_matcher.build_candidates(value)
+
     if hum_bird_matcher.matches(value):
         return hum_bird_matcher.build_candidates(value)
 
@@ -18,31 +14,92 @@ def build_barcode_candidates(value):
     return [value.strip().upper()]
 
 
+FUZZY_PREFIX_MIN_LENGTH = 4
+
+
+def build_barcode_prefixes(value, fuzzy=False):
+    if hansen_matcher.matches(value):
+        if fuzzy:
+            return hansen_matcher.build_fuzzy_prefixes(value)
+        return hansen_matcher.build_prefixes(value)
+
+    if hum_bird_matcher.matches(value):
+        return hum_bird_matcher.build_prefixes(value)
+
+    if s2b_matcher.matches(value):
+        return s2b_matcher.build_prefixes(value)
+
+    value = value.strip().upper()
+    if fuzzy and len(value) >= FUZZY_PREFIX_MIN_LENGTH:
+        return [value]
+    return []
+
+
 def build_candidate_to_input(values):
-    candidate_to_input = {}
+    return {
+        candidate: inputs[0]
+        for candidate, inputs in build_candidate_to_inputs(values).items()
+    }
+
+
+def build_candidate_to_inputs(values):
+    candidate_to_inputs = {}
 
     for value in values:
         candidates = build_barcode_candidates(value)
         for candidate in candidates:
-            candidate_to_input[candidate] = value
+            inputs = candidate_to_inputs.setdefault(candidate, [])
+            if value not in inputs:
+                inputs.append(value)
 
-    return candidate_to_input
+    return candidate_to_inputs
 
 
-def build_exact_search_preview(values):
-    candidate_to_input = build_candidate_to_input(values)
+def build_prefix_to_inputs(values, fuzzy=False):
+    prefix_to_inputs = {}
 
-    return [
+    for value in values:
+        for prefix in build_barcode_prefixes(value, fuzzy=fuzzy):
+            inputs = prefix_to_inputs.setdefault(prefix, [])
+            if value not in inputs:
+                inputs.append(value)
+
+    return prefix_to_inputs
+
+
+def build_embedded_key_to_inputs(values):
+    key_to_inputs = {}
+
+    for value in values:
+        if not hansen_matcher.matches(value):
+            continue
+        key = hansen_matcher.extract_order_key(value)
+        inputs = key_to_inputs.setdefault(key, [])
+        if value not in inputs:
+            inputs.append(value)
+
+    return key_to_inputs
+
+
+def build_exact_search_preview(values, fuzzy=False):
+    candidate_rows = [
         {
             "原始输入": original_value,
             "实际查询内容": candidate,
         }
-        for candidate, original_value in candidate_to_input.items()
+        for candidate, original_value in build_candidate_to_input(values).items()
     ]
+    prefix_rows = [
+        {
+            "原始输入": original_values[0],
+            "实际查询内容": f"{prefix}*",
+        }
+        for prefix, original_values in build_prefix_to_inputs(
+            values, fuzzy=fuzzy
+        ).items()
+    ]
+    return candidate_rows + prefix_rows
 
 
 def build_fuzzy_search_preview(values):
-    return [
-        {"原始输入": value, "实际查询内容": f"%{value}%"}
-        for value in values
-    ]
+    return build_exact_search_preview(values, fuzzy=True)

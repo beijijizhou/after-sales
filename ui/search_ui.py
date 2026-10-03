@@ -5,9 +5,9 @@ import streamlit as st
 
 from utils.barcode_patterns import (
     build_candidate_to_input,
+    build_prefix_to_inputs,
     build_exact_search_preview,
     build_fuzzy_search_preview,
-    is_exact_expansion_pattern,
 )
 
 
@@ -52,39 +52,27 @@ def build_exact_preview(barcodes):
 
 
 def build_fuzzy_preview(barcodes):
-    exact_barcodes = [
-        barcode
-        for barcode in barcodes
-        if is_exact_expansion_pattern(barcode)
-    ]
-    global_search_barcodes = [
-        barcode
-        for barcode in barcodes
-        if not is_exact_expansion_pattern(barcode)
-    ]
-
-    return (
-        build_exact_preview(exact_barcodes)
-        + build_fuzzy_search_preview(global_search_barcodes)
-    )
+    return build_fuzzy_search_preview(barcodes)
 
 
 def build_search_preview(barcodes):
     rows = []
-
     for barcode in barcodes:
-        exact_candidate_to_input = build_candidate_to_input([barcode])
-        exact_values = list(exact_candidate_to_input.keys())
-        fuzzy_values = [f"%{barcode}%"]
-
-        row_count = max(len(exact_values), len(fuzzy_values))
-        for index in range(row_count):
-            rows.append({
-                "精准匹配": exact_values[index] if index < len(exact_values) else "",
-                "模糊匹配": fuzzy_values[index] if index < len(fuzzy_values) else "",
-            })
-
+        rows.append({
+            INPUT_COLUMN: barcode,
+            "精准匹配": _candidate_summary(barcode),
+            "模糊匹配": _candidate_summary(barcode, fuzzy=True),
+        })
     return rows
+
+
+def _candidate_summary(barcode, fuzzy=False):
+    candidates = list(build_candidate_to_input([barcode]))
+    prefixes = [
+        f"{prefix}*"
+        for prefix in build_prefix_to_inputs([barcode], fuzzy=fuzzy)
+    ]
+    return " / ".join([*candidates, *prefixes])
 
 
 def render_search_preview(title, search_values):
