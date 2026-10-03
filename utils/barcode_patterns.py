@@ -81,6 +81,44 @@ def build_embedded_key_to_inputs(values):
     return key_to_inputs
 
 
+def _order_code_matcher(value):
+    if hansen_matcher.matches(value):
+        return None
+    if hum_bird_matcher.matches(value):
+        return hum_bird_matcher
+    if s2b_matcher.order_code(value):
+        return s2b_matcher
+    return None
+
+
+def build_order_code_to_inputs(values):
+    code_to_inputs = {}
+
+    for value in values:
+        matcher = _order_code_matcher(value)
+        if matcher is None:
+            continue
+        inputs = code_to_inputs.setdefault(matcher.order_code(value), [])
+        if value not in inputs:
+            inputs.append(value)
+
+    return code_to_inputs
+
+
+def embedded_order_inputs(barcode, code_to_inputs):
+    """Inputs whose order item is carried by a malformed scan payload."""
+    codes = {
+        *hum_bird_matcher.embedded_order_codes(barcode),
+        *s2b_matcher.embedded_order_codes(barcode),
+    }
+    return [
+        value
+        for code in codes
+        for value in code_to_inputs.get(code, [])
+        if _order_code_matcher(value).matches_embedded(barcode, value)
+    ]
+
+
 def build_exact_search_preview(values, fuzzy=False):
     candidate_rows = [
         {

@@ -4,6 +4,9 @@ import re
 HUMBIRD_PATTERN = re.compile(
     r"(?:SCGD-)?(B[A-Z0-9]{6})(?:-(\d+))?(?:-([AB]))?"
 )
+EMBEDDED_PATTERN = re.compile(
+    r"(?:SCGD-|^)(B[A-Z0-9]{6})(?=-|$)(?:-(\d+))?(?:-([AB]))?"
+)
 
 
 def matches(value):
@@ -46,3 +49,33 @@ def build_prefixes(value):
     if sequence or variant:
         return []
     return [f"SCGD-{order_code}-"]
+
+
+def order_code(value):
+    match = HUMBIRD_PATTERN.fullmatch(value.strip().upper())
+    return match.group(1) if match else ""
+
+
+def embedded_order_codes(barcode):
+    return [
+        found.group(1)
+        for found in EMBEDDED_PATTERN.finditer(str(barcode or "").upper())
+    ]
+
+
+def matches_embedded(barcode, value):
+    """Whether a malformed scan payload carries the searched order item."""
+    match = HUMBIRD_PATTERN.fullmatch(value.strip().upper())
+    if not match:
+        return False
+    code, sequence, variant = match.groups()
+    for found in EMBEDDED_PATTERN.finditer(str(barcode or "").upper()):
+        found_code, found_sequence, found_variant = found.groups()
+        if found_code != code:
+            continue
+        if sequence and int(sequence) != int(found_sequence or -1):
+            continue
+        if variant and variant != found_variant:
+            continue
+        return True
+    return False

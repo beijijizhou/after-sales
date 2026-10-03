@@ -9,6 +9,8 @@ from ui.inventory.operations.system_deduction import (
     system_deduction_display,
 )
 from utils.barcode_patterns import (
+    build_order_code_to_inputs,
+    embedded_order_inputs,
     build_barcode_candidates,
     build_barcode_prefixes,
     build_exact_search_preview,
@@ -99,6 +101,19 @@ class SharedReuseContractTests(unittest.TestCase):
         self.assertEqual(
             build_barcode_prefixes("LB26092550140", fuzzy=True),
             ["LB26092550140"],
+        )
+
+    def test_malformed_humbird_and_s2b_scans_match_only_searched_item(self):
+        inputs = ["BYRU77Z-1", "BYRU77Z-2", "XB7KQQ", "XB7KQQ-2"]
+        codes = build_order_code_to_inputs(inputs)
+        self.assertEqual(
+            embedded_order_inputs("cSCGD-BYRU77Z-1-A", codes),
+            ["BYRU77Z-1"],
+        )
+        self.assertEqual(embedded_order_inputs("cXB7KQQ-3", codes), ["XB7KQQ"])
+        self.assertEqual(
+            embedded_order_inputs("bmapvrm-1", {"BMAPVRM": ["BMAPVRM"]}),
+            ["BMAPVRM"],
         )
 
     def test_hansen_order_key_is_extracted_from_composite_scan(self):
