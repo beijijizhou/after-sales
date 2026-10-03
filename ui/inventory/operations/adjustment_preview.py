@@ -193,9 +193,8 @@ def _wide_values(indexed, key):
 
 
 def _has_style_dimension(*frames):
-    for frame in frames:
-        if "款式" not in frame:
-            continue
-        if frame["款式"].fillna("").astype(str).str.strip().ne("").any():
-            return True
-    return False
+    return any(
+        "款式" in frame
+        and frame["款式"].fillna("").astype(str).str.strip().ne("").any()
+        for frame in frames
+    )

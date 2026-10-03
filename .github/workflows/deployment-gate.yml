@@ -23,6 +23,10 @@ jobs:
           cache: pip
       - name: Install project dependencies
         run: python -m pip install -r requirements.txt
+      - name: Provide placeholder secrets
+        # Modules read st.secrets at import time. The tests never reach a
+        # real service, so the committed example structure is sufficient.
+        run: cp .streamlit/secrets.example.toml .streamlit/secrets.toml
       - name: Run all tests, including every Streamlit page
         run: python -m unittest discover -s tests -q
 
