@@ -136,6 +136,7 @@ begin
       and coalesce(category, '') = coalesce(new.category, '')
       and coalesce(brand, '') = coalesce(new.brand, '')
       and coalesce(material, '') = coalesce(new.material, '')
+      and coalesce(style, '') = coalesce(new.style, '')
       and coalesce(color, '') = coalesce(new.color, '')
       and coalesce(size, '') = coalesce(new.size, '')
     limit 1;

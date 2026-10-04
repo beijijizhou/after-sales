@@ -13,11 +13,11 @@ SQL 按业务领域和用途存放。新增脚本应进入对应目录，不再�
 | `inventory/schema/` | 库存基础表和主数据结构 | 5 |
 | `inventory/operations/` | 调整、盘点设置、每日出库版本、批次、快照、撤销、SKU 更新和并入规则 | 8 |
 | `inventory/containers/` | 货柜表、到柜和历史 | 3 |
-| `inventory/warehouses/` | 25/60/70 仓库分布、库位参考和调拨单 | 4 |
+| `inventory/warehouses/` | 25/60/70 仓库分布、库位参考、调拨单和按款式同步 | 6 |
 | `inventory/planning/` | 消耗与预测模型 | 1 |
 | `inventory/costs/` | 成本批次、待分配批次、调整、撤销和报表 | 7 个 SQL |
 | `inventory/imports/` | 可重复检查的数据导入脚本 | 4 |
-| `inventory/data_fixes/` | 有明确目标的一次性数据修复 | 2 |
+| `inventory/data_fixes/` | 有明确目标的一次性数据修复 | 7 |
 | `consumables/` | 耗材表、流水、撤销和验证 | 4 |
 | `logistics/` | 物流审查、USPS用量、查询来源与OCR审计 | 3 |
 | `personal_work/` | 个人每日任务模板、按日记录和页面权限 | 1 |
