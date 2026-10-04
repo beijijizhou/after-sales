@@ -1,3 +1,5 @@
+begin;
+
 -- Prerequisite: 01_warehouse_schema_and_sync.sql and
 -- ../schema/inventory_hoodie_style.sql are installed.
 --
@@ -6,8 +8,6 @@
 -- sibling style with the same material/color/size. Match the complete SKU
 -- identity, including style. Non-hoodie SKUs store an empty style on both
 -- sides and are unaffected.
-begin;
-
 create or replace function public.sync_inventory_movement_to_warehouse()
 returns trigger
 language plpgsql

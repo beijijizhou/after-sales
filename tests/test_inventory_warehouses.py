@@ -95,8 +95,13 @@ class InventoryWarehouseTests(unittest.TestCase):
         paths = sorted(Path("sql/inventory/warehouses").glob("*.sql"))
         sql = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
-        self.assertEqual(len(paths), 5)
+        self.assertEqual(len(paths), 6)
         self.assertIn("inventory_movement_warehouse_sync", sql)
+        for path in (paths[0], paths[5]):
+            self.assertIn(
+                "coalesce(style, '') = coalesce(new.style, '')",
+                path.read_text(encoding="utf-8"),
+            )
         self.assertIn("default '25'", sql)
         self.assertIn("create_inventory_transfer_request", sql)
         self.assertIn("dispatch_inventory_transfer", sql)
