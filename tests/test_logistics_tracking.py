@@ -1093,8 +1093,8 @@ class LogisticsTrackingTests(unittest.TestCase):
         self.assertEqual(issues, ["第 2 行缺少物流单号"])
 
     def test_logistics_permissions_separate_after_sales_and_production(self):
-        view_allowed = {"after_sales", "admin"}
-        manage_allowed = {"producer", "after_sales", "admin"}
+        view_allowed = {"supervisor", "after_sales", "admin"}
+        manage_allowed = {"producer", "supervisor", "after_sales", "admin"}
         for role, permissions in ROLE_PERMISSIONS.items():
             with self.subTest(role=role):
                 self.assertEqual(

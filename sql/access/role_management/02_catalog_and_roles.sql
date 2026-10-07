@@ -76,6 +76,7 @@ with seeds(role_key, permission_keys) as (
         'can_mark_barcode_operations','can_register','can_use_image_stretch',
         'can_view_app','can_view_consumables','can_view_container',
         'can_view_hotstamp','can_view_inventory',
+        'can_manage_logistics','can_view_logistics',
         'can_view_operation_tracking','can_view_platform',
         'can_view_production_data','can_view_qa'
     ]::text[]),

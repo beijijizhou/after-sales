@@ -79,7 +79,8 @@ Users whose Supabase application role is `producer`, `after_sales`, or `admin`
 can see the logistics workspace. After-sales users have all operational
 permissions except finance and cost; administrators have every permission.
 Production users may run ERP synchronization and OCR but cannot call the USPS
-API, and supervisors cannot call the USPS API either.
+API. Supervisors may call the USPS Tracking API and run ERP synchronization,
+OCR, label downloads, usage calibration, and other logistics management actions.
 Adding secrets does
 not grant page access; each employee still needs an application account with
 one of those roles.

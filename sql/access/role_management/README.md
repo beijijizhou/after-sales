@@ -8,7 +8,7 @@
 4. `04_user_access_rpc.sql`：用户角色与启用状态变更函数。
 5. `05_role_definition_rpc.sql`：角色创建、权限组合和角色审计函数。
 6. `06_login_and_grants.sql`：登录权限读取、数据库授权和接口刷新。
-7. `07_logistics_production_ownership.sql`：售后拥有除财务页面和系统权限管理外的业务权限；管理员拥有全部权限；生产人员和主管不能调用 USPS API。
+7. `07_logistics_production_ownership.sql`：售后拥有除财务页面和系统权限管理外的业务权限；管理员拥有全部权限；主管拥有 USPS 查询、ERP 同步、OCR、批量下载与物流管理权限；生产人员拥有物流管理权限但不能调用 USPS 官方查询。
 8. `08_employee_departments.sql`：把旧 `department` 迁移为岗位兼容字段，建立 DTF/UV/3D 多部门关联；现有员工默认 DTF。
 9. `09_employee_department_admin.sql`：后台多部门与角色联合修改接口及审计。
 10. `10_employee_department_queries.sql`：登录和 `qa-barcode-listener` 使用的兼容查询接口。

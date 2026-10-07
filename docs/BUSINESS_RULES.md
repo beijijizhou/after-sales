@@ -804,9 +804,9 @@ forecast as an estimate.
   admin personnel and their change histories must not be exposed. Admins retain
   the complete personnel scope.
 - The logistics tracking page is visible to supervisor, after-sales, and admin
-  roles. Supervisors may query existing/database-cached and live USPS Tracking
-  data, but only after-sales and admins may synchronize ERP data, run label
-  OCR, download label batches, or calibrate USPS usage.
+  roles. Supervisors, after-sales, and admins may query cached or live USPS
+  Tracking data, synchronize ERP data, run label OCR, download label batches,
+  calibrate USPS usage, and use the logistics management workflows.
 - User role assignment is available on a separate admin-only access-management
   page. Role changes and account activation changes require an explicit preview
   and confirmation, are written to an append-only audit trail, and must prevent

@@ -13,8 +13,8 @@ set search_path = public
 as $$
 declare
     target_employee_id text;
-    current_role text;
-    current_active boolean;
+    old_role_value text;
+    old_active_value boolean;
     current_departments text[];
     normalized_departments text[];
     normalized_username text := trim(p_username);
@@ -45,7 +45,7 @@ begin
         raise exception 'Unsupported production department';
     end if;
     select u.employee_id, coalesce(u.role, 'visitor'), coalesce(u.is_active, true)
-    into target_employee_id, current_role, current_active
+    into target_employee_id, old_role_value, old_active_value
     from public.users u
     where u.user_name = normalized_username
     for update;
@@ -55,7 +55,7 @@ begin
     from public.app_user_departments d
     where d.employee_id = target_employee_id;
     if normalized_username = normalized_actor and (
-        current_role <> p_role or current_active <> p_is_active
+        old_role_value <> p_role or old_active_value <> p_is_active
     ) then
         raise exception 'Access administrator cannot change own access';
     end if;
@@ -72,8 +72,8 @@ begin
         user_name, old_role, new_role, old_is_active, new_is_active,
         old_departments, new_departments, changed_by
     ) values (
-        normalized_username, current_role, p_role,
-        current_active, p_is_active,
+        normalized_username, old_role_value, p_role,
+        old_active_value, p_is_active,
         current_departments, normalized_departments, normalized_actor
     );
     return query select normalized_username, p_role, p_is_active,

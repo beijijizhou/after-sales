@@ -18,6 +18,8 @@ where permission_key = 'can_edit_inventory';
 insert into public.app_role_permissions (role_key, permission_key)
 values
     ('producer', 'can_manage_logistics'),
+    ('supervisor', 'can_view_logistics'),
+    ('supervisor', 'can_manage_logistics'),
     ('after_sales', 'can_view_logistics'),
     ('after_sales', 'can_manage_logistics'),
     ('after_sales', 'can_edit_inventory')
@@ -26,10 +28,10 @@ on conflict do nothing;
 delete from public.app_role_permissions
 where (
     permission_key = 'can_view_logistics'
-    and role_key not in ('after_sales', 'admin')
+    and role_key not in ('supervisor', 'after_sales', 'admin')
 ) or (
     permission_key = 'can_manage_logistics'
-    and role_key not in ('producer', 'after_sales', 'admin')
+    and role_key not in ('producer', 'supervisor', 'after_sales', 'admin')
 ) or (
     permission_key = 'can_edit_inventory'
     and role_key not in ('after_sales', 'admin')
