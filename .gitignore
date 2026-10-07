@@ -7,3 +7,9 @@ automation/playwright/.auth/
 output/automation/
 .cache/
 .local/
+
+# Generated files
+__pycache__/
+*.pyc
+.DS_Store
+supabase/.temp/
