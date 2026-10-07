@@ -104,8 +104,13 @@ def _source_active(source):
 
 def update_skus(
     supabase, original_df, edited_df, categories, brands, materials=None,
-    department_code=None, changed_by="system",
+    department_code=None, changed_by="system", update_containers=True,
 ):
+    """Apply SKU edits; identity renames go through the audited RPC.
+
+    Pass ``update_containers=False`` when open container cargo that shares
+    the old identity is a different product and must keep the old name.
+    """
     edited_df = propagate_sku_identity_changes(original_df, edited_df)
     category_map = {
         row["name"]: row for row in categories.to_dict("records")
@@ -127,6 +132,11 @@ def update_skus(
     )
     updated = 0
     if identity_changes:
+        if not update_containers:
+            identity_changes = [
+                {**change, "update_containers": False}
+                for change in identity_changes
+            ]
         original_source = pd.DataFrame(original_df)
         inferred_department = (
             _clean(original_source["department"].iloc[0])

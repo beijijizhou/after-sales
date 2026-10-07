@@ -12,6 +12,12 @@ create table if not exists public.inventory_sku_change_log (
 create index if not exists inventory_sku_change_log_changed_at_idx
 on public.inventory_sku_change_log (changed_at desc);
 
+-- A change row identifies one SKU group by category, brand, material, style
+-- and color. Style is part of the identity: sibling hoodie styles with the
+-- same material and color are never renamed or merged together. A change row
+-- may set "update_containers": false to leave container cargo lines on the
+-- old identity (for example when open containers carry a different product
+-- that merely shared the old name).
 create or replace function public.update_inventory_sku_identities(
     p_department text,
     p_changes jsonb,
@@ -29,11 +35,14 @@ declare
     old_category text;
     old_brand text;
     old_material text;
+    old_style text;
     old_color text;
     new_category text;
     new_brand text;
     new_material text;
+    new_style text;
     new_color text;
+    update_containers boolean;
     item_count integer;
     quantity_count integer;
     updated_count integer := 0;
@@ -49,11 +58,16 @@ begin
         old_category := coalesce(change_row->>'old_category', '');
         old_brand := coalesce(change_row->>'old_brand', '');
         old_material := coalesce(change_row->>'old_material', '');
+        old_style := coalesce(change_row->>'old_style', '');
         old_color := coalesce(change_row->>'old_color', '');
         new_category := coalesce(change_row->>'new_category', '');
         new_brand := coalesce(change_row->>'new_brand', '');
         new_material := coalesce(change_row->>'new_material', '');
+        new_style := coalesce(change_row->>'new_style', '');
         new_color := coalesce(change_row->>'new_color', '');
+        update_containers := coalesce(
+            (change_row->>'update_containers')::boolean, true
+        );
 
         if new_material = '' or new_color = '' then
             raise exception '材质和颜色不能为空';
@@ -66,6 +80,7 @@ begin
           and coalesce(category, '') = old_category
           and coalesce(brand, '') = old_brand
           and coalesce(material, '') = old_material
+          and coalesce(style, '') = old_style
           and coalesce(color, '') = old_color;
 
         if item_count = 0 then
@@ -79,6 +94,7 @@ begin
               and coalesce(category, '') = old_category
               and coalesce(brand, '') = old_brand
               and coalesce(material, '') = old_material
+              and coalesce(style, '') = old_style
               and coalesce(color, '') = old_color
             for update
         loop
@@ -88,6 +104,7 @@ begin
               and coalesce(category, '') = new_category
               and coalesce(brand, '') = new_brand
               and coalesce(material, '') = new_material
+              and coalesce(style, '') = new_style
               and coalesce(color, '') = new_color
               and size = source_item.size
               and id <> source_item.id
@@ -119,6 +136,7 @@ begin
                 set category = nullif(new_category, ''),
                     brand = new_brand,
                     material = new_material,
+                    style = new_style,
                     color = new_color,
                     品牌 = new_brand,
                     材质 = new_material,
@@ -130,42 +148,48 @@ begin
 
         update public.inventory_movements
         set category = nullif(new_category, ''), brand = new_brand,
-            material = new_material, color = new_color,
+            material = new_material, style = new_style, color = new_color,
             品牌 = new_brand, 材质 = new_material
         where department = p_department
           and coalesce(category, '') = old_category
           and coalesce(brand, '') = old_brand
           and coalesce(material, '') = old_material
+          and coalesce(style, '') = old_style
           and coalesce(color, '') = old_color;
 
         update public.inventory_sku_imports
         set category = nullif(new_category, ''), brand = new_brand,
-            material = new_material, color = new_color,
+            material = new_material, style = new_style, color = new_color,
             品牌 = new_brand, 材质 = new_material
         where department = p_department
           and coalesce(category, '') = old_category
           and coalesce(brand, '') = old_brand
           and coalesce(material, '') = old_material
+          and coalesce(style, '') = old_style
           and coalesce(color, '') = old_color;
 
         update public.inventory_snapshots
         set category = nullif(new_category, ''), brand = new_brand,
-            material = new_material, color = new_color
+            material = new_material, style = new_style, color = new_color
         where department = p_department
           and coalesce(category, '') = old_category
           and coalesce(brand, '') = old_brand
           and coalesce(material, '') = old_material
+          and coalesce(style, '') = old_style
           and coalesce(color, '') = old_color;
 
-        update public.inventory_container_imports
-        set category = nullif(new_category, ''), brand = new_brand,
-            material = new_material, color = new_color,
-            品牌 = new_brand, 材质 = new_material
-        where department = p_department
-          and coalesce(category, '') = old_category
-          and coalesce(brand, '') = old_brand
-          and coalesce(material, '') = old_material
-          and coalesce(color, '') = old_color;
+        if update_containers then
+            update public.inventory_container_imports
+            set category = nullif(new_category, ''), brand = new_brand,
+                material = new_material, style = new_style, color = new_color,
+                品牌 = new_brand, 材质 = new_material
+            where department = p_department
+              and coalesce(category, '') = old_category
+              and coalesce(brand, '') = old_brand
+              and coalesce(material, '') = old_material
+              and coalesce(style, '') = old_style
+              and coalesce(color, '') = old_color;
+        end if;
 
         insert into public.inventory_sku_change_log (
             department, old_identity, new_identity, affected_items,
@@ -174,11 +198,14 @@ begin
             p_department,
             jsonb_build_object(
                 'category', old_category, 'brand', old_brand,
-                'material', old_material, 'color', old_color
+                'material', old_material, 'style', old_style,
+                'color', old_color
             ),
             jsonb_build_object(
                 'category', new_category, 'brand', new_brand,
-                'material', new_material, 'color', new_color
+                'material', new_material, 'style', new_style,
+                'color', new_color,
+                'containers_updated', update_containers
             ),
             item_count, quantity_count, coalesce(nullif(p_changed_by, ''), 'system')
         );

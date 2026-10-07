@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import Mock
 
 import pandas as pd
@@ -76,6 +77,48 @@ class SkuServiceTests(unittest.TestCase):
             supabase.rpc.call_args.args[0],
             "update_inventory_sku_identities",
         )
+
+    def test_hoodie_material_change_keeps_style_and_can_skip_containers(self):
+        query = _UpdateQuery([{"id": "sku-1", "size": "L"}])
+        supabase = Mock()
+        supabase.table.return_value = query
+        supabase.rpc.return_value.execute.return_value = _Response()
+        original = pd.DataFrame([{
+            "id": "sku-1", "sku_name": "", "category": "卫衣",
+            "brand": "Haloo", "material": "圆领", "style": "常规",
+            "color": "黑", "规格": "L", "unit": "件", "is_active": True,
+        }])
+        edited = original.copy()
+        edited.loc[0, "material"] = "280g圆领"
+        categories = pd.DataFrame([{
+            "id": "cat-1", "name": "卫衣", "specification_type": "size",
+        }])
+        brands = pd.DataFrame([{
+            "id": "brand-1", "name": "Haloo", "is_active": True,
+        }])
+        materials = pd.DataFrame([{
+            "id": "material-1", "name": "280g圆领", "is_active": True,
+        }])
+
+        update_skus(
+            supabase, original, edited, categories, brands, materials,
+            update_containers=False,
+        )
+
+        change = supabase.rpc.call_args.args[1]["p_changes"][0]
+        self.assertEqual(change["old_style"], "常规")
+        self.assertEqual(change["new_style"], "常规")
+        self.assertEqual(change["new_material"], "280g圆领")
+        self.assertIs(change["update_containers"], False)
+
+    def test_identity_rpc_matches_style_and_guards_container_updates(self):
+        sql = Path(
+            "sql/inventory/operations/inventory_sku_updates.sql"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("coalesce(style, '') = old_style", sql)
+        self.assertIn("coalesce(style, '') = new_style", sql)
+        self.assertIn("if update_containers then", sql)
 
     def test_status_change_is_written_to_sku_operation_log(self):
         query = _UpdateQuery()
