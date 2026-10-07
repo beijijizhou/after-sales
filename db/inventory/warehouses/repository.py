@@ -150,6 +150,24 @@ def complete_transfer_direct(
     }).execute().data
 
 
+def complete_cover_transfers(supabase, plan, to_warehouse, note, operated_by):
+    """Record one completed transfer per source warehouse for a cover plan."""
+    order_ids = []
+    for source, lines in pd.DataFrame(plan).groupby("来源仓", sort=True):
+        order_ids.append(complete_transfer_direct(
+            supabase, str(source), to_warehouse,
+            [
+                {
+                    "inventory_item_id": str(line["inventory_item_id"]),
+                    "quantity": int(line["调拨数量"]),
+                }
+                for line in lines.to_dict("records")
+            ],
+            note, operated_by,
+        ))
+    return order_ids
+
+
 def record_transfer_baseline(
     supabase, business_date, from_warehouse, to_warehouse, lines,
     note, operated_by,

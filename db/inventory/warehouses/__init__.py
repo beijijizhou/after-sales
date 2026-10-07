@@ -1,4 +1,5 @@
 from .repository import (
+    complete_cover_transfers,
     complete_transfer_direct,
     complete_pending_transfer,
     create_transfer_request,
@@ -18,12 +19,14 @@ from .service import (
     build_transfer_line_editor,
     build_warehouse_distribution,
     normalize_transfer_execution_lines,
+    plan_outbound_cover_transfers,
 )
 
 __all__ = [
     "TRANSFER_STATUS_LABELS",
     "build_transfer_line_editor",
     "build_warehouse_distribution",
+    "complete_cover_transfers",
     "complete_transfer_direct",
     "complete_pending_transfer",
     "create_transfer_request",
@@ -34,6 +37,7 @@ __all__ = [
     "load_warehouse_inventory_items",
     "load_warehouses",
     "normalize_transfer_execution_lines",
+    "plan_outbound_cover_transfers",
     "receive_transfer",
     "record_transfer_baseline",
     "reverse_transfer",

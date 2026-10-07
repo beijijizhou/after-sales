@@ -47,7 +47,8 @@ def find_outbound_warehouse_shortages(
     """
     keys = ["品牌", "材质", "款式", "颜色", "尺码"]
     columns = [
-        *keys, "数量", "当前库存", "出库仓库存", "其他仓库存", "出库仓缺口",
+        "inventory_item_id", *keys, "数量", "当前库存", "出库仓库存",
+        "其他仓库存", "出库仓缺口",
     ]
     expected_df = pd.DataFrame(expected_df).copy()
     inventory_df = pd.DataFrame(inventory_df).copy()
@@ -83,6 +84,7 @@ def find_outbound_warehouse_shortages(
     result["当前库存"] = pd.to_numeric(
         result["当前库存"], errors="coerce"
     ).fillna(0).astype(int)
+    result["inventory_item_id"] = result["id"]
     deductible = result[["数量", "当前库存"]].min(axis=1)
     result["出库仓缺口"] = (deductible - result["出库仓库存"]).clip(lower=0)
     return result[result["出库仓缺口"] > 0][columns].reset_index(drop=True)

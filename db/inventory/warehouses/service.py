@@ -144,6 +144,37 @@ def normalize_transfer_execution_lines(editor, mode="dispatch", direct=False):
     return rows
 
 
+def plan_outbound_cover_transfers(shortages, balances, issuing_warehouse="25"):
+    """Split each issuing-warehouse shortage across the reserve warehouses.
+
+    Returns one planned transfer line per SKU and source warehouse, taking
+    reserve warehouses in code order, plus the quantity no warehouse covers.
+    """
+    identity = ["品牌", "材质", "款式", "颜色", "尺码"]
+    columns = ["inventory_item_id", "来源仓", *identity, "调拨数量"]
+    balances = pd.DataFrame(balances)
+    rows, uncovered = [], 0
+    for shortage in pd.DataFrame(shortages).to_dict("records"):
+        remaining = int(shortage["出库仓缺口"])
+        reserve = balances[
+            (balances["inventory_item_id"] == shortage["inventory_item_id"])
+            & (balances["warehouse_code"].astype(str) != str(issuing_warehouse))
+        ].sort_values("warehouse_code") if not balances.empty else balances
+        for balance in reserve.to_dict("records"):
+            moved = min(remaining, int(balance["quantity"] or 0))
+            if moved <= 0:
+                continue
+            rows.append({
+                "inventory_item_id": shortage["inventory_item_id"],
+                "来源仓": str(balance["warehouse_code"]),
+                **{column: shortage.get(column, "") for column in identity},
+                "调拨数量": moved,
+            })
+            remaining -= moved
+        uncovered += remaining
+    return pd.DataFrame(rows, columns=columns), uncovered
+
+
 def _build_in_transit(orders, lines):
     order_frame = pd.DataFrame(orders).copy()
     line_frame = pd.DataFrame(lines).copy()

@@ -10,6 +10,7 @@ from db.inventory.warehouses import (
     build_transfer_line_editor,
     build_warehouse_distribution,
     normalize_transfer_execution_lines,
+    plan_outbound_cover_transfers,
 )
 from ui.inventory.transfers.processing import build_transfer_export
 from utils.auth.constants import NAV_ITEMS, PAGE_ACCESS
@@ -122,6 +123,28 @@ class InventoryWarehouseTests(unittest.TestCase):
         self.assertEqual(int(row["出库仓库存"]), 1342)
         self.assertEqual(int(row["其他仓库存"]), 20200)
         self.assertEqual(int(row["出库仓缺口"]), 658)
+
+    def test_cover_plan_takes_shortage_from_reserve_warehouses_in_order(self):
+        shortages = pd.DataFrame([{
+            "inventory_item_id": "sku-3xl", "品牌": "Haloo", "材质": "CVC",
+            "款式": "", "颜色": "黑", "尺码": "3XL", "出库仓缺口": 658,
+        }])
+        balances = pd.DataFrame([
+            {"inventory_item_id": "sku-3xl", "warehouse_code": "25", "quantity": 1342},
+            {"inventory_item_id": "sku-3xl", "warehouse_code": "70", "quantity": 900},
+            {"inventory_item_id": "sku-3xl", "warehouse_code": "60", "quantity": 500},
+        ])
+
+        plan, uncovered = plan_outbound_cover_transfers(shortages, balances, "25")
+
+        self.assertEqual(uncovered, 0)
+        self.assertEqual(plan["来源仓"].tolist(), ["60", "70"])
+        self.assertEqual(plan["调拨数量"].tolist(), [500, 158])
+
+        _, missing = plan_outbound_cover_transfers(
+            shortages, balances[balances["warehouse_code"] != "70"], "25"
+        )
+        self.assertEqual(missing, 158)
 
     def test_outbound_warehouse_check_ignores_company_wide_shortage(self):
         outbound = pd.DataFrame([
