@@ -108,10 +108,13 @@ def find_missing_outbound_dates(recorded_dates, start_date, end_date):
     return sorted(expected_dates - set(recorded_dates))
 
 
-def load_outbound_inventory(supabase, department, category):
+def load_outbound_inventory(
+    supabase, department, category, include_ids=False,
+):
+    columns = "category,brand,material,style,color,size,quantity"
     query = (
         supabase.table("inventory_items")
-        .select("category,brand,material,style,color,size,quantity")
+        .select(f"id,{columns}" if include_ids else columns)
         .eq("department", department)
         .eq("is_active", True)
     )

@@ -3,6 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from db.inventory.operations.outbound_verification import (
+    find_outbound_warehouse_shortages,
+)
 from db.inventory.warehouses import (
     build_transfer_line_editor,
     build_warehouse_distribution,
@@ -90,6 +93,53 @@ class InventoryWarehouseTests(unittest.TestCase):
         self.assertEqual(
             PAGE_ACCESS["inventory_transfer"], "can_view_inventory"
         )
+
+    def test_outbound_flags_sku_whose_stock_sits_in_reserve_warehouse(self):
+        outbound = pd.DataFrame([
+            {"品牌": "Haloo", "材质": "CVC", "颜色": "黑", "尺码": "3XL", "数量": 2000},
+            {"品牌": "Haloo", "材质": "CVC", "颜色": "黑", "尺码": "L", "数量": 2000},
+        ])
+        inventory = pd.DataFrame([
+            {"id": "sku-3xl", "brand": "Haloo", "material": "CVC", "style": "",
+             "color": "黑", "size": "3XL", "quantity": 21542},
+            {"id": "sku-l", "brand": "Haloo", "material": "CVC", "style": "",
+             "color": "黑", "size": "L", "quantity": 181966},
+        ])
+        balances = pd.DataFrame([
+            {"inventory_item_id": "sku-3xl", "warehouse_code": "25", "quantity": 1342},
+            {"inventory_item_id": "sku-3xl", "warehouse_code": "60", "quantity": 20200},
+            {"inventory_item_id": "sku-l", "warehouse_code": "25", "quantity": 157066},
+            {"inventory_item_id": "sku-l", "warehouse_code": "60", "quantity": 24900},
+        ])
+
+        shortages = find_outbound_warehouse_shortages(
+            outbound, inventory, balances, "25"
+        )
+
+        self.assertEqual(shortages["尺码"].tolist(), ["3XL"])
+        row = shortages.iloc[0]
+        self.assertEqual(int(row["当前库存"]), 21542)
+        self.assertEqual(int(row["出库仓库存"]), 1342)
+        self.assertEqual(int(row["其他仓库存"]), 20200)
+        self.assertEqual(int(row["出库仓缺口"]), 658)
+
+    def test_outbound_warehouse_check_ignores_company_wide_shortage(self):
+        outbound = pd.DataFrame([
+            {"品牌": "Haloo", "材质": "CVC", "颜色": "白", "尺码": "S", "数量": 500},
+        ])
+        inventory = pd.DataFrame([
+            {"id": "sku-s", "brand": "Haloo", "material": "CVC", "style": "",
+             "color": "白", "size": "S", "quantity": 300},
+        ])
+        balances = pd.DataFrame([
+            {"inventory_item_id": "sku-s", "warehouse_code": "25", "quantity": 300},
+        ])
+
+        shortages = find_outbound_warehouse_shortages(
+            outbound, inventory, balances, "25"
+        )
+
+        self.assertTrue(shortages.empty)
 
     def test_migration_keeps_transfer_atomic_and_syncs_warehouse_25(self):
         paths = sorted(Path("sql/inventory/warehouses").glob("*.sql"))

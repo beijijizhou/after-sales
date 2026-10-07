@@ -38,6 +38,22 @@ def load_warehouse_balances(supabase):
     return pd.DataFrame(rows)
 
 
+def load_item_warehouse_balances(supabase, item_ids, chunk_size=100):
+    """Load every warehouse balance of the given SKUs, in id chunks."""
+    item_ids = [str(item_id) for item_id in item_ids if item_id]
+    rows = []
+    for start in range(0, len(item_ids), chunk_size):
+        rows.extend(
+            supabase.table("inventory_warehouse_balances")
+            .select("inventory_item_id,warehouse_code,quantity")
+            .in_("inventory_item_id", item_ids[start:start + chunk_size])
+            .execute().data or []
+        )
+    return pd.DataFrame(
+        rows, columns=["inventory_item_id", "warehouse_code", "quantity"]
+    )
+
+
 def load_transfer_orders(supabase, limit=200):
     base_columns = (
         "id,transfer_number,from_warehouse,to_warehouse,status,note,"

@@ -5,10 +5,15 @@ import streamlit as st
 from db.inventory import normalize_adjustment_rows
 from db.inventory.operations.daily_outbound_versions import save_daily_outbound_scope
 from db.inventory.operations.outbound_audit import find_outbound_inventory_issues, load_outbound_inventory
+from db.inventory.operations.outbound_verification import find_outbound_warehouse_shortages
+from db.inventory.warehouses.repository import load_item_warehouse_balances
 from ui.inventory.operations.adjustment_preview import build_inventory_change_comparison, render_inventory_change_comparison
 from ui.inventory.operations.outbound_feedback import render_outbound_preview_summary
 from ui.inventory.display_scope import apply_routine_display_scope
 from utils.auth import get_current_operator_name
+
+
+OUTBOUND_WAREHOUSE = "25"
 
 
 def render_outbound_review(
@@ -27,8 +32,17 @@ def render_outbound_review(
         return None
     total = render_outbound_preview_summary(adjustments, text)
     try:
-        inventory = load_outbound_inventory(supabase, department, category)
+        inventory = load_outbound_inventory(
+            supabase, department, category, include_ids=True
+        )
         issues = find_outbound_inventory_issues(adjustments, inventory)
+        warehouse_shortages = find_outbound_warehouse_shortages(
+            adjustments, inventory,
+            load_item_warehouse_balances(
+                supabase, _outbound_item_ids(adjustments, inventory)
+            ),
+            OUTBOUND_WAREHOUSE,
+        )
     except Exception as error:
         st.error(f"{text['inventory_check_error']}: {error}")
         return None
@@ -43,6 +57,8 @@ def render_outbound_review(
         apply_routine_display_scope(comparison, department), action="扣减"
     )
     _render_inventory_issues(issues, text)
+    if _render_warehouse_shortages(warehouse_shortages, text):
+        return None
     st.warning(text["unsaved"])
     if not st.button(text["confirm"], width="stretch", type="primary"):
         return None
@@ -52,7 +68,14 @@ def render_outbound_review(
             get_current_operator_name(), note="仓库每日出货",
         )
     except Exception as error:
-        st.error(f"{text['save_error']}: {error}")
+        if "库存不足" in str(error):
+            st.error(
+                f"{text['save_error']}：{OUTBOUND_WAREHOUSE} 仓库存不足，"
+                "整批没有保存。请刷新预览查看缺口，"
+                "先在「仓库调拨」把货调到出库仓再登记。"
+            )
+        else:
+            st.error(f"{text['save_error']}: {error}")
         return None
     shortage = int(saved.get("shortage_total") or 0)
     if shortage:
@@ -62,6 +85,45 @@ def render_outbound_review(
             f"未扣差额 {shortage:,} 件已进入批次核对。"
         )
     return total
+
+
+def _outbound_item_ids(adjustments, inventory):
+    if inventory.empty or "id" not in inventory:
+        return []
+    keys = ["brand", "material", "color", "size"]
+    wanted = set(map(tuple, adjustments[
+        ["品牌", "材质", "颜色", "尺码"]
+    ].astype(str).values))
+    matches = inventory[keys].astype(str).apply(tuple, axis=1).isin(wanted)
+    return inventory.loc[matches, "id"].tolist()
+
+
+def _render_warehouse_shortages(shortages, text):
+    """Explain a blocked outbound; return True when saving must stop."""
+    if shortages.empty:
+        return False
+    total = int(shortages["出库仓缺口"].sum())
+    st.error(
+        f"{OUTBOUND_WAREHOUSE} 仓库存不足，暂时不能登记：每日出库只从 "
+        f"{OUTBOUND_WAREHOUSE} 仓扣减，下面 {len(shortages)} 个 SKU 的总库存够，"
+        f"但货在其他仓。请先在「仓库调拨」把至少 {total:,} 件调到 "
+        f"{OUTBOUND_WAREHOUSE} 仓，或把出库数量改到不超过 "
+        f"{OUTBOUND_WAREHOUSE} 仓库存，再回来确认。"
+    )
+    st.dataframe(
+        shortages.rename(columns={
+            "出库仓库存": f"{OUTBOUND_WAREHOUSE}仓库存",
+            "出库仓缺口": f"{OUTBOUND_WAREHOUSE}仓缺口",
+        }),
+        hide_index=True, width="stretch",
+        column_config={
+            "数量": st.column_config.NumberColumn(
+                text["outbound_quantity"], format="%d"
+            ),
+            "当前库存": st.column_config.NumberColumn("总库存", format="%d"),
+        },
+    )
+    return True
 
 
 def _render_package_preview(

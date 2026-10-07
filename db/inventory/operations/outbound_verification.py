@@ -36,6 +36,58 @@ def find_outbound_inventory_issues(expected_df, inventory_df):
     ].reset_index(drop=True)
 
 
+def find_outbound_warehouse_shortages(
+    expected_df, inventory_df, balances_df, warehouse_code="25",
+):
+    """Return SKUs whose issuing-warehouse balance cannot cover the outbound.
+
+    Daily outbound always deducts from one warehouse. A SKU can have enough
+    company-wide stock while the issuing warehouse is short because the rest
+    sits in a reserve warehouse; that needs a transfer, not a stock adjustment.
+    """
+    keys = ["品牌", "材质", "款式", "颜色", "尺码"]
+    columns = [
+        *keys, "数量", "当前库存", "出库仓库存", "其他仓库存", "出库仓缺口",
+    ]
+    expected_df = pd.DataFrame(expected_df).copy()
+    inventory_df = pd.DataFrame(inventory_df).copy()
+    if expected_df.empty or inventory_df.empty or "id" not in inventory_df:
+        return pd.DataFrame(columns=columns)
+    if "款式" not in expected_df:
+        expected_df["款式"] = ""
+    if "style" not in inventory_df:
+        inventory_df["style"] = ""
+    expected_df["款式"] = expected_df["款式"].fillna("")
+    inventory_df["style"] = inventory_df["style"].fillna("")
+    expected = expected_df.groupby(keys, as_index=False)["数量"].sum()
+    inventory = inventory_df.rename(columns={
+        "brand": "品牌", "material": "材质", "style": "款式", "color": "颜色",
+        "size": "尺码", "quantity": "当前库存",
+    })[["id", *keys, "当前库存"]]
+    result = expected.merge(inventory, on=keys, how="inner")
+    balances = pd.DataFrame(balances_df).copy()
+    if balances.empty:
+        balances = pd.DataFrame(
+            columns=["inventory_item_id", "warehouse_code", "quantity"]
+        )
+    balances["quantity"] = pd.to_numeric(
+        balances["quantity"], errors="coerce"
+    ).fillna(0).astype(int)
+    issuing = balances["warehouse_code"].astype(str) == str(warehouse_code)
+    result["出库仓库存"] = result["id"].map(
+        balances[issuing].groupby("inventory_item_id")["quantity"].sum()
+    ).fillna(0).astype(int)
+    result["其他仓库存"] = result["id"].map(
+        balances[~issuing].groupby("inventory_item_id")["quantity"].sum()
+    ).fillna(0).astype(int)
+    result["当前库存"] = pd.to_numeric(
+        result["当前库存"], errors="coerce"
+    ).fillna(0).astype(int)
+    deductible = result[["数量", "当前库存"]].min(axis=1)
+    result["出库仓缺口"] = (deductible - result["出库仓库存"]).clip(lower=0)
+    return result[result["出库仓缺口"] > 0][columns].reset_index(drop=True)
+
+
 def verify_outbound_batch(supabase, batch_id, expected_df=None):
     rows = _load_outbound_batch(supabase, batch_id)
     saved_total = sum(abs(int(row["quantity_change"])) for row in rows)
