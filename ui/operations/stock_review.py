@@ -52,6 +52,7 @@ def render_stock_change_review(
     unit=None,
     unit_column=None,
     quantity_format="%.2f",
+    column_labels=None,
 ):
     display, operation_column = prepare_stock_change_display(
         comparison, action=action
@@ -84,6 +85,9 @@ def render_stock_change_review(
     }
     if unit_column and unit_column in display:
         config[unit_column] = st.column_config.TextColumn("单位")
+    for column, label in (column_labels or {}).items():
+        if column in columns and label and label != column:
+            config[column] = st.column_config.TextColumn(label)
     st.dataframe(
         display[columns], hide_index=True, width="stretch",
         height=fit_table_height(display), column_config=config,

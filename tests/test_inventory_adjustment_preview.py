@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -6,6 +7,9 @@ from db.inventory import SIZE_COLUMNS
 from ui.inventory.operations.adjustment_preview import (
     build_adjustment_stock_comparison,
     build_inventory_change_comparison,
+)
+from ui.inventory.operations.inventory_review import (
+    render_inventory_change_comparison,
 )
 
 
@@ -90,6 +94,37 @@ class InventoryAdjustmentPreviewTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["当前库存"], 50)
         self.assertEqual(result.iloc[0]["本次变动"], -60)
         self.assertEqual(result.iloc[0]["调整后库存"], -10)
+
+    def test_review_hides_blank_style_and_labels_model_column(self):
+        comparison = pd.DataFrame([{
+            "品类": "铁板画", "材质": "铁牌", "款式": "", "尺码": "1040",
+            "当前库存": 42774, "本次变动": -100, "调整后库存": 42674,
+        }])
+        with patch(
+            "ui.inventory.operations.inventory_review."
+            "render_stock_change_review"
+        ) as render:
+            render_inventory_change_comparison(
+                comparison, action="扣减", size_label="型号"
+            )
+
+        options = render.call_args.kwargs
+        self.assertEqual(options["identity_columns"], ["品类", "材质", "尺码"])
+        self.assertEqual(options["column_labels"], {"尺码": "型号"})
+
+    def test_review_keeps_style_when_any_row_has_one(self):
+        comparison = pd.DataFrame([{
+            "材质": "250g圆领", "品牌": "Haloo", "款式": "常规", "颜色": "黑",
+            "尺码": "M", "当前库存": 10, "本次变动": -1, "调整后库存": 9,
+        }])
+        with patch(
+            "ui.inventory.operations.inventory_review."
+            "render_stock_change_review"
+        ) as render:
+            render_inventory_change_comparison(comparison, action="扣减")
+
+        self.assertIn("款式", render.call_args.kwargs["identity_columns"])
+        self.assertIsNone(render.call_args.kwargs["column_labels"])
 
     def test_hoodie_styles_are_separate_inventory_identities(self):
         inventory = pd.DataFrame([

@@ -87,13 +87,20 @@ def build_inventory_change_comparison(inventory_df, adjustment_df):
 
 def render_inventory_change_comparison(
     comparison, *, action=None, title="保存前库存核对", unit="件",
+    size_label=None,
 ):
+    """Render the review; ``size_label`` renames 尺码 for model-based SKUs."""
     comparison = pd.DataFrame(comparison).copy()
     identity = [
         column for column in [
             "部门", "品类", "材质", "品牌", "款式", "颜色", "尺码"
         ] if column in comparison
     ]
+    # Style is a hoodie-only dimension; an all-blank column is only noise.
+    if "款式" in identity and not (
+        comparison["款式"].fillna("").astype(str).str.strip().ne("").any()
+    ):
+        identity.remove("款式")
     return render_stock_change_review(
         comparison,
         action=action,
@@ -101,4 +108,5 @@ def render_inventory_change_comparison(
         identity_columns=identity,
         unit=unit,
         quantity_format="%d",
+        column_labels={"尺码": size_label} if size_label else None,
     )

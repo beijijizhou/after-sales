@@ -54,7 +54,8 @@ def render_outbound_review(
         inventory, comparison_rows
     )
     render_inventory_change_comparison(
-        apply_routine_display_scope(comparison, department), action="扣减"
+        apply_routine_display_scope(comparison, department), action="扣减",
+        size_label=entry_text.get("size"),
     )
     _render_inventory_issues(issues, text)
     cover = render_warehouse_cover(
@@ -123,6 +124,10 @@ def _render_package_preview(
     display = apply_routine_display_scope(preview, department)
     if not show_category:
         display = display.drop(columns=["品类"], errors="ignore")
+    if "款式" in display and not (
+        display["款式"].fillna("").astype(str).str.strip().ne("").any()
+    ):
+        display = display.drop(columns=["款式"])
     display["包装单位"] = display["包装单位"].map(text["packages"])
     display = display.rename(columns={
         "品牌": text["brand"], "材质": text["material"], "颜色": text["color"],
